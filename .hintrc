@@ -6,5 +6,8 @@
     "defaults",
     "not ie 11",
     "not samsung <= 23"
-  ]
+  ],
+  "hints": {
+    "compat-api/css": "off"
+  }
 }
