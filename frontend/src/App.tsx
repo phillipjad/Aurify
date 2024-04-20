@@ -1,14 +1,14 @@
-import { Container, Row } from 'react-bootstrap'
-import Header from './components/home/Header'
-
-import './App.css'
+import { Outlet } from 'react-router-dom'
+import Splash from './components/splash/Splash'
 
 function App() {
-
   return (
-    <Container>
-      <Header/>
-    </Container>
+    <>
+      <Splash />
+      <div className="current-route">
+        <Outlet />
+      </div>
+    </>
   )
 }
 
