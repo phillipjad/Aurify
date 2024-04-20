@@ -26,9 +26,7 @@ oauth2_scheme = OAuth2AuthorizationCodeBearer(
 
 @app.get("/")
 async def root():
-    print("Hello world!")
     return {"message": "Hello World"}
-
 
 @app.get("/login")
 def login():
@@ -52,8 +50,8 @@ async def callback(code: str):
         if token_response.status_code != 200:
             raise HTTPException(status_code=token_response.status_code, detail="Failed to retrieve access token")
         token_response_json = token_response.json()
-        access_token = token_response_json.get("access")
-
+        access_token = token_response_json.get("access_token")
+        return {"access_token": access_token}
 
 @app.get("/search-playlists")
 async def search_playlists(query: str, token: str = Depends(oauth2_scheme)):
@@ -84,3 +82,5 @@ async def playlist_contents(playlist_id: str, token: str = Depends(oauth2_scheme
             raise HTTPException(status_code=response.status_code, detail="Failed to retrieve playlist contents")
         return response.json()
 
+if __name__ == "__main__":
+    uvicorn.run(app, host="localhost", port=8000)
