@@ -1,3 +1,4 @@
 backend/env
 backend/.env
+./.vars.env
 node_modules
