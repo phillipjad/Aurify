@@ -3,12 +3,12 @@ import { Container } from 'react-bootstrap'
 import { Outlet } from 'react-router-dom'
 
 function App() {
-  const [user, setUser] = useState({});
+  const [token, setToken] = useState("");
   
 
   useEffect(()=>{
-    console.log(user);
-  }, [user])
+    console.log(token);
+  }, [token])
 
   return (
     <Container fluid>
@@ -21,7 +21,7 @@ function App() {
         id='current-route'
         className="d-flex mt-5 container-fluid justify-content-center"
       >
-        <Outlet context={setUser}/>
+        <Outlet context={setToken}/>
       </main>
     </Container>
   )

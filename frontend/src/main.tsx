@@ -1,11 +1,11 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
 import { createBrowserRouter, RouterProvider } from 'react-router-dom';
-import App from './App.tsx'
+import App from './components/home/App.tsx'
 import 'bootstrap/dist/css/bootstrap.css'
 import './index.css'
-import Header from './components/home/Header.tsx';
 import Login from './components/login/Login.tsx';
+import Splash from './components/splash/Splash.tsx';
 
 const router = createBrowserRouter([
   {
@@ -15,6 +15,10 @@ const router = createBrowserRouter([
       {
         path: "",
         element: <Login/>
+      },
+      {
+        path: "home",
+        element: <Splash/>
       }
     ]
   }
