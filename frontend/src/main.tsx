@@ -6,6 +6,9 @@ import 'bootstrap/dist/css/bootstrap.css'
 import './index.css'
 import Login from './components/login/Login.tsx';
 import Splash from './components/splash/Splash.tsx';
+import Playlists from './components/user-bound/Playlists.tsx';
+import About from './components/user-bound/About.tsx';
+import Cover from './components/user-bound/Cover.tsx';
 
 const router = createBrowserRouter([
   {
@@ -19,6 +22,22 @@ const router = createBrowserRouter([
       {
         path: "home",
         element: <Splash/>
+      },
+      {
+        path: "playlists",
+        element: <Playlists/>
+      },
+      {
+        path: "about",
+        element: <About/>
+      },
+      {
+        path: "cover",
+        element: <Cover/>
+      },
+      {
+        path: "*",
+        element: <Login/>
       }
     ]
   }
