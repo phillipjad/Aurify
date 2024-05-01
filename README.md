@@ -2,7 +2,11 @@
 
 Written by Phillip
 
-Project Improvement Goals
+## Overview
+
+- Create AI-generated playlist covers based on song content (such as lyrics) and Spotify track audio feature metadata values. 
+
+## Project Improvement Goals
 
 - Actually map different genres and ranges of key spotify values to moods, shapes, colors, etc.
 
@@ -11,5 +15,7 @@ Project Improvement Goals
 - Implement easy share functionality s.t. the generated image can be shared to social media with key information on how it was generated
 
 - Do code to token exchange on backend
+
+- Move backend to Azure Function App and Frontend to blob static hosting
 
 - Far off goal: add support for apple music 
