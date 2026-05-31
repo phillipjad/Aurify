@@ -45,9 +45,14 @@ concrete adapters.
 
 ```bash
 cp .env.example .env        # optional; sane defaults are built in
-make tidy                   # resolve dependencies
-make run                    # starts on :8080
+go mod tidy                 # resolve dependencies
+go run build.go             # compile -> bin/aurify (version stamped; defaults to "dev")
+./bin/aurify                # starts on :8080
 ```
+
+For a quick iteration loop you can also `go run ./cmd/api` — but note the binary
+refuses to start without a stamped version, so pass one:
+`go run -ldflags="-X main.version=dev" ./cmd/api`.
 
 Probes: `GET /livez`, `GET /readyz` (readiness pings MongoDB).
 
@@ -72,9 +77,18 @@ configured, handlers read the caller's id from the `X-User-ID` request header.
 Replace `currentUser` in `internal/transport/http/handlers/common.go` when real
 auth lands.
 
-## Make targets
+## Common tasks
 
-`make help` lists them: `tidy`, `build`, `run`, `test`, `lint`, `fmt`, `vet`.
+This project does **not** use Make. The release build goes through `build.go`
+(so the version stamp is consistent with CI); everything else is plain `go`:
+
+| Task | Command |
+|------|---------|
+| Build binary | `go run build.go` (or `VERSION=1.2.3 go run build.go`) |
+| Format | `gofmt -w .` |
+| Vet | `go vet ./...` |
+| Test | `go test ./...` |
+| Lint | `golangci-lint run ./...` |
 
 ## Notes / TODO
 

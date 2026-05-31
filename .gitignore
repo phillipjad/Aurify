@@ -10,6 +10,9 @@ backend/bin/
 *.test
 *.out
 
+# Local Docker data (MongoDB bind mount, see docker-compose.yml)
+.data/
+
 # Node (frontend)
 node_modules/
 dist/

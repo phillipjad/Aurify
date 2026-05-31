@@ -31,6 +31,8 @@ services:
     ports:
       - '27017:27017'
     volumes:
+      # Named volume, but bound to an explicit host directory — see the
+      # top-level `volumes:` block at the bottom of this file.
       - mongo-data:/data/db
     healthcheck:
       test: ['CMD', 'mongosh', '--eval', "db.adminCommand('ping')"]
@@ -49,4 +51,17 @@ services:
   #   ports: ['9102:9102']
 
 volumes:
+  # `mongo-data` is a named volume, but the local driver's bind options pin its
+  # storage to an explicit host directory: $PWD/.data/mongo (where $PWD is the
+  # directory you run `docker compose` from). This keeps the data visible and
+  # easy to back up / wipe (`rm -rf .data/mongo`) instead of living in an opaque
+  # /var/lib/docker/volumes/... path.
+  #
+  # NOTE: with `type: none` + `o: bind`, the host directory must already exist
+  # before the first `docker compose up`:  mkdir -p .data/mongo
   mongo-data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${PWD}/.data/mongo

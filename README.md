@@ -59,7 +59,7 @@ See [`backend/README.md`](backend/README.md) and
 docker compose up -d mongo
 
 # 2. API  (http://localhost:8080)
-cd backend && make tidy && make run
+cd backend && go mod tidy && go run build.go && ./bin/aurify
 
 # 3. PWA  (http://localhost:5173, proxies /api -> :8080)
 cd frontend && pnpm install && pnpm dev
