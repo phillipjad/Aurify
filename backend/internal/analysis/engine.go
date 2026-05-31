@@ -20,7 +20,12 @@ func NewEngine() *Engine { return &Engine{} }
 
 // Analyze computes mean audio features and mean sentiment across the playlist,
 // then builds the weighted palette from those aggregates.
-func (e *Engine) Analyze(ctx context.Context, playlistID string, tracks []domain.Track, sentiments []domain.Sentiment) (domain.PlaylistAnalysis, error) {
+func (e *Engine) Analyze(
+	ctx context.Context,
+	playlistID string,
+	tracks []domain.Track,
+	sentiments []domain.Sentiment,
+) (domain.PlaylistAnalysis, error) {
 	_ = ctx
 
 	meanFeatures, analyzed := meanAudioFeatures(tracks)

@@ -54,6 +54,15 @@ See [`backend/README.md`](backend/README.md) and
 
 ## Quick start
 
+**Option A — full stack in Docker** (one command):
+
+```bash
+./start_container.sh -mb       # -m creates the Mongo data dir, -b builds images
+                               # add -d to run detached; see ./start_container.sh --help
+```
+
+**Option B — native dev loop** (hot reload on the frontend):
+
 ```bash
 # 1. Storage
 docker compose up -d mongo
@@ -64,6 +73,9 @@ cd backend && go mod tidy && go run build.go && ./bin/aurify
 # 3. PWA  (http://localhost:5173, proxies /api -> :8080)
 cd frontend && pnpm install && pnpm dev
 ```
+
+Before committing, install the git hooks once: `lefthook install` (see
+[AGENTS.md](AGENTS.md#git-hooks-lefthook)).
 
 Toolchain versions: Go 1.26.3 · Node 24.16.0 · pnpm 11.5.0 · MongoDB 8.0.
 

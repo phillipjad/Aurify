@@ -98,7 +98,7 @@ func run() error {
 	}
 
 	// --- transport ---
-	router, err := httptransport.NewRouter(application, providers, cfg.CORSOrigins, store.Ping)
+	router, err := httptransport.NewRouter(application, providers, version, cfg.CORSOrigins, store.Ping)
 	if err != nil {
 		return err
 	}

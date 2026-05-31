@@ -50,17 +50,26 @@ func Load() Config {
 			Spotify: OAuthConfig{
 				ClientID:     env("AURIFY_SPOTIFY_CLIENT_ID", ""),
 				ClientSecret: env("AURIFY_SPOTIFY_CLIENT_SECRET", ""),
-				RedirectURL:  env("AURIFY_SPOTIFY_REDIRECT_URL", "http://localhost:8080/api/v1/auth/spotify/callback"),
+				RedirectURL: env(
+					"AURIFY_SPOTIFY_REDIRECT_URL",
+					"http://localhost:8080/api/v1/auth/spotify/callback",
+				),
 			},
 			AppleMusic: OAuthConfig{
 				ClientID:     env("AURIFY_APPLE_CLIENT_ID", ""),
 				ClientSecret: env("AURIFY_APPLE_CLIENT_SECRET", ""),
-				RedirectURL:  env("AURIFY_APPLE_REDIRECT_URL", "http://localhost:8080/api/v1/auth/apple_music/callback"),
+				RedirectURL: env(
+					"AURIFY_APPLE_REDIRECT_URL",
+					"http://localhost:8080/api/v1/auth/apple_music/callback",
+				),
 			},
 			YouTubeMusic: OAuthConfig{
 				ClientID:     env("AURIFY_YOUTUBE_CLIENT_ID", ""),
 				ClientSecret: env("AURIFY_YOUTUBE_CLIENT_SECRET", ""),
-				RedirectURL:  env("AURIFY_YOUTUBE_REDIRECT_URL", "http://localhost:8080/api/v1/auth/youtube_music/callback"),
+				RedirectURL: env(
+					"AURIFY_YOUTUBE_REDIRECT_URL",
+					"http://localhost:8080/api/v1/auth/youtube_music/callback",
+				),
 			},
 		},
 	}

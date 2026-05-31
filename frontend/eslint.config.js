@@ -6,7 +6,7 @@ import tseslint from 'typescript-eslint'
 
 // Flat ESLint config (ESLint 9) for the React + TypeScript app.
 export default tseslint.config(
-  { ignores: ['dist', 'src/routeTree.gen.ts'] },
+  { ignores: ['dist', 'src/routeTree.gen.ts', 'src/lib/api/schema.ts'] },
   {
     extends: [js.configs.recommended, ...tseslint.configs.recommended],
     files: ['**/*.{ts,tsx}'],

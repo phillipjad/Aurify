@@ -9,6 +9,8 @@ storage. The application layer is organized around **lightweight CQRS** (see
 
 ```
 cmd/api/                     # entrypoint: wires adapters -> app -> mux router
+cmd/openapi/                 # `go generate` target: emits api/openapi.yaml
+api/openapi.yaml             # generated OpenAPI spec (the API contract)
 internal/
   config/                    # env-based configuration
   domain/                    # pure domain types (no infra imports)
@@ -89,6 +91,15 @@ This project does **not** use Make. The release build goes through `build.go`
 | Vet | `go vet ./...` |
 | Test | `go test ./...` |
 | Lint | `golangci-lint run ./...` |
+| Gen OpenAPI | `go generate ./...` (writes `api/openapi.yaml`) |
+
+### OpenAPI spec
+
+`cmd/openapi` builds the real router and emits `api/openapi.yaml` — the single
+source of truth for the HTTP contract. The frontend generates its TypeScript
+types from it (`pnpm gen:api`), so the wire format can't drift. Regenerate after
+changing any DTO or route, and keep the route `With*` decorations accurate. See
+[ADR 0008](../docs/adr/0008-openapi-contract.md).
 
 ## Notes / TODO
 

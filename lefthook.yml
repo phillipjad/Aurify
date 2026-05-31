@@ -1,0 +1,33 @@
+# Lefthook git hooks for Aurify.  Docs: https://lefthook.dev
+#
+# Install once per clone (writes .git/hooks):
+#   lefthook install
+#
+# Checks are path-scoped via `glob`: the backend commands run only when files
+# under backend/ are staged, and the frontend commands only when files under
+# frontend/ are staged. So a frontend-only commit never compiles Go, and a
+# backend-only commit never runs the JS toolchain.
+
+pre-commit:
+  parallel: true
+  commands:
+    backend-lint:
+      glob: "backend/**/*"
+      run: |
+        command -v golangci-lint >/dev/null 2>&1 || {
+          echo "golangci-lint not installed — https://golangci-lint.run/welcome/install/" >&2
+          exit 1
+        }
+        cd backend && golangci-lint run ./...
+
+    backend-build:
+      glob: "backend/**/*"
+      run: cd backend && go build ./...
+
+    frontend-lint:
+      glob: "frontend/**/*"
+      run: cd frontend && pnpm lint
+
+    frontend-build:
+      glob: "frontend/**/*"
+      run: cd frontend && pnpm build

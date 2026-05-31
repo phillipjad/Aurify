@@ -70,7 +70,11 @@ func (p *Provider) ListPlaylists(ctx context.Context, conn domain.DSPConnection)
 }
 
 // ListTracks returns the normalized tracks of a playlist. TODO: implement.
-func (p *Provider) ListTracks(ctx context.Context, conn domain.DSPConnection, playlistID string) ([]domain.Track, error) {
+func (p *Provider) ListTracks(
+	ctx context.Context,
+	conn domain.DSPConnection,
+	playlistID string,
+) ([]domain.Track, error) {
 	_ = ctx
 	_ = conn
 	_ = playlistID

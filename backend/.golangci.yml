@@ -28,7 +28,17 @@ formatters:
   enable:
     - gofmt
     - goimports
+    - golines
   settings:
     goimports:
       local-prefixes:
         - github.com/phillipjad/aurify/backend
+    golines:
+      # Shorten lines longer than this (apply with `golangci-lint fmt`).
+      max-len: 120
+      # Tab width used when measuring line length.
+      tab-len: 4
+      # Don't try to wrap comments — golines can't always do so sensibly.
+      shorten-comments: false
+      # Reformat/realign struct tags.
+      reformat-tags: true

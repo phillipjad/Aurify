@@ -12,6 +12,7 @@ lightweight [MADR](https://adr.github.io/madr/)-style records.
 | [0005](0005-dsp-provider-abstraction.md) | DSP provider abstraction + normalized model | Accepted |
 | [0006](0006-llm-sidecars.md) | Local LLM sidecars for prompt + image generation | Proposed |
 | [0007](0007-fgrzl-mux-web-framework.md) | fgrzl/mux as the web framework | Accepted |
+| [0008](0008-openapi-contract.md) | OpenAPI as the API contract; generated frontend types | Accepted |
 
 ## Adding a new ADR
 

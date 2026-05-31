@@ -7,7 +7,6 @@ import (
 	"github.com/phillipjad/aurify/backend/internal/app/command/generatecover"
 	"github.com/phillipjad/aurify/backend/internal/app/query/getcover"
 	"github.com/phillipjad/aurify/backend/internal/app/query/listcovers"
-	"github.com/phillipjad/aurify/backend/internal/domain"
 	"github.com/phillipjad/aurify/backend/internal/transport/http/dto"
 )
 
@@ -37,7 +36,7 @@ func (h *Covers) Generate(c mux.RouteContext) {
 
 	id, err := h.app.Commands.GenerateCover.Handle(c, generatecover.Command{
 		UserID:     userID,
-		Platform:   domain.DSPPlatform(req.Platform),
+		Platform:   req.Platform,
 		PlaylistID: req.PlaylistID,
 	})
 	if err != nil {

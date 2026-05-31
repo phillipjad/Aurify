@@ -41,6 +41,10 @@ shapes over inventing new ones.
 - Writes (mutations/commands) live in `src/lib/api/commands.ts` (`useMutation`).
 - All network access goes through `src/lib/api/client.ts`.
 - Routes are file-based under `src/routes/`; `routeTree.gen.ts` is generated.
+- Wire types are **generated** from the backend OpenAPI spec, not hand-written:
+  `src/lib/api/schema.ts` (via `pnpm gen:api`) is the source, and
+  `src/lib/api/types.ts` derives from it. Don't edit field shapes by hand
+  (see [ADR 0008](docs/adr/0008-openapi-contract.md)).
 
 ## Conventions
 
@@ -49,8 +53,12 @@ shapes over inventing new ones.
   sentinel errors to HTTP in `transport/http/handlers/common.go`. Keep handlers
   thin — logic belongs in command/query handlers.
 - **TypeScript**: Prettier (no semicolons, single quotes), ESLint flat config.
-  Import via the `@/` alias. Keep wire types in `lib/api/types.ts` aligned with
-  the backend DTOs.
+  Import via the `@/` alias. Wire types come from the generated OpenAPI schema
+  (see the frontend rule above) — never re-declare DTO shapes by hand.
+- **API contract**: change a Go DTO/route, then regenerate both artifacts:
+  `cd backend && go generate ./...` (writes `api/openapi.yaml`), then
+  `cd frontend && pnpm gen:api` (writes `src/lib/api/schema.ts`). Both are
+  committed.
 - Stubs are marked with `SCAFFOLD:` / `TODO:` comments — search for these to find
   what's left to implement.
 
@@ -68,14 +76,38 @@ VERSION=1.2.3 go run build.go     # explicit version (matches CI semver output)
 gofmt -w .
 go vet ./...
 go test ./...
+go generate ./...                 # regenerate api/openapi.yaml from the routes
 
 # frontend (run from frontend/)
-pnpm install && pnpm typecheck && pnpm lint && pnpm build
+pnpm install && pnpm gen:api && pnpm typecheck && pnpm lint && pnpm build
 ```
 
-Run locally: `docker compose up -d mongo`, then `go run build.go && ./bin/aurify`
-(backend) and `pnpm dev` (frontend). **Always** run `gofmt`/`go vet` on the
-backend and `pnpm typecheck` on the frontend before considering a change done.
+Run locally, two options:
+
+- **Full stack in Docker:** `./start_container.sh -mb` (the `-m` creates the
+  Mongo host data dir on first run; add `-d` to detach). See its `--help`.
+- **Native dev loop:** `docker compose up -d mongo`, then
+  `go run build.go && ./bin/aurify` (backend) and `pnpm dev` (frontend).
+
+**Always** run `gofmt`/`go vet` on the backend and `pnpm typecheck` on the
+frontend before considering a change done.
+
+## Git hooks (lefthook)
+
+[lefthook](https://lefthook.dev) runs lint + build checks on `pre-commit`,
+**scoped by path**: backend commands fire only when `backend/**` is staged,
+frontend commands only when `frontend/**` is staged (see `lefthook.yml`).
+
+```bash
+# install lefthook once (pick one): go / brew / npm
+go install github.com/evilmartians/lefthook@latest
+# then wire the hooks into .git/hooks (run once per clone):
+lefthook install
+```
+
+The backend lint command needs `golangci-lint` on PATH
+(<https://golangci-lint.run/welcome/install/>); it fails fast with a hint if
+missing. Test scoping without committing: `lefthook run pre-commit --files <path>`.
 
 ## Gotchas
 

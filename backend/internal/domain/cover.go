@@ -5,6 +5,7 @@ import "time"
 // CoverStatus tracks the lifecycle of a cover-generation job.
 type CoverStatus string
 
+// Cover lifecycle states, from creation through generation to a final result.
 const (
 	CoverStatusPending    CoverStatus = "pending"
 	CoverStatusAnalyzing  CoverStatus = "analyzing"

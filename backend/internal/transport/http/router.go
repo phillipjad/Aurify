@@ -14,17 +14,33 @@ import (
 	"github.com/phillipjad/aurify/backend/internal/transport/http/handlers"
 )
 
-// NewRouter builds the fully configured API router.
+// API-level OpenAPI metadata. version is supplied at call time (stamped into
+// the binary); title and description are stable.
+const (
+	apiTitle       = "Aurify API"
+	apiDescription = "Generate abstract covers from a playlist's audio features and lyric sentiment."
+)
+
+// NewRouter builds the fully configured API router. version is reported in the
+// OpenAPI info object (defaults to "dev" when empty).
 //
 // ready is the readiness check used by GET /readyz (e.g. a MongoDB ping); pass
 // nil to always report ready.
 func NewRouter(
 	application *app.App,
 	providers ports.DSPRegistry,
+	version string,
 	corsOrigins []string,
 	ready func(context.Context) error,
 ) (*mux.Router, error) {
-	router := mux.NewRouter()
+	if version == "" {
+		version = "dev"
+	}
+	router := mux.NewRouter(
+		mux.WithTitle(apiTitle),
+		mux.WithVersion(version),
+		mux.WithDescription(apiDescription),
+	)
 
 	mux.UseLogging(router)
 	mux.UseCompression(router)
@@ -64,7 +80,9 @@ func NewRouter(
 		api.GET("/auth/{platform}/callback", auth.Callback).
 			AllowAnonymous().
 			WithOperationID("dspCallback").
-			WithSummary("OAuth callback that links a DSP account to the user")
+			WithSummary("OAuth callback that links a DSP account to the user").
+			WithPathParam("platform", "DSP platform: spotify, apple_music, youtube_music", "spotify").
+			WithRequiredQueryParam("code", "OAuth authorization code from the provider", "AQD...")
 
 		api.POST("/covers", covers.Generate).
 			WithOperationID("generateCover").

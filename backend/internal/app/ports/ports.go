@@ -59,7 +59,12 @@ type SentimentAnalyzer interface {
 // AnalysisEngine aggregates per-track features and sentiment into a single
 // PlaylistAnalysis, including the weighted color palette.
 type AnalysisEngine interface {
-	Analyze(ctx context.Context, playlistID string, tracks []domain.Track, sentiments []domain.Sentiment) (domain.PlaylistAnalysis, error)
+	Analyze(
+		ctx context.Context,
+		playlistID string,
+		tracks []domain.Track,
+		sentiments []domain.Sentiment,
+	) (domain.PlaylistAnalysis, error)
 }
 
 // PromptGenerator turns a PlaylistAnalysis into an image-generation prompt. It

@@ -1,43 +1,21 @@
-// Wire types shared by the API client. These mirror the backend DTOs in
-// backend/internal/transport/http/dto. Keep them in sync (or generate them from
-// the OpenAPI spec the backend can emit — see backend ADR 0007).
+// Wire types for the Aurify API — all derived from the backend's OpenAPI spec.
+//
+// `schema.ts` is generated from ../backend/api/openapi.yaml via `pnpm gen:api`.
+// Nothing here is hand-shaped: field shapes, required-ness, and the
+// Platform/CoverStatus unions all come from the Go DTO tags (`binding:"required"`,
+// `enum:"..."`). To change the contract: edit the Go DTO, run `go generate ./...`
+// in the backend, then `pnpm gen:api`. See docs/adr/0008-openapi-contract.md.
+import type { components } from './schema'
 
-export type Platform = 'spotify' | 'apple_music' | 'youtube_music'
+type Schemas = components['schemas']
 
-export interface Playlist {
-  id: string
-  platform: Platform
-  name: string
-  description: string
-  trackCount: number
-  imageUrl?: string
-}
+export type ColorWeight = Schemas['ColorWeightResponse']
+export type Playlist = Schemas['PlaylistResponse']
+export type Cover = Schemas['CoverResponse']
+export type GenerateCoverRequest = Schemas['GenerateCoverRequest']
 
-export interface ColorWeight {
-  dimension: string
-  hexColor: string
-  weight: number
-}
+/** DSP platforms — the union comes from the `enum` on the spec's platform field. */
+export type Platform = GenerateCoverRequest['platform']
 
-export type CoverStatus =
-  | 'pending'
-  | 'analyzing'
-  | 'generating'
-  | 'ready'
-  | 'failed'
-
-export interface Cover {
-  id: string
-  status: CoverStatus
-  platform: Platform
-  playlistId: string
-  imageUrl?: string
-  prompt?: string
-  palette?: ColorWeight[]
-  createdAt: string
-}
-
-export interface GenerateCoverRequest {
-  platform: Platform
-  playlistId: string
-}
+/** Cover lifecycle — the union comes from the `enum` on the spec's status field. */
+export type CoverStatus = NonNullable<Cover['status']>

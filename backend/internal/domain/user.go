@@ -5,6 +5,7 @@ import "time"
 // DSPPlatform identifies a music streaming provider a user can connect.
 type DSPPlatform string
 
+// Supported DSP platforms.
 const (
 	PlatformSpotify      DSPPlatform = "spotify"
 	PlatformAppleMusic   DSPPlatform = "apple_music"

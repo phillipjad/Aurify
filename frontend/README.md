@@ -19,7 +19,8 @@ src/
     query-client.ts        # shared TanStack QueryClient
     api/
       client.ts            # fetch wrapper (sets X-User-ID dev header)
-      types.ts             # wire types mirroring backend DTOs
+      schema.ts            # GENERATED from the backend OpenAPI spec (pnpm gen:api)
+      types.ts             # wire types, derived from schema.ts (no hand shapes)
       queries.ts           # READ side  — useQuery hooks (CQRS queries)
       commands.ts          # WRITE side — useMutation hooks (CQRS commands)
 ```
@@ -61,5 +62,18 @@ pnpm lint
 - Only the `button` shadcn component is included; add more with
   `pnpm dlx shadcn@latest add <component>`.
 - Add the PWA icons listed in `public/icons/README.md`.
-- `types.ts` is hand-maintained; consider generating it from the backend's
-  OpenAPI spec (the API can emit one — see backend ADR 0007).
+
+## API types (generated)
+
+`lib/api/types.ts` derives its shapes from `lib/api/schema.ts`, which is
+generated from the backend's OpenAPI spec — don't hand-edit DTO shapes. After a
+backend contract change (`cd ../backend && go generate ./...`), run:
+
+```bash
+pnpm gen:api        # ../backend/api/openapi.yaml -> src/lib/api/schema.ts
+```
+
+Everything in `types.ts` is derived from the spec, including the `Platform` and
+`CoverStatus` string unions (the backend tags those DTO fields with
+`enum:"..."`, and `binding:"required"` makes always-present fields non-optional).
+See [ADR 0008](../docs/adr/0008-openapi-contract.md).
