@@ -1,0 +1,19 @@
+# Exclude dependency caches — these are resolved inside the Docker stages.
+frontend/node_modules/
+backend/bin/
+
+# Go build artifacts
+backend/*.exe
+backend/build
+
+# Editor / OS noise
+.DS_Store
+**/.DS_Store
+.idea/
+.vscode/
+
+# Git
+.git/
+
+# Secrets
+**/.env

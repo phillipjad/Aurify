@@ -1,0 +1,52 @@
+# Local development services for Aurify.
+#
+#   docker compose up -d mongo     # just the database (what you need today)
+#
+# The two LLM sidecars are placeholders: the services are not built yet
+# (see docs/adr/0006-llm-sidecars.md). The backend falls back to deterministic
+# placeholders when AURIFY_PROMPTGEN_URL / AURIFY_IMAGEGEN_URL are unset, so you
+# do not need these to run the API.
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+      args:
+        VERSION: ${VERSION:-dev}
+    environment:
+      AURIFY_MONGO_URI: mongodb://mongo:27017
+      AURIFY_HTTP_ADDR: :8080
+    ports:
+      - '8080:8080'
+    depends_on:
+      mongo:
+        condition: service_healthy
+    restart: unless-stopped
+
+  mongo:
+    image: mongo:8.0
+    container_name: aurify-mongo
+    restart: unless-stopped
+    ports:
+      - '27017:27017'
+    volumes:
+      - mongo-data:/data/db
+    healthcheck:
+      test: ['CMD', 'mongosh', '--eval', "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # --- Placeholders for future work (commented out until the sidecars exist) ---
+  #
+  # promptgen:
+  #   build: ./sidecars/promptgen        # POST /generate {analysis} -> {prompt}
+  #   ports: ['9101:9101']
+  #
+  # imagegen:
+  #   build: ./sidecars/imagegen         # POST /generate {prompt}   -> {imageUrl}
+  #   ports: ['9102:9102']
+
+volumes:
+  mongo-data:

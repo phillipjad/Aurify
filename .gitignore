@@ -1,0 +1,23 @@
+# Root-level ignores. The frontend has its own .gitignore as well.
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+
+# Go (backend)
+backend/bin/
+*.test
+*.out
+
+# Node (frontend)
+node_modules/
+dist/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+*.swp
+.idea/
+.vscode/*
+!.vscode/extensions.json

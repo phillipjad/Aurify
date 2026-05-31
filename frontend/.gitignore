@@ -1,0 +1,17 @@
+node_modules
+dist
+dist-ssr
+*.local
+.env
+.env.*
+!.env.example
+
+# Vite / build
+.vite
+*.tsbuildinfo
+
+# PWA generated assets
+dev-dist
+
+# Editor
+.DS_Store
