@@ -1,5 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router'
 
+import { PageHeader } from '@/components/page-header'
 import { CoverGallery } from '@/features/covers/cover-gallery'
 
 export const Route = createFileRoute('/covers')({
@@ -8,8 +9,11 @@ export const Route = createFileRoute('/covers')({
 
 function CoversPage() {
   return (
-    <section className="space-y-6">
-      <h1 className="text-2xl font-semibold tracking-tight">Your covers</h1>
+    <section className="space-y-8">
+      <PageHeader
+        title="Your covers"
+        description="Every cover you generate is saved here."
+      />
       <CoverGallery />
     </section>
   )

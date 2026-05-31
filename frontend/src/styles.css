@@ -11,7 +11,9 @@
   --font-body: 'Inter', ui-sans-serif, system-ui, sans-serif;
   --font-heading: 'Space Grotesk', 'Inter', ui-sans-serif, system-ui, sans-serif;
 
-  --background: oklch(0.985 0.006 300);
+  /* Pale blue-tinted white base (cool, low chroma at a blue hue) so the
+     gradient reads blue -> white-blue -> yellow instead of washing out. */
+  --background: oklch(1.00 0.10 265);
   --foreground: oklch(0.22 0.03 285);
 
   --card: oklch(1 0 0);

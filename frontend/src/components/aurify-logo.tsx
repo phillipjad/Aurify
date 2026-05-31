@@ -1,9 +1,23 @@
 import type { ComponentProps } from 'react'
 
+import { useTheme } from '@/lib/theme'
 import { cn } from '@/lib/utils'
 
-// The Aurify mark: a gradient orb on a rounded dark tile (matches favicon.svg).
+// Tile (badge) color behind the gradient orb, and the punched-out center that
+// reads as a ring. A dark tile reads well on light themes; a light tile reads
+// well on dark themes. Picked from the active theme so the mark always has
+// contrast against the page background.
+const TILE: Record<'light' | 'dark', string> = {
+  light: '#0b0b0f',
+  dark: '#f1eeff',
+}
+
+// The Aurify mark: a gradient orb on a rounded tile. The tile auto-switches
+// with the active theme (see useTheme / ThemeProvider).
 export function AurifyLogo({ className, ...props }: ComponentProps<'svg'>) {
+  const { theme } = useTheme()
+  const tile = TILE[theme]
+
   return (
     <svg
       viewBox="0 0 64 64"
@@ -19,9 +33,9 @@ export function AurifyLogo({ className, ...props }: ComponentProps<'svg'>) {
           <stop offset="1" stopColor="#4F86C6" />
         </linearGradient>
       </defs>
-      <rect width="64" height="64" rx="16" fill="#0b0b0f" />
+      <rect width="64" height="64" rx="16" fill={tile} />
       <circle cx="32" cy="32" r="16" fill="url(#aurifyLogoGradient)" />
-      <circle cx="32" cy="32" r="6" fill="#0b0b0f" />
+      <circle cx="32" cy="32" r="6" fill={tile} />
     </svg>
   )
 }

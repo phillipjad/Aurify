@@ -1,13 +1,16 @@
 import { useState } from 'react'
+import { ListMusic, Unplug } from 'lucide-react'
 
+import { EmptyState } from '@/components/empty-state'
 import { Button } from '@/components/ui/button'
 import {
   Card,
+  CardDescription,
   CardFooter,
   CardHeader,
   CardTitle,
-  CardDescription,
 } from '@/components/ui/card'
+import { Skeleton } from '@/components/ui/skeleton'
 import { useConnectDsp, useGenerateCover } from '@/lib/api/commands'
 import { usePlaylists } from '@/lib/api/queries'
 import type { Platform } from '@/lib/api/types'
@@ -17,6 +20,8 @@ const PLATFORMS: { id: Platform; label: string }[] = [
   { id: 'apple_music', label: 'Apple Music' },
   { id: 'youtube_music', label: 'YouTube Music' },
 ]
+
+const GRID = 'grid gap-4 sm:grid-cols-2 lg:grid-cols-3'
 
 export function PlaylistBrowser() {
   const [platform, setPlatform] = useState<Platform>('spotify')
@@ -49,39 +54,69 @@ export function PlaylistBrowser() {
         </Button>
       </div>
 
-      {playlists.isPending && (
-        <p className="text-muted-foreground">Loading playlists…</p>
-      )}
+      {playlists.isPending && <PlaylistSkeletons />}
+
       {playlists.isError && (
-        <p className="text-muted-foreground">
-          Couldn’t load playlists. Connect your {activeLabel} account, then try
-          again.
-        </p>
+        <EmptyState
+          icon={Unplug}
+          title={`Connect your ${activeLabel} account`}
+          description="We couldn’t load your playlists. Link the account above, then try again."
+        />
       )}
 
-      <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {playlists.data?.map((pl) => (
-          <li key={pl.id}>
-            <Card className="h-full">
-              <CardHeader>
-                <CardTitle className="text-base">{pl.name}</CardTitle>
-                <CardDescription>{pl.trackCount} tracks</CardDescription>
-              </CardHeader>
-              <CardFooter>
-                <Button
-                  size="sm"
-                  disabled={generate.isPending}
-                  onClick={() =>
-                    generate.mutate({ platform, playlistId: pl.id })
-                  }
-                >
-                  Aurify it
-                </Button>
-              </CardFooter>
-            </Card>
-          </li>
-        ))}
-      </ul>
+      {playlists.data && playlists.data.length === 0 && (
+        <EmptyState
+          icon={ListMusic}
+          title="No playlists found"
+          description={`We didn’t find any playlists on ${activeLabel}.`}
+        />
+      )}
+
+      {playlists.data && playlists.data.length > 0 && (
+        <ul className={GRID}>
+          {playlists.data.map((pl) => (
+            <li key={pl.id}>
+              <Card className="h-full">
+                <CardHeader>
+                  <CardTitle className="text-base">{pl.name}</CardTitle>
+                  <CardDescription>{pl.trackCount} tracks</CardDescription>
+                </CardHeader>
+                <CardFooter>
+                  <Button
+                    size="sm"
+                    disabled={generate.isPending}
+                    onClick={() =>
+                      generate.mutate({ platform, playlistId: pl.id })
+                    }
+                  >
+                    Aurify it
+                  </Button>
+                </CardFooter>
+              </Card>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
+  )
+}
+
+function PlaylistSkeletons() {
+  return (
+    <ul className={GRID}>
+      {Array.from({ length: 6 }).map((_, i) => (
+        <li key={i}>
+          <Card className="h-full">
+            <CardHeader className="gap-2">
+              <Skeleton className="h-5 w-2/3" />
+              <Skeleton className="h-4 w-1/3" />
+            </CardHeader>
+            <CardFooter>
+              <Skeleton className="h-9 w-24 rounded-lg" />
+            </CardFooter>
+          </Card>
+        </li>
+      ))}
+    </ul>
   )
 }
