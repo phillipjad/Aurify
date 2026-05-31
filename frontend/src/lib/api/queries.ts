@@ -15,7 +15,9 @@ export const playlistsQuery = (platform: Platform) =>
   queryOptions({
     queryKey: queryKeys.playlists(platform),
     queryFn: () =>
-      apiFetch<Playlist[]>(`/playlists?platform=${encodeURIComponent(platform)}`),
+      apiFetch<Playlist[]>(
+        `/playlists?platform=${encodeURIComponent(platform)}`,
+      ),
   })
 
 export const coversQuery = () =>

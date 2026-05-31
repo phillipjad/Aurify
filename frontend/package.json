@@ -13,8 +13,9 @@
     "preview": "vite preview",
     "typecheck": "tsc -b --noEmit",
     "lint": "eslint .",
-    "format": "prettier --write .",
-    "gen:api": "openapi-typescript ../backend/api/openapi.yaml --output src/lib/api/schema.ts"
+    "lint:fix": "eslint . --fix",
+    "gen:api": "openapi-typescript ../backend/api/openapi.yaml --output src/lib/api/schema.ts",
+    "gen": "pnpm run gen:api && pnpm run lint:fix"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.66.0",
@@ -37,6 +38,8 @@
     "@types/react-dom": "^19.0.0",
     "@vitejs/plugin-react": "^4.3.4",
     "eslint": "^9.18.0",
+    "eslint-config-prettier": "^10.0.1",
+    "eslint-plugin-prettier": "^5.2.1",
     "eslint-plugin-react-hooks": "^5.1.0",
     "eslint-plugin-react-refresh": "^0.4.18",
     "globals": "^15.14.0",

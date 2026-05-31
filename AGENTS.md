@@ -52,9 +52,12 @@ shapes over inventing new ones.
   `github.com/phillipjad/aurify/backend`). Wrap errors with `%w`. Map domain
   sentinel errors to HTTP in `transport/http/handlers/common.go`. Keep handlers
   thin — logic belongs in command/query handlers.
-- **TypeScript**: Prettier (no semicolons, single quotes), ESLint flat config.
-  Import via the `@/` alias. Wire types come from the generated OpenAPI schema
-  (see the frontend rule above) — never re-declare DTO shapes by hand.
+- **TypeScript**: ESLint flat config with **Prettier built in** via
+  `eslint-plugin-prettier` (no semicolons, single quotes). Formatting is not a
+  separate step — `pnpm lint` checks it (as the `prettier/prettier` rule) and
+  `pnpm lint:fix` applies it. Import via the `@/` alias. Wire types come from the
+  generated OpenAPI schema (see the frontend rule above) — never re-declare DTO
+  shapes by hand.
 - **API contract**: change a Go DTO/route, then regenerate both artifacts:
   `cd backend && go generate ./...` (writes `api/openapi.yaml`), then
   `cd frontend && pnpm gen:api` (writes `src/lib/api/schema.ts`). Both are

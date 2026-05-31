@@ -1,6 +1,13 @@
 import { useState } from 'react'
 
 import { Button } from '@/components/ui/button'
+import {
+  Card,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+} from '@/components/ui/card'
 import { useConnectDsp, useGenerateCover } from '@/lib/api/commands'
 import { usePlaylists } from '@/lib/api/queries'
 import type { Platform } from '@/lib/api/types'
@@ -52,23 +59,26 @@ export function PlaylistBrowser() {
         </p>
       )}
 
-      <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {playlists.data?.map((pl) => (
-          <li key={pl.id} className="rounded-lg border border-border p-4">
-            <h3 className="font-medium">{pl.name}</h3>
-            <p className="text-sm text-muted-foreground">
-              {pl.trackCount} tracks
-            </p>
-            <Button
-              className="mt-3"
-              size="sm"
-              disabled={generate.isPending}
-              onClick={() =>
-                generate.mutate({ platform, playlistId: pl.id })
-              }
-            >
-              Aurify it
-            </Button>
+          <li key={pl.id}>
+            <Card className="h-full">
+              <CardHeader>
+                <CardTitle className="text-base">{pl.name}</CardTitle>
+                <CardDescription>{pl.trackCount} tracks</CardDescription>
+              </CardHeader>
+              <CardFooter>
+                <Button
+                  size="sm"
+                  disabled={generate.isPending}
+                  onClick={() =>
+                    generate.mutate({ platform, playlistId: pl.id })
+                  }
+                >
+                  Aurify it
+                </Button>
+              </CardFooter>
+            </Card>
           </li>
         ))}
       </ul>

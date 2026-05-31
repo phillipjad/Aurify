@@ -52,8 +52,12 @@ Plain pnpm works too (the `package.json` scripts are standard Vite):
 pnpm install
 pnpm dev
 pnpm build       # tsc -b && vite build
-pnpm lint
+pnpm lint        # ESLint + Prettier (formatting is the prettier/prettier rule)
+pnpm lint:fix    # auto-fix lint + formatting in one pass
 ```
+
+Prettier runs **inside** ESLint (`eslint-plugin-prettier`), so there is no
+separate `prettier` command — `pnpm lint` is the single check.
 
 ## Notes / TODO
 
