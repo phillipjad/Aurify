@@ -16,13 +16,13 @@ jobs:
           fetch-depth: 0
 
       - name: Install GitVersion
-        uses: gittools/actions/gitversion/setup@v3
+        uses: gittools/actions/gitversion/setup@v4
         with:
           versionSpec: '6.x'
 
       - name: Determine version
         id: gitversion
-        uses: gittools/actions/gitversion/execute@v3
+        uses: gittools/actions/gitversion/execute@v4
 
   build-backend:
     runs-on: ubuntu-latest
