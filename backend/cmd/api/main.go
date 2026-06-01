@@ -71,7 +71,7 @@ func run() error {
 	providers := dsp.NewRegistry(
 		spotify.New(dsp.OAuthConfig(cfg.DSP.Spotify)),
 		applemusic.New(dsp.OAuthConfig(cfg.DSP.AppleMusic)),
-		youtubemusic.New(dsp.OAuthConfig(cfg.DSP.YouTubeMusic)),
+		youtubemusic.NewProvider(dsp.OAuthConfig(cfg.DSP.YouTubeMusic)),
 	)
 
 	// --- platform services ---

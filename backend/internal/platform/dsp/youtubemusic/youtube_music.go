@@ -1,62 +1,413 @@
-// Package youtubemusic implements the YouTube Music DSP provider.
+// Package youtubemusic implements the YouTube Music DSP provider on top of the
+// official YouTube Data API v3.
 //
-// SCAFFOLD: YouTube Music has no first-party audio-features endpoint, so the
-// eventual implementation will leave domain.AudioFeatures.Present false and
-// lean more heavily on lyric sentiment. All methods are stubbed.
+// There is no first-party YouTube Music API; the Data API's standard OAuth 2.0
+// authorization-code web flow is the supported path and maps directly onto
+// ports.DSPProvider. YouTube Music exposes no audio-features endpoint, so every
+// track is normalized with domain.AudioFeatures.Present == false and the
+// pipeline leans on lyric sentiment instead (see docs/adr/0005 and 0009).
 package youtubemusic
 
 import (
 	"context"
-	"errors"
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"net/url"
+	"regexp"
+	"strconv"
+	"strings"
+	"time"
+
+	"golang.org/x/oauth2"
+	"golang.org/x/oauth2/google"
 
 	"github.com/phillipjad/aurify/backend/internal/app/ports"
 	"github.com/phillipjad/aurify/backend/internal/domain"
 	"github.com/phillipjad/aurify/backend/internal/platform/dsp"
 )
 
-var errNotImplemented = errors.New("youtubemusic: not implemented in scaffold")
+const (
+	defaultAPIBaseURL    = "https://www.googleapis.com/youtube/v3"
+	youtubeReadonlyScope = "https://www.googleapis.com/auth/youtube.readonly"
+	// maxPageSize is the YouTube Data API's per-call maximum for list endpoints.
+	maxPageSize = 50
+)
 
 // Provider is the YouTube Music implementation of ports.DSPProvider.
 type Provider struct {
-	cfg dsp.OAuthConfig
+	cfg        dsp.OAuthConfig
+	httpClient *http.Client
+	// apiBaseURL and endpoint default to the real Google services and are only
+	// overridden in tests (white-box, same package).
+	apiBaseURL string
+	endpoint   oauth2.Endpoint
 }
 
 var _ ports.DSPProvider = (*Provider)(nil)
 
-// New constructs a YouTube Music provider.
-func New(cfg dsp.OAuthConfig) *Provider { return &Provider{cfg: cfg} }
+// NewProvider constructs a YouTube Music provider.
+func NewProvider(cfg dsp.OAuthConfig) *Provider {
+	return &Provider{
+		cfg:        cfg,
+		httpClient: &http.Client{Timeout: 15 * time.Second},
+		apiBaseURL: defaultAPIBaseURL,
+		endpoint:   google.Endpoint,
+	}
+}
 
 // Platform returns the platform identifier.
 func (p *Provider) Platform() domain.DSPPlatform { return domain.PlatformYouTubeMusic }
 
-// AuthURL builds the Google OAuth URL. TODO: implement.
+func (p *Provider) oauthConfig() *oauth2.Config {
+	return &oauth2.Config{
+		ClientID:     p.cfg.ClientID,
+		ClientSecret: p.cfg.ClientSecret,
+		RedirectURL:  p.cfg.RedirectURL,
+		Scopes:       []string{youtubeReadonlyScope},
+		Endpoint:     p.endpoint,
+	}
+}
+
+// withHTTPClient makes oauth2 — and the authenticated API calls it wraps — use
+// the provider's *http.Client. This is the seam tests use to point the provider
+// at an httptest server.
+func (p *Provider) withHTTPClient(ctx context.Context) context.Context {
+	if p.httpClient == nil {
+		return ctx
+	}
+	return context.WithValue(ctx, oauth2.HTTPClient, p.httpClient)
+}
+
+// AuthURL builds the Google OAuth authorization URL. access_type=offline plus
+// prompt=consent ensure a refresh token is issued.
 func (p *Provider) AuthURL(state string) string {
-	_ = state
-	return ""
+	return p.oauthConfig().AuthCodeURL(
+		state,
+		oauth2.AccessTypeOffline,
+		oauth2.SetAuthURLParam("prompt", "consent"),
+	)
 }
 
-// Exchange swaps an authorization code for tokens. TODO: implement.
+// Exchange swaps an authorization code for tokens and resolves the user's
+// channel id as the provider identity.
 func (p *Provider) Exchange(ctx context.Context, code string) (domain.DSPConnection, error) {
-	_ = ctx
-	_ = code
-	return domain.DSPConnection{}, errNotImplemented
+	ctx = p.withHTTPClient(ctx)
+	cfg := p.oauthConfig()
+
+	tok, err := cfg.Exchange(ctx, code)
+	if err != nil {
+		return domain.DSPConnection{}, fmt.Errorf("youtubemusic: token exchange: %w", err)
+	}
+
+	conn := domain.DSPConnection{
+		Platform:     domain.PlatformYouTubeMusic,
+		AccessToken:  tok.AccessToken,
+		RefreshToken: tok.RefreshToken,
+		ExpiresAt:    tok.Expiry,
+		Scopes:       cfg.Scopes,
+	}
+
+	// Identity is best-effort: a lookup failure must not fail an otherwise
+	// successful account link.
+	if id, err := p.fetchChannelID(ctx, cfg.Client(ctx, tok)); err == nil {
+		conn.ProviderUserID = id
+	}
+
+	return conn, nil
 }
 
-// ListPlaylists returns the user's playlists. TODO: implement.
+// ListPlaylists returns the authenticated user's playlists.
 func (p *Provider) ListPlaylists(ctx context.Context, conn domain.DSPConnection) ([]domain.Playlist, error) {
-	_ = ctx
-	_ = conn
-	return nil, errNotImplemented
+	ctx = p.withHTTPClient(ctx)
+	client := p.authedClient(ctx, conn)
+
+	var out []domain.Playlist
+	pageToken := ""
+	for {
+		q := url.Values{}
+		q.Set("part", "snippet,contentDetails")
+		q.Set("mine", "true")
+		q.Set("maxResults", strconv.Itoa(maxPageSize))
+		if pageToken != "" {
+			q.Set("pageToken", pageToken)
+		}
+
+		var resp playlistListResponse
+		if err := p.getJSON(ctx, client, "/playlists", q, &resp); err != nil {
+			return nil, err
+		}
+		for _, item := range resp.Items {
+			out = append(out, mapPlaylist(item))
+		}
+		if resp.NextPageToken == "" {
+			break
+		}
+		pageToken = resp.NextPageToken
+	}
+	return out, nil
 }
 
-// ListTracks returns the normalized tracks of a playlist. TODO: implement.
+// ListTracks returns the normalized tracks of a playlist. Durations require a
+// second videos.list call since playlistItems.list does not expose them.
 func (p *Provider) ListTracks(
 	ctx context.Context,
 	conn domain.DSPConnection,
 	playlistID string,
 ) ([]domain.Track, error) {
-	_ = ctx
-	_ = conn
-	_ = playlistID
-	return nil, errNotImplemented
+	ctx = p.withHTTPClient(ctx)
+	client := p.authedClient(ctx, conn)
+
+	// 1. Page through the playlist's items.
+	var items []playlistItemResource
+	pageToken := ""
+	for {
+		q := url.Values{}
+		q.Set("part", "snippet,contentDetails")
+		q.Set("playlistId", playlistID)
+		q.Set("maxResults", strconv.Itoa(maxPageSize))
+		if pageToken != "" {
+			q.Set("pageToken", pageToken)
+		}
+
+		var resp playlistItemsResponse
+		if err := p.getJSON(ctx, client, "/playlistItems", q, &resp); err != nil {
+			return nil, err
+		}
+		items = append(items, resp.Items...)
+		if resp.NextPageToken == "" {
+			break
+		}
+		pageToken = resp.NextPageToken
+	}
+
+	// 2. Collect playable video ids (private/deleted items carry no owner).
+	var ids []string
+	for _, item := range items {
+		if playableVideoID(item) != "" {
+			ids = append(ids, item.ContentDetails.VideoID)
+		}
+	}
+
+	// 3. Durations from videos.list (batched 50 ids per call).
+	durations, err := p.fetchDurations(ctx, client, ids)
+	if err != nil {
+		return nil, err
+	}
+
+	// 4. Normalize, skipping the unplayable items.
+	tracks := make([]domain.Track, 0, len(ids))
+	for _, item := range items {
+		if playableVideoID(item) == "" {
+			continue
+		}
+		tracks = append(tracks, mapTrack(item, durations[item.ContentDetails.VideoID]))
+	}
+	return tracks, nil
+}
+
+// authedClient returns an *http.Client that attaches conn's token and refreshes
+// it transparently when expired.
+func (p *Provider) authedClient(ctx context.Context, conn domain.DSPConnection) *http.Client {
+	tok := &oauth2.Token{
+		AccessToken:  conn.AccessToken,
+		RefreshToken: conn.RefreshToken,
+		Expiry:       conn.ExpiresAt,
+	}
+	return p.oauthConfig().Client(ctx, tok)
+}
+
+func (p *Provider) fetchChannelID(ctx context.Context, client *http.Client) (string, error) {
+	q := url.Values{}
+	q.Set("part", "id")
+	q.Set("mine", "true")
+
+	var resp channelListResponse
+	if err := p.getJSON(ctx, client, "/channels", q, &resp); err != nil {
+		return "", err
+	}
+	if len(resp.Items) == 0 {
+		return "", fmt.Errorf("youtubemusic: no channel for authenticated user")
+	}
+	return resp.Items[0].ID, nil
+}
+
+func (p *Provider) fetchDurations(ctx context.Context, client *http.Client, ids []string) (map[string]int, error) {
+	durations := make(map[string]int, len(ids))
+	for start := 0; start < len(ids); start += maxPageSize {
+		end := start + maxPageSize
+		if end > len(ids) {
+			end = len(ids)
+		}
+
+		q := url.Values{}
+		q.Set("part", "contentDetails")
+		q.Set("id", strings.Join(ids[start:end], ","))
+		q.Set("maxResults", strconv.Itoa(maxPageSize))
+
+		var resp videosResponse
+		if err := p.getJSON(ctx, client, "/videos", q, &resp); err != nil {
+			return nil, err
+		}
+		for _, v := range resp.Items {
+			if ms, err := parseISO8601Duration(v.ContentDetails.Duration); err == nil {
+				durations[v.ID] = ms
+			}
+		}
+	}
+	return durations, nil
+}
+
+func (p *Provider) getJSON(ctx context.Context, client *http.Client, path string, q url.Values, out any) error {
+	endpoint := p.apiBaseURL + path
+	if len(q) > 0 {
+		endpoint += "?" + q.Encode()
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return err
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("youtubemusic: GET %s: %w", path, err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("youtubemusic: GET %s: unexpected status %d", path, resp.StatusCode)
+	}
+	if err := json.NewDecoder(resp.Body).Decode(out); err != nil {
+		return fmt.Errorf("youtubemusic: decode %s: %w", path, err)
+	}
+	return nil
+}
+
+// --- normalization ---
+
+func mapPlaylist(p playlistResource) domain.Playlist {
+	return domain.Playlist{
+		ID:          p.ID,
+		Platform:    domain.PlatformYouTubeMusic,
+		Name:        p.Snippet.Title,
+		Description: p.Snippet.Description,
+		TrackCount:  p.ContentDetails.ItemCount,
+		ImageURL:    bestThumbnail(p.Snippet.Thumbnails),
+	}
+}
+
+func mapTrack(item playlistItemResource, durationMS int) domain.Track {
+	channel := item.Snippet.VideoOwnerChannelTitle
+	// Art Tracks come from auto-generated "<Artist> - Topic" channels, which
+	// yields a clean artist; other uploads fall back to the channel title.
+	artist := strings.TrimSpace(strings.TrimSuffix(channel, " - Topic"))
+
+	var artists []string
+	if artist != "" {
+		artists = []string{artist}
+	}
+
+	return domain.Track{
+		ID:         item.ContentDetails.VideoID,
+		Platform:   domain.PlatformYouTubeMusic,
+		Title:      item.Snippet.Title,
+		Artists:    artists,
+		DurationMS: durationMS,
+		// No first-party audio features on YouTube Music (see ADR 0005).
+		Features: domain.AudioFeatures{Present: false},
+	}
+}
+
+// playableVideoID returns the video id for items Aurify can analyze, or "" for
+// private/deleted entries (which have no owner channel and never resolve in
+// videos.list).
+func playableVideoID(item playlistItemResource) string {
+	if item.ContentDetails.VideoID == "" || item.Snippet.VideoOwnerChannelTitle == "" {
+		return ""
+	}
+	return item.ContentDetails.VideoID
+}
+
+func bestThumbnail(thumbs map[string]thumbnail) string {
+	for _, size := range []string{"maxres", "standard", "high", "medium", "default"} {
+		if t, ok := thumbs[size]; ok && t.URL != "" {
+			return t.URL
+		}
+	}
+	return ""
+}
+
+var iso8601DurationRE = regexp.MustCompile(`^P(?:(\d+)W)?(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?)?$`)
+
+// parseISO8601Duration converts a YouTube duration (e.g. "PT4M33S") to
+// milliseconds. It returns an error for an empty or malformed value.
+func parseISO8601Duration(s string) (int, error) {
+	m := iso8601DurationRE.FindStringSubmatch(s)
+	if s == "" || m == nil {
+		return 0, fmt.Errorf("youtubemusic: invalid ISO-8601 duration %q", s)
+	}
+	atoi := func(v string) int {
+		n, _ := strconv.Atoi(v)
+		return n
+	}
+	weeks, days := atoi(m[1]), atoi(m[2])
+	hours, mins, secs := atoi(m[3]), atoi(m[4]), atoi(m[5])
+	total := ((((weeks*7+days)*24+hours)*60+mins)*60 + secs)
+	return total * 1000, nil
+}
+
+// --- YouTube Data API response shapes (only the fields Aurify uses) ---
+
+type thumbnail struct {
+	URL string `json:"url"`
+}
+
+type playlistResource struct {
+	ID      string `json:"id"`
+	Snippet struct {
+		Title       string               `json:"title"`
+		Description string               `json:"description"`
+		Thumbnails  map[string]thumbnail `json:"thumbnails"`
+	} `json:"snippet"`
+	ContentDetails struct {
+		ItemCount int `json:"itemCount"`
+	} `json:"contentDetails"`
+}
+
+type playlistListResponse struct {
+	NextPageToken string             `json:"nextPageToken"`
+	Items         []playlistResource `json:"items"`
+}
+
+type playlistItemResource struct {
+	Snippet struct {
+		Title                  string `json:"title"`
+		VideoOwnerChannelTitle string `json:"videoOwnerChannelTitle"`
+	} `json:"snippet"`
+	ContentDetails struct {
+		VideoID string `json:"videoId"`
+	} `json:"contentDetails"`
+}
+
+type playlistItemsResponse struct {
+	NextPageToken string                 `json:"nextPageToken"`
+	Items         []playlistItemResource `json:"items"`
+}
+
+type videoResource struct {
+	ID             string `json:"id"`
+	ContentDetails struct {
+		Duration string `json:"duration"`
+	} `json:"contentDetails"`
+}
+
+type videosResponse struct {
+	Items []videoResource `json:"items"`
+}
+
+type channelListResponse struct {
+	Items []struct {
+		ID string `json:"id"`
+	} `json:"items"`
 }
