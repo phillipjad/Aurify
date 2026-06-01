@@ -1,9 +1,5 @@
 import type { QueryClient } from '@tanstack/react-query'
-import {
-  createRootRouteWithContext,
-  Link,
-  Outlet,
-} from '@tanstack/react-router'
+import { createRootRouteWithContext, Link, Outlet } from '@tanstack/react-router'
 
 import { AurifyLogo } from '@/components/aurify-logo'
 import { ThemeToggle } from '@/components/theme-toggle'

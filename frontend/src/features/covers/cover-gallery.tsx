@@ -65,10 +65,7 @@ export function CoverGallery() {
               <div className="aspect-square w-full bg-gradient-to-br from-muted to-secondary" />
             )}
             <div className="flex items-center justify-between gap-2 p-3">
-              <Badge
-                variant={STATUS_VARIANT[cover.status]}
-                className="capitalize"
-              >
+              <Badge variant={STATUS_VARIANT[cover.status]} className="capitalize">
                 {cover.status}
               </Badge>
               <PalettePreview palette={cover.palette} />

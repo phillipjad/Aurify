@@ -9,10 +9,7 @@ import type { Cover, GenerateCoverRequest, Platform } from './types'
 /** Start the DSP OAuth flow: fetch the provider auth URL and redirect to it. */
 export function useConnectDsp() {
   return useMutation({
-    mutationFn: (platform: Platform) =>
-      apiFetch<{ authUrl: string }>(
-        `/auth/${encodeURIComponent(platform)}/login`,
-      ),
+    mutationFn: (platform: Platform) => apiFetch<{ authUrl: string }>(`/auth/${encodeURIComponent(platform)}/login`),
     onSuccess: ({ authUrl }) => {
       if (authUrl) window.location.href = authUrl
     },

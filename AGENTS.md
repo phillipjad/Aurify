@@ -42,7 +42,7 @@ shapes over inventing new ones.
 - All network access goes through `src/lib/api/client.ts`.
 - Routes are file-based under `src/routes/`; `routeTree.gen.ts` is generated.
 - Wire types are **generated** from the backend OpenAPI spec, not hand-written:
-  `src/lib/api/schema.ts` (via `pnpm gen:api`) is the source, and
+  `src/lib/api/schema.ts` (via `vp run gen:api`) is the source, and
   `src/lib/api/types.ts` derives from it. Don't edit field shapes by hand
   (see [ADR 0008](docs/adr/0008-openapi-contract.md)).
 
@@ -52,15 +52,14 @@ shapes over inventing new ones.
   `github.com/phillipjad/aurify/backend`). Wrap errors with `%w`. Map domain
   sentinel errors to HTTP in `transport/http/handlers/common.go`. Keep handlers
   thin — logic belongs in command/query handlers.
-- **TypeScript**: ESLint flat config with **Prettier built in** via
-  `eslint-plugin-prettier` (no semicolons, single quotes). Formatting is not a
-  separate step — `pnpm lint` checks it (as the `prettier/prettier` rule) and
-  `pnpm lint:fix` applies it. Import via the `@/` alias. Wire types come from the
-  generated OpenAPI schema (see the frontend rule above) — never re-declare DTO
-  shapes by hand.
+- **TypeScript**: linted, formatted, and type-checked by **Vite+ `vp check`**
+  (Oxlint + Oxfmt + tsgolint; no semicolons, single quotes). `vp check` verifies
+  and `vp check --fix` applies fixes — there is no separate ESLint/Prettier/tsc
+  step. Import via the `@/` alias. Wire types come from the generated OpenAPI
+  schema (see the frontend rule above) — never re-declare DTO shapes by hand.
 - **API contract**: change a Go DTO/route, then regenerate both artifacts:
   `cd backend && go generate ./...` (writes `api/openapi.yaml`), then
-  `cd frontend && pnpm gen:api` (writes `src/lib/api/schema.ts`). Both are
+  `cd frontend && vp run gen:api` (writes `src/lib/api/schema.ts`). Both are
   committed.
 - Stubs are marked with `SCAFFOLD:` / `TODO:` comments — search for these to find
   what's left to implement.
@@ -68,7 +67,8 @@ shapes over inventing new ones.
 ## Build / test / run
 
 This project does **not** use Make. Backend builds go through `build.go`; all
-other tasks use native `go` commands directly.
+other tasks use native `go` commands directly. The **frontend runs entirely
+through Vite+ (`vp`)** — there is no plain `pnpm`/`vite`/`eslint` path.
 
 ```bash
 # backend — build (run from backend/)
@@ -81,8 +81,8 @@ go vet ./...
 go test ./...
 go generate ./...                 # regenerate api/openapi.yaml from the routes
 
-# frontend (run from frontend/)
-pnpm install && pnpm gen:api && pnpm typecheck && pnpm lint && pnpm build
+# frontend (run from frontend/, requires the vp CLI on PATH)
+vp install && vp run gen:api && vp check && vp test && vp build
 ```
 
 Run locally, two options:
@@ -90,14 +90,14 @@ Run locally, two options:
 - **Full stack in Docker:** `./start_container.sh -mb` (the `-m` creates the
   Mongo host data dir on first run; add `-d` to detach). See its `--help`.
 - **Native dev loop:** `docker compose up -d mongo`, then
-  `go run build.go && ./bin/aurify` (backend) and `pnpm dev` (frontend).
+  `go run build.go && ./bin/aurify` (backend) and `vp dev` (frontend).
 
-**Always** run `gofmt`/`go vet` on the backend and `pnpm typecheck` on the
+**Always** run `gofmt`/`go vet` on the backend and `vp check` on the
 frontend before considering a change done.
 
 ## Git hooks (lefthook)
 
-[lefthook](https://lefthook.dev) runs lint + build checks on `pre-commit`,
+[lefthook](https://lefthook.dev) runs check + build + test on `pre-commit`,
 **scoped by path**: backend commands fire only when `backend/**` is staged,
 frontend commands only when `frontend/**` is staged (see `lefthook.yml`).
 
@@ -109,8 +109,10 @@ lefthook install
 ```
 
 The backend lint command needs `golangci-lint` on PATH
-(<https://golangci-lint.run/welcome/install/>); it fails fast with a hint if
-missing. Test scoping without committing: `lefthook run pre-commit --files <path>`.
+(<https://golangci-lint.run/welcome/install/>); the frontend hooks need the `vp`
+CLI on PATH (see [frontend/README.md](frontend/README.md)). Each fails fast with a
+hint if missing. Test scoping without committing:
+`lefthook run pre-commit --files <path>`.
 
 ## Gotchas
 

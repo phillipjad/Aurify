@@ -3,13 +3,7 @@ import { ListMusic, Unplug } from 'lucide-react'
 
 import { EmptyState } from '@/components/empty-state'
 import { Button } from '@/components/ui/button'
-import {
-  Card,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card'
+import { Card, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useConnectDsp, useGenerateCover } from '@/lib/api/commands'
 import { usePlaylists } from '@/lib/api/queries'
@@ -44,12 +38,7 @@ export function PlaylistBrowser() {
             {p.label}
           </Button>
         ))}
-        <Button
-          variant="ghost"
-          size="sm"
-          disabled={connect.isPending}
-          onClick={() => connect.mutate(platform)}
-        >
+        <Button variant="ghost" size="sm" disabled={connect.isPending} onClick={() => connect.mutate(platform)}>
           Connect {activeLabel}
         </Button>
       </div>
@@ -85,9 +74,7 @@ export function PlaylistBrowser() {
                   <Button
                     size="sm"
                     disabled={generate.isPending}
-                    onClick={() =>
-                      generate.mutate({ platform, playlistId: pl.id })
-                    }
+                    onClick={() => generate.mutate({ platform, playlistId: pl.id })}
                   >
                     Aurify it
                   </Button>

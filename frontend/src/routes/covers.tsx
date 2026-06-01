@@ -10,10 +10,7 @@ export const Route = createFileRoute('/covers')({
 function CoversPage() {
   return (
     <section className="space-y-8">
-      <PageHeader
-        title="Your covers"
-        description="Every cover you generate is saved here."
-      />
+      <PageHeader title="Your covers" description="Every cover you generate is saved here." />
       <CoverGallery />
     </section>
   )

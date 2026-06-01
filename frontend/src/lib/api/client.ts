@@ -17,10 +17,14 @@ export class ApiError extends Error {
   }
 }
 
-export async function apiFetch<T>(
-  path: string,
-  init?: RequestInit,
-): Promise<T> {
+// Like RequestInit, but headers are a plain record — which is all any caller
+// passes. Narrowing it lets us spread `init.headers` safely (RequestInit's
+// headers union allows Headers/string[][], which Oxlint's no-misused-spread flags).
+type FetchInit = Omit<RequestInit, 'headers'> & {
+  headers?: Record<string, string>
+}
+
+export async function apiFetch<T>(path: string, init?: FetchInit): Promise<T> {
   const res = await fetch(`${BASE_URL}${path}`, {
     ...init,
     headers: {

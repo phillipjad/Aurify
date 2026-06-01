@@ -28,10 +28,14 @@ pre-commit:
       glob: "backend/**/*"
       run: cd backend && go test ./...
 
-    frontend-lint:
+    frontend-check:
       glob: "frontend/**/*"
-      run: cd frontend && pnpm lint
+      run: cd frontend && vp check
 
     frontend-build:
       glob: "frontend/**/*"
-      run: cd frontend && pnpm build
+      run: cd frontend && vp build
+
+    frontend-test:
+      glob: "frontend/**/*"
+      run: cd frontend && vp test

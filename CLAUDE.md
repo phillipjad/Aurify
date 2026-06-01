@@ -29,11 +29,12 @@ quick start are in **[README.md](README.md)**.
 - Backend: `cd backend && gofmt -w . && go vet ./... && go build ./...`
   - Do **not** use Make. Build the binary with `go run build.go` (version defaults
     to `dev`; CI injects the real semver via `VERSION=x.y.z go run build.go`).
-- Frontend: `cd frontend && pnpm typecheck` (and `pnpm lint`)
+- Frontend: `cd frontend && vp check` (Oxfmt + Oxlint + tsgolint, all via Vite+)
 - Add or update an ADR if you made a significant/hard-to-reverse decision.
 
 ## External libraries to be careful with
 
 - `fgrzl/mux` (pre-1.0, docs not on pkg.go.dev — read its source/examples).
 - `mongo-driver/v2` (API differs from v1; see [ADR 0004](docs/adr/0004-mongodb-storage.md)).
-- Vite+ (`vp` CLI) is the frontend toolchain; plain `pnpm`/`vite` also work.
+- Vite+ (`vp` CLI) is the **only** frontend toolchain — every task runs through it
+  (`vp dev/check/test/build`); there is no plain `pnpm`/`vite`/`eslint` path.

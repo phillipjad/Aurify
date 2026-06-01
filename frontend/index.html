@@ -12,12 +12,10 @@
     <!-- Resolve the theme before first paint to avoid a light/dark flash.
          Mirrors src/lib/theme.ts (key + class). -->
     <script>
-      (function () {
+      ;(function () {
         try {
           var stored = localStorage.getItem('aurify-theme')
-          var dark = stored
-            ? stored === 'dark'
-            : window.matchMedia('(prefers-color-scheme: dark)').matches
+          var dark = stored ? stored === 'dark' : window.matchMedia('(prefers-color-scheme: dark)').matches
           document.documentElement.classList.toggle('dark', dark)
         } catch (e) {
           /* default to the :root (light) tokens if storage is unavailable */

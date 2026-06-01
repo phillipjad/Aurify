@@ -1,11 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react'
 
-import {
-  applyThemeClass,
-  THEME_STORAGE_KEY,
-  ThemeContext,
-  type Theme,
-} from '@/lib/theme'
+import { applyThemeClass, THEME_STORAGE_KEY, ThemeContext, type Theme } from '@/lib/theme'
 
 // The initial theme is resolved before React mounts by the inline script in
 // index.html (which sets the `dark` class to avoid a flash). We read it back
@@ -32,8 +27,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       value={{
         theme,
         setTheme,
-        toggleTheme: () =>
-          setTheme((current) => (current === 'dark' ? 'light' : 'dark')),
+        toggleTheme: () => setTheme((current) => (current === 'dark' ? 'light' : 'dark')),
       }}
     >
       {children}

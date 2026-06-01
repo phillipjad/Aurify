@@ -29,7 +29,7 @@ generated from the live routes — never hand-written.
   turns that spec into `frontend/src/lib/api/schema.ts`:
 
   ```bash
-  cd frontend && pnpm gen:api            # reads ../backend/api/openapi.yaml
+  cd frontend && vp run gen:api            # reads ../backend/api/openapi.yaml
   ```
 
   `src/lib/api/types.ts` then derives its exported types from
@@ -50,7 +50,7 @@ DTO struct tags carry the contract richness (mux reads them via
   and `CoverStatus` from the generated schema — no hand-written unions.
 
 The end-to-end workflow when the contract changes: edit the Go DTO/route (and
-its tags) → `go generate ./...` → `pnpm gen:api`.
+its tags) → `go generate ./...` → `vp run gen:api`.
 
 ## Consequences
 
@@ -62,5 +62,5 @@ its tags) → `go generate ./...` → `pnpm gen:api`.
 - Enum values live in two places — the domain constants and the `enum:"..."`
   tags (tags must be string literals, so they can't reference the constants).
   Keep them in sync; the DTO comment flags this.
-- **CI recommendation:** run `go generate ./... && pnpm gen:api` and fail if the
+- **CI recommendation:** run `go generate ./... && vp run gen:api` and fail if the
   working tree changes, to guarantee the committed artifacts match the code.

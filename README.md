@@ -71,7 +71,7 @@ docker compose up -d mongo
 cd backend && go mod tidy && go run build.go && ./bin/aurify
 
 # 3. PWA  (http://localhost:5173, proxies /api -> :8080)
-cd frontend && pnpm install && pnpm dev
+cd frontend && vp install && vp dev
 ```
 
 Before committing, install the git hooks once: `lefthook install` (see

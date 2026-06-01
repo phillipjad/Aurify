@@ -1,5 +1,0 @@
-dist
-pnpm-lock.yaml
-# Generated files
-src/routeTree.gen.ts
-src/lib/api/schema.ts

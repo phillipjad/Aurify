@@ -19,7 +19,7 @@ src/
     query-client.ts        # shared TanStack QueryClient
     api/
       client.ts            # fetch wrapper (sets X-User-ID dev header)
-      schema.ts            # GENERATED from the backend OpenAPI spec (pnpm gen:api)
+      schema.ts            # GENERATED from the backend OpenAPI spec (vp run gen:api)
       types.ts             # wire types, derived from schema.ts (no hand shapes)
       queries.ts           # READ side  — useQuery hooks (CQRS queries)
       commands.ts          # WRITE side — useMutation hooks (CQRS commands)
@@ -31,7 +31,12 @@ The CQRS split is mirrored on the client: **reads** live in `lib/api/queries.ts`
 
 ## Toolchain (Vite+)
 
-Vite+ is a unified `vp` CLI installed once, globally:
+**Vite+ is the only toolchain here.** Every task — dev, format, lint, type-check,
+test, build — runs through the unified `vp` CLI; there is no separate
+`pnpm`/`vite`/`eslint`/`prettier` path. `vp check` formats with **Oxfmt**, lints
+with **Oxlint**, and type-checks with **tsgolint** (replacing ESLint/Prettier/tsc).
+
+Install the CLI once, globally:
 
 ```bash
 curl -fsSL https://vite.plus | bash    # macOS/Linux  (Windows: irm https://vite.plus/ps1 | iex)
@@ -40,31 +45,31 @@ curl -fsSL https://vite.plus | bash    # macOS/Linux  (Windows: irm https://vite
 Then, from this directory:
 
 ```bash
-vp install      # install dependencies (pnpm under the hood)
-vp dev          # dev server on http://localhost:5173 (proxies /api -> :8080)
-vp check        # format + lint + type-check
-vp build        # production build
+vp install        # install dependencies (pnpm under the hood)
+vp dev            # dev server on http://localhost:5173 (proxies /api -> :8080)
+vp check          # format + lint + type-check (Oxfmt + Oxlint + tsgolint)
+vp check --fix    # auto-fix formatting + lint
+vp test           # run the Vitest suite (jsdom + Testing Library)
+vp build          # production build (Rolldown)
 ```
 
-Plain pnpm works too (the `package.json` scripts are standard Vite):
+Anything not covered by a built-in command runs through the task runner —
+e.g. `vp run gen:api` regenerates the API types.
 
-```bash
-pnpm install
-pnpm dev
-pnpm build       # tsc -b && vite build
-pnpm lint        # ESLint + Prettier (formatting is the prettier/prettier rule)
-pnpm lint:fix    # auto-fix lint + formatting in one pass
-```
+## Testing
 
-Prettier runs **inside** ESLint (`eslint-plugin-prettier`), so there is no
-separate `prettier` command — `pnpm lint` is the single check.
+Component and routing tests run on [Vitest](https://vitest.dev) (executed via
+`vp test`) with Testing Library + jsdom. Tests live beside what they cover as
+`*.test.ts(x)`, with shared setup in `src/test/setup.ts`. Coverage focuses on
+behavior — DSP platform switching, theme toggling, query loading/empty/error
+states — and real navigation through the generated route tree.
 
 ## Notes / TODO
 
 - **Auth is stubbed.** `lib/api/client.ts` sends an `X-User-ID` header
   (`VITE_DEV_USER_ID`) the backend reads until real auth exists.
 - Only the `button` shadcn component is included; add more with
-  `pnpm dlx shadcn@latest add <component>`.
+  `vp dlx shadcn@latest add <component>`.
 - Add the PWA icons listed in `public/icons/README.md`.
 
 ## API types (generated)
@@ -74,7 +79,7 @@ generated from the backend's OpenAPI spec — don't hand-edit DTO shapes. After 
 backend contract change (`cd ../backend && go generate ./...`), run:
 
 ```bash
-pnpm gen:api        # ../backend/api/openapi.yaml -> src/lib/api/schema.ts
+vp run gen:api      # ../backend/api/openapi.yaml -> src/lib/api/schema.ts
 ```
 
 Everything in `types.ts` is derived from the spec, including the `Platform` and

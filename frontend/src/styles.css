@@ -13,7 +13,7 @@
 
   /* Pale blue-tinted white base (cool, low chroma at a blue hue) so the
      gradient reads blue -> white-blue -> yellow instead of washing out. */
-  --background: oklch(1.00 0.10 265);
+  --background: oklch(1 0.1 265);
   --foreground: oklch(0.22 0.03 285);
 
   --card: oklch(1 0 0);
@@ -121,11 +121,7 @@ body {
   /* Aurora glow: soft radial pools of the brand hues in the corners. They use
      color-mix over the base so the effect adapts to light/dark automatically. */
   background-image:
-    radial-gradient(
-      ellipse 60% 50% at 12% -8%,
-      color-mix(in oklch, var(--primary) 30%, transparent),
-      transparent 60%
-    ),
+    radial-gradient(ellipse 60% 50% at 12% -8%, color-mix(in oklch, var(--primary) 30%, transparent), transparent 60%),
     radial-gradient(
       ellipse 50% 45% at 102% 0%,
       color-mix(in oklch, var(--brand-warm) 24%, transparent),

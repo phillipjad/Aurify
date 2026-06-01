@@ -9,14 +9,7 @@ export const Route = createFileRoute('/')({
 })
 
 // Brand palette dots — a small nod to the generated covers.
-const SWATCHES = [
-  '#FF5A36',
-  '#FFB23E',
-  '#FFE15D',
-  '#7FB069',
-  '#4F86C6',
-  '#5C4D7D',
-]
+const SWATCHES = ['#FF5A36', '#FFB23E', '#FFE15D', '#7FB069', '#4F86C6', '#5C4D7D']
 
 function Home() {
   return (
@@ -37,10 +30,8 @@ function Home() {
           </h1>
 
           <p className="max-w-prose text-base leading-relaxed text-foreground/80">
-            Connect your favorite music platform, pick a playlist, and Aurify
-            analyzes every track — its audio features and the sentiment of its
-            lyrics — to generate an abstract cover from a palette tuned to how
-            the music feels.
+            Connect your favorite music platform, pick a playlist, and Aurify analyzes every track — its audio features
+            and the sentiment of its lyrics — to generate an abstract cover from a palette tuned to how the music feels.
           </p>
 
           <div className="flex flex-wrap items-center gap-4">
@@ -49,11 +40,7 @@ function Home() {
             </Link>
             <div className="flex items-center gap-1.5">
               {SWATCHES.map((hex) => (
-                <span
-                  key={hex}
-                  className="size-4 rounded-full ring-1 ring-border"
-                  style={{ backgroundColor: hex }}
-                />
+                <span key={hex} className="size-4 rounded-full ring-1 ring-border" style={{ backgroundColor: hex }} />
               ))}
             </div>
           </div>

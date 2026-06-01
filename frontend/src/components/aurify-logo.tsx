@@ -19,13 +19,7 @@ export function AurifyLogo({ className, ...props }: ComponentProps<'svg'>) {
   const tile = TILE[theme]
 
   return (
-    <svg
-      viewBox="0 0 64 64"
-      role="img"
-      aria-label="Aurify"
-      className={cn('h-8 w-8', className)}
-      {...props}
-    >
+    <svg viewBox="0 0 64 64" role="img" aria-label="Aurify" className={cn('h-8 w-8', className)} {...props}>
       <defs>
         <linearGradient id="aurifyLogoGradient" x1="0" y1="0" x2="1" y2="1">
           <stop offset="0" stopColor="#FF5A36" />
