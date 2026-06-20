@@ -35,6 +35,8 @@ quick start are in **[README.md](README.md)**.
 ## External libraries to be careful with
 
 - `fgrzl/mux` (pre-1.0, docs not on pkg.go.dev — read its source/examples).
-- `mongo-driver/v2` (API differs from v1; see [ADR 0004](docs/adr/0004-mongodb-storage.md)).
+- `sqlc` generates the typed `db` package from SQL; after editing a migration or
+  `internal/storage/postgres/query/*.sql`, run `cd backend && sqlc generate` (see
+  [ADR 0010](docs/adr/0010-postgresql-storage.md)). Never edit the generated `db/`.
 - Vite+ (`vp` CLI) is the **only** frontend toolchain — every task runs through it
   (`vp dev/check/test/build`); there is no plain `pnpm`/`vite`/`eslint` path.

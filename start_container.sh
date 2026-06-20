@@ -2,7 +2,7 @@
 #
 # start_container.sh — start the Aurify stack with docker compose.
 #
-# The MongoDB service stores its data on the host at ./.data/mongo via a
+# The PostgreSQL service stores its data on the host at ./.data/postgres via a
 # bind-backed named volume (see docker-compose.yml). Because that bind uses
 # `type: none, o: bind`, Docker will NOT create the source directory for you, so
 # this script guards it: if the directory is missing and --make-mount was not
@@ -16,7 +16,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$ROOT_DIR"
 
-MONGO_DATA_DIR="$ROOT_DIR/.data/mongo"
+PG_DATA_DIR="$ROOT_DIR/.data/postgres"
 
 detached=false
 make_mount=false
@@ -30,14 +30,14 @@ Start the Aurify stack (docker compose up).
 
 Options:
   -d, --detached     run in the background (docker compose up -d)
-  -m, --make-mount   create the MongoDB host data directory if it is missing
+  -m, --make-mount   create the PostgreSQL host data directory if it is missing
   -b, --build        rebuild images before starting (docker compose up --build)
   -h, --help         show this help and exit
 
 Flags can be combined, e.g.:  ./start_container.sh -dmb
 
-MongoDB data is persisted on the host at ./.data/mongo. If that directory does
-not exist and --make-mount/-m is not given, the script exits with an error.
+PostgreSQL data is persisted on the host at ./.data/postgres. If that directory
+does not exist and --make-mount/-m is not given, the script exits with an error.
 EOF
 }
 
@@ -86,13 +86,13 @@ command -v docker >/dev/null 2>&1 || {
   exit 1
 }
 
-# Guard the MongoDB bind-mount source directory.
+# Guard the PostgreSQL bind-mount source directory.
 if $make_mount; then
-  mkdir -p "$MONGO_DATA_DIR"
-  echo "✓ ensured MongoDB data directory: $MONGO_DATA_DIR"
-elif [[ ! -d "$MONGO_DATA_DIR" ]]; then
-  echo "✗ MongoDB data directory is missing: $MONGO_DATA_DIR" >&2
-  echo "  Re-run with --make-mount/-m to create it (or run: mkdir -p .data/mongo)." >&2
+  mkdir -p "$PG_DATA_DIR"
+  echo "✓ ensured PostgreSQL data directory: $PG_DATA_DIR"
+elif [[ ! -d "$PG_DATA_DIR" ]]; then
+  echo "✗ PostgreSQL data directory is missing: $PG_DATA_DIR" >&2
+  echo "  Re-run with --make-mount/-m to create it (or run: mkdir -p .data/postgres)." >&2
   exit 1
 fi
 

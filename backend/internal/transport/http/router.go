@@ -24,7 +24,7 @@ const (
 // NewRouter builds the fully configured API router. version is reported in the
 // OpenAPI info object (defaults to "dev" when empty).
 //
-// ready is the readiness check used by GET /readyz (e.g. a MongoDB ping); pass
+// ready is the readiness check used by GET /readyz (e.g. a PostgreSQL ping); pass
 // nil to always report ready.
 func NewRouter(
 	application *app.App,

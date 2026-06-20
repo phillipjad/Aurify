@@ -79,7 +79,8 @@ VERSION=1.2.3 go run build.go     # explicit version (matches CI semver output)
 gofmt -w .
 go vet ./...
 go test ./...
-go generate ./...                 # regenerate api/openapi.yaml from the routes
+go generate ./...                 # regen api/openapi.yaml (routes) + sqlc db pkg
+                                  #   (the sqlc directive needs `sqlc` on PATH)
 
 # frontend (run from frontend/, requires the vp CLI on PATH)
 vp install && vp run gen:api && vp check && vp test && vp build
@@ -88,9 +89,10 @@ vp install && vp run gen:api && vp check && vp test && vp build
 Run locally, two options:
 
 - **Full stack in Docker:** `./start_container.sh -mb` (the `-m` creates the
-  Mongo host data dir on first run; add `-d` to detach). See its `--help`.
-- **Native dev loop:** `docker compose up -d mongo`, then
-  `go run build.go && ./bin/aurify` (backend) and `vp dev` (frontend).
+  Postgres host data dir on first run; add `-d` to detach). See its `--help`.
+- **Native dev loop:** `docker compose up -d postgres`, then
+  `go run build.go && ./bin/aurify` (backend) and `vp dev` (frontend). The schema
+  is created/updated automatically on startup (embedded goose migrations).
 
 **Always** run `gofmt`/`go vet` on the backend and `vp check` on the
 frontend before considering a change done.
@@ -118,8 +120,11 @@ hint if missing. Test scoping without committing:
 
 - `fgrzl/mux` is pre-1.0 and its docs aren't on pkg.go.dev — read its source /
   `examples/`. Path params use `{brace}` syntax. ([ADR 0007](docs/adr/0007-fgrzl-mux-web-framework.md))
-- `mongo-driver/v2`: `mongo.Connect` takes **no** context; `primitive` is merged
-  into `bson`. ([ADR 0004](docs/adr/0004-mongodb-storage.md))
+- Storage is PostgreSQL via `pgx/v5` + `sqlc`-generated queries. The typed `db`
+  package is generated — after editing a migration or
+  `internal/storage/postgres/query/*.sql`, run `cd backend && sqlc generate`
+  (or `go generate ./...`); never hand-edit `internal/storage/postgres/db/`.
+  Migrations are embedded and applied on startup. ([ADR 0010](docs/adr/0010-postgresql-storage.md))
 - The Go module path is lowercase (`github.com/phillipjad/aurify/backend`); the
   GitHub repo is `Aurify`.
 - Don't commit secrets — DSP credentials go in `backend/.env` (gitignored).

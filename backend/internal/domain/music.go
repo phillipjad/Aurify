@@ -2,25 +2,25 @@ package domain
 
 // Playlist is a user's playlist on a DSP, normalized across providers.
 type Playlist struct {
-	ID          string      `bson:"id"`
-	Platform    DSPPlatform `bson:"platform"`
-	Name        string      `bson:"name"`
-	Description string      `bson:"description"`
-	TrackCount  int         `bson:"track_count"`
-	ImageURL    string      `bson:"image_url"`
+	ID          string
+	Platform    DSPPlatform
+	Name        string
+	Description string
+	TrackCount  int
+	ImageURL    string
 }
 
 // Track is a single song, normalized into Aurify's internal model regardless
 // of the source DSP.
 type Track struct {
-	ID         string        `bson:"id"`
-	Platform   DSPPlatform   `bson:"platform"`
-	Title      string        `bson:"title"`
-	Artists    []string      `bson:"artists"`
-	Album      string        `bson:"album"`
-	ISRC       string        `bson:"isrc"`
-	DurationMS int           `bson:"duration_ms"`
-	Features   AudioFeatures `bson:"features"`
+	ID         string
+	Platform   DSPPlatform
+	Title      string
+	Artists    []string
+	Album      string
+	ISRC       string
+	DurationMS int
+	Features   AudioFeatures
 }
 
 // AudioFeatures is the normalized acoustic feature model. Values are in the
@@ -29,15 +29,18 @@ type Track struct {
 //
 // Present reports whether the source DSP actually supplied features for the
 // track; the analysis pipeline ignores tracks where Present is false.
+//
+// The json tags fix this type's encoding inside the JSONB analysis payload
+// (it is PlaylistAnalysis.MeanFeatures); keep them stable.
 type AudioFeatures struct {
-	Acousticness     float64 `bson:"acousticness"`
-	Danceability     float64 `bson:"danceability"`
-	Energy           float64 `bson:"energy"`
-	Instrumentalness float64 `bson:"instrumentalness"`
-	Liveness         float64 `bson:"liveness"`
-	Loudness         float64 `bson:"loudness"`
-	Speechiness      float64 `bson:"speechiness"`
-	Valence          float64 `bson:"valence"`
-	TempoBPM         float64 `bson:"tempo_bpm"`
-	Present          bool    `bson:"present"`
+	Acousticness     float64 `json:"acousticness"`
+	Danceability     float64 `json:"danceability"`
+	Energy           float64 `json:"energy"`
+	Instrumentalness float64 `json:"instrumentalness"`
+	Liveness         float64 `json:"liveness"`
+	Loudness         float64 `json:"loudness"`
+	Speechiness      float64 `json:"speechiness"`
+	Valence          float64 `json:"valence"`
+	TempoBPM         float64 `json:"tempo_bpm"`
+	Present          bool    `json:"present"`
 }

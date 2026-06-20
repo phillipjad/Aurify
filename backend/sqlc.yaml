@@ -1,0 +1,19 @@
+# sqlc generates the type-safe `db` package from the SQL below.
+#
+#   cd backend && sqlc generate
+#
+# Mirrors the cmd/openapi generator: codegen is checked in, regenerate after
+# changing the schema (migrations) or any query/*.sql file. See
+# docs/adr/0010-postgresql-storage.md.
+version: "2"
+sql:
+  - engine: "postgresql"
+    schema: "internal/storage/postgres/migrations"
+    queries: "internal/storage/postgres/query"
+    gen:
+      go:
+        package: "db"
+        sql_package: "pgx/v5"
+        out: "internal/storage/postgres/db"
+        emit_interface: true
+        emit_empty_slices: true

@@ -1,7 +1,12 @@
 # 0004 — MongoDB via mongo-driver/v2 for persistence
 
-- Status: Accepted
+- Status: Superseded by [0010](0010-postgresql-storage.md)
 - Date: 2026-05-30
+
+> **Superseded (2026-06-20):** Aurify moved to PostgreSQL (relational tables +
+> JSONB for the analysis payload) before any production data existed. The
+> rationale and the current storage design live in
+> [ADR 0010](0010-postgresql-storage.md). The decision below is kept for history.
 
 ## Context
 

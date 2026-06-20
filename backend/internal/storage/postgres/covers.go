@@ -1,0 +1,117 @@
+package postgres
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"time"
+
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
+
+	"github.com/phillipjad/aurify/backend/internal/app/ports"
+	"github.com/phillipjad/aurify/backend/internal/domain"
+	"github.com/phillipjad/aurify/backend/internal/storage/postgres/db"
+)
+
+// CoverRepository is the PostgreSQL-backed ports.CoverRepository. The evolving
+// PlaylistAnalysis is stored as JSONB; everything else is a relational column.
+type CoverRepository struct {
+	q *db.Queries
+}
+
+var _ ports.CoverRepository = (*CoverRepository)(nil)
+
+// Save inserts a new cover or updates an existing one (upsert by id).
+func (r *CoverRepository) Save(ctx context.Context, cover *domain.Cover) error {
+	now := time.Now().UTC()
+	cover.UpdatedAt = now
+	if cover.ID == "" {
+		cover.ID = uuid.NewString()
+		if cover.CreatedAt.IsZero() {
+			cover.CreatedAt = now
+		}
+	}
+
+	analysis, err := json.Marshal(cover.Analysis)
+	if err != nil {
+		return err
+	}
+
+	return r.q.UpsertCover(ctx, db.UpsertCoverParams{
+		ID:           cover.ID,
+		UserID:       cover.UserID,
+		Platform:     string(cover.Platform),
+		PlaylistID:   cover.PlaylistID,
+		PlaylistName: cover.PlaylistName,
+		Status:       string(cover.Status),
+		Prompt:       cover.Prompt,
+		ImageUrl:     cover.ImageURL,
+		Analysis:     analysis,
+		Error:        cover.Error,
+		CreatedAt:    tsFromTime(cover.CreatedAt),
+		UpdatedAt:    tsFromTime(cover.UpdatedAt),
+	})
+}
+
+// FindByID looks up a cover by id, mapping a miss to domain.ErrNotFound.
+func (r *CoverRepository) FindByID(ctx context.Context, id string) (*domain.Cover, error) {
+	row, err := r.q.GetCoverByID(ctx, id)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, domain.ErrNotFound
+		}
+		return nil, err
+	}
+	cover, err := toDomainCover(row)
+	if err != nil {
+		return nil, err
+	}
+	return &cover, nil
+}
+
+// ListByUser returns a user's covers, newest first, paginated.
+func (r *CoverRepository) ListByUser(ctx context.Context, userID string, limit, offset int) ([]domain.Cover, error) {
+	rows, err := r.q.ListCoversByUser(ctx, db.ListCoversByUserParams{
+		UserID: userID,
+		Limit:  int32(limit),
+		Offset: int32(offset),
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	covers := make([]domain.Cover, 0, len(rows))
+	for _, row := range rows {
+		cover, err := toDomainCover(row)
+		if err != nil {
+			return nil, err
+		}
+		covers = append(covers, cover)
+	}
+	return covers, nil
+}
+
+// toDomainCover maps a stored row to the domain aggregate, decoding the JSONB
+// analysis payload back into PlaylistAnalysis.
+func toDomainCover(row db.Cover) (domain.Cover, error) {
+	cover := domain.Cover{
+		ID:           row.ID,
+		UserID:       row.UserID,
+		Platform:     domain.DSPPlatform(row.Platform),
+		PlaylistID:   row.PlaylistID,
+		PlaylistName: row.PlaylistName,
+		Status:       domain.CoverStatus(row.Status),
+		Prompt:       row.Prompt,
+		ImageURL:     row.ImageUrl,
+		Error:        row.Error,
+		CreatedAt:    timeFromTS(row.CreatedAt),
+		UpdatedAt:    timeFromTS(row.UpdatedAt),
+	}
+	if len(row.Analysis) > 0 {
+		if err := json.Unmarshal(row.Analysis, &cover.Analysis); err != nil {
+			return domain.Cover{}, err
+		}
+	}
+	return cover, nil
+}

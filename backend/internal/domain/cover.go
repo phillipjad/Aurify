@@ -15,18 +15,19 @@ const (
 )
 
 // Cover is a generated playlist/album cover together with the analysis that
-// produced it. Covers are persisted per-user so they can be revisited.
+// produced it. Covers are persisted per-user so they can be revisited. The
+// Analysis is stored as a JSONB column (see docs/adr/0010-postgresql-storage.md).
 type Cover struct {
-	ID           string           `bson:"_id,omitempty"`
-	UserID       string           `bson:"user_id"`
-	Platform     DSPPlatform      `bson:"platform"`
-	PlaylistID   string           `bson:"playlist_id"`
-	PlaylistName string           `bson:"playlist_name"`
-	Status       CoverStatus      `bson:"status"`
-	Prompt       string           `bson:"prompt"`
-	ImageURL     string           `bson:"image_url"`
-	Analysis     PlaylistAnalysis `bson:"analysis"`
-	Error        string           `bson:"error,omitempty"`
-	CreatedAt    time.Time        `bson:"created_at"`
-	UpdatedAt    time.Time        `bson:"updated_at"`
+	ID           string
+	UserID       string
+	Platform     DSPPlatform
+	PlaylistID   string
+	PlaylistName string
+	Status       CoverStatus
+	Prompt       string
+	ImageURL     string
+	Analysis     PlaylistAnalysis
+	Error        string
+	CreatedAt    time.Time
+	UpdatedAt    time.Time
 }

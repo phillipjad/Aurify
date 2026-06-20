@@ -37,7 +37,7 @@ func main() {
 
 func generate(out, version string) error {
 	// Build the router with no live dependencies: route registration only stores
-	// handler values and OpenAPI metadata, so this never touches MongoDB, a DSP,
+	// handler values and OpenAPI metadata, so this never touches PostgreSQL, a DSP,
 	// or the LLM sidecars.
 	router, err := httptransport.NewRouter(&app.App{}, nil, version, nil, nil)
 	if err != nil {

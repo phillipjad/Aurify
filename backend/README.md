@@ -1,8 +1,10 @@
 # Aurify — Backend (Go API)
 
 The Aurify HTTP API. Go 1.26, [`fgrzl/mux`](https://github.com/fgrzl/mux) for
-routing, [`mongo-driver/v2`](https://github.com/mongodb/mongo-go-driver) for
-storage. The application layer is organized around **lightweight CQRS** (see
+routing, PostgreSQL via [`pgx/v5`](https://github.com/jackc/pgx) +
+[`sqlc`](https://sqlc.dev)-generated queries for storage (see
+[`../docs/adr/0010-postgresql-storage.md`](../docs/adr/0010-postgresql-storage.md)).
+The application layer is organized around **lightweight CQRS** (see
 [`../docs/adr/0003-lightweight-cqrs.md`](../docs/adr/0003-lightweight-cqrs.md)).
 
 ## Layout
@@ -29,7 +31,10 @@ internal/
     lyrics/lrclib/           # lrclib.net client (implemented)
     nlp/                     # lyric sentiment (naive lexicon placeholder)
     llm/{promptgen,imagegen}/# local LLM sidecar clients (stubbed — ADR 0006)
-  storage/mongo/             # MongoDB repositories (implement ports)
+  storage/postgres/          # PostgreSQL repositories (implement ports)
+    migrations/              # goose SQL migrations (embedded, applied on startup)
+    query/                   # sqlc query sources
+    db/                      # sqlc-generated typed queries (do not edit)
   transport/http/            # mux router, handlers, DTOs
 ```
 
@@ -41,7 +46,9 @@ concrete adapters.
 ## Prerequisites
 
 - Go 1.26.3
-- MongoDB 8.0 (e.g. `docker compose up mongo` from the repo root)
+- PostgreSQL 17 (e.g. `docker compose up postgres` from the repo root)
+- [`sqlc`](https://docs.sqlc.dev/en/latest/overview/install.html) on PATH — only
+  needed to regenerate the `db` package after changing SQL
 
 ## Quick start
 
@@ -56,7 +63,7 @@ For a quick iteration loop you can also `go run ./cmd/api` — but note the bina
 refuses to start without a stamped version, so pass one:
 `go run -ldflags="-X main.version=dev" ./cmd/api`.
 
-Probes: `GET /livez`, `GET /readyz` (readiness pings MongoDB).
+Probes: `GET /livez`, `GET /readyz` (readiness pings PostgreSQL).
 
 ## API (v1)
 

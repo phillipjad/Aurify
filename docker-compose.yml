@@ -1,6 +1,6 @@
 # Local development services for Aurify.
 #
-#   docker compose up -d mongo     # just the database (what you need today)
+#   docker compose up -d postgres   # just the database (what you need today)
 #
 # The two LLM sidecars are placeholders: the services are not built yet
 # (see docs/adr/0006-llm-sidecars.md). The backend falls back to deterministic
@@ -15,27 +15,31 @@ services:
       args:
         VERSION: ${VERSION:-dev}
     environment:
-      AURIFY_MONGO_URI: mongodb://mongo:27017
+      AURIFY_DATABASE_URL: postgres://aurify:aurify@postgres:5432/aurify?sslmode=disable
       AURIFY_HTTP_ADDR: :8080
     ports:
       - '8080:8080'
     depends_on:
-      mongo:
+      postgres:
         condition: service_healthy
     restart: unless-stopped
 
-  mongo:
-    image: mongo:8.0
-    container_name: aurify-mongo
+  postgres:
+    image: postgres:17
+    container_name: aurify-postgres
     restart: unless-stopped
+    environment:
+      POSTGRES_DB: aurify
+      POSTGRES_USER: aurify
+      POSTGRES_PASSWORD: aurify
     ports:
-      - '27017:27017'
+      - '5432:5432'
     volumes:
       # Named volume, but bound to an explicit host directory — see the
       # top-level `volumes:` block at the bottom of this file.
-      - mongo-data:/data/db
+      - pg-data:/var/lib/postgresql/data
     healthcheck:
-      test: ['CMD', 'mongosh', '--eval', "db.adminCommand('ping')"]
+      test: ['CMD-SHELL', 'pg_isready -U aurify -d aurify']
       interval: 10s
       timeout: 5s
       retries: 5
@@ -51,17 +55,17 @@ services:
   #   ports: ['9102:9102']
 
 volumes:
-  # `mongo-data` is a named volume, but the local driver's bind options pin its
-  # storage to an explicit host directory: $PWD/.data/mongo (where $PWD is the
+  # `pg-data` is a named volume, but the local driver's bind options pin its
+  # storage to an explicit host directory: $PWD/.data/postgres (where $PWD is the
   # directory you run `docker compose` from). This keeps the data visible and
-  # easy to back up / wipe (`rm -rf .data/mongo`) instead of living in an opaque
-  # /var/lib/docker/volumes/... path.
+  # easy to back up / wipe (`rm -rf .data/postgres`) instead of living in an
+  # opaque /var/lib/docker/volumes/... path.
   #
   # NOTE: with `type: none` + `o: bind`, the host directory must already exist
-  # before the first `docker compose up`:  mkdir -p .data/mongo
-  mongo-data:
+  # before the first `docker compose up`:  mkdir -p .data/postgres
+  pg-data:
     driver: local
     driver_opts:
       type: none
       o: bind
-      device: ${PWD}/.data/mongo
+      device: ${PWD}/.data/postgres

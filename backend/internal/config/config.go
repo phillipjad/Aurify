@@ -1,6 +1,6 @@
 // Package config loads runtime configuration from the environment. All
 // settings have development-friendly defaults so the API can boot with zero
-// configuration against a local MongoDB.
+// configuration against a local PostgreSQL.
 package config
 
 import (
@@ -11,8 +11,7 @@ import (
 // Config is the fully resolved application configuration.
 type Config struct {
 	HTTPAddr      string
-	MongoURI      string
-	MongoDatabase string
+	DatabaseURL   string
 	LRCLibBaseURL string
 	// PromptGenURL and ImageGenURL point at the local LLM sidecars. They are
 	// intentionally empty by default; see docs/adr/0006-llm-sidecars.md.
@@ -39,9 +38,11 @@ type OAuthConfig struct {
 // Load reads configuration from environment variables, applying defaults.
 func Load() Config {
 	return Config{
-		HTTPAddr:      env("AURIFY_HTTP_ADDR", ":8080"),
-		MongoURI:      env("AURIFY_MONGO_URI", "mongodb://localhost:27017"),
-		MongoDatabase: env("AURIFY_MONGO_DB", "aurify"),
+		HTTPAddr: env("AURIFY_HTTP_ADDR", ":8080"),
+		DatabaseURL: env(
+			"AURIFY_DATABASE_URL",
+			"postgres://aurify:aurify@localhost:5432/aurify?sslmode=disable",
+		),
 		LRCLibBaseURL: env("AURIFY_LRCLIB_URL", "https://lrclib.net"),
 		PromptGenURL:  env("AURIFY_PROMPTGEN_URL", ""),
 		ImageGenURL:   env("AURIFY_IMAGEGEN_URL", ""),

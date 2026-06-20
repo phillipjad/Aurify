@@ -5,29 +5,33 @@ package domain
 // Polarity is in [-1,1] (negative..positive) and Subjectivity is in [0,1]
 // (objective..subjective). HasLyrics reports whether lyrics were found and
 // analyzed at all.
+//
+// The json tags fix the encoding of the JSONB analysis payload that PlaylistAnalysis
+// is serialized into (see docs/adr/0010-postgresql-storage.md); keep them stable.
 type Sentiment struct {
-	Polarity     float64 `bson:"polarity"`
-	Subjectivity float64 `bson:"subjectivity"`
-	HasLyrics    bool    `bson:"has_lyrics"`
+	Polarity     float64 `json:"polarity"`
+	Subjectivity float64 `json:"subjectivity"`
+	HasLyrics    bool    `json:"has_lyrics"`
 }
 
 // PlaylistAnalysis is the aggregated result of analyzing every track in a
 // playlist. It combines normalized audio features, lyric sentiment, and the
-// derived color palette that drives cover generation.
+// derived color palette that drives cover generation. It is persisted as the
+// JSONB `analysis` column on covers.
 type PlaylistAnalysis struct {
-	PlaylistID    string        `bson:"playlist_id"`
-	TrackCount    int           `bson:"track_count"`
-	AnalyzedCount int           `bson:"analyzed_count"`
-	MeanFeatures  AudioFeatures `bson:"mean_features"`
-	MeanSentiment Sentiment     `bson:"mean_sentiment"`
-	Palette       []ColorWeight `bson:"palette"`
+	PlaylistID    string        `json:"playlist_id"`
+	TrackCount    int           `json:"track_count"`
+	AnalyzedCount int           `json:"analyzed_count"`
+	MeanFeatures  AudioFeatures `json:"mean_features"`
+	MeanSentiment Sentiment     `json:"mean_sentiment"`
+	Palette       []ColorWeight `json:"palette"`
 }
 
 // ColorWeight maps an emotional/sonic dimension to a weighted color in the
 // generated cover's palette. Weight is normalized so that the sum of all
 // weights in a palette is 1.
 type ColorWeight struct {
-	Dimension string  `bson:"dimension"`
-	HexColor  string  `bson:"hex_color"`
-	Weight    float64 `bson:"weight"`
+	Dimension string  `json:"dimension"`
+	HexColor  string  `json:"hex_color"`
+	Weight    float64 `json:"weight"`
 }

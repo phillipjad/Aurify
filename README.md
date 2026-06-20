@@ -19,7 +19,7 @@ cover from a color palette weighted to how the music feels.
 ```
 DSP login ─▶ ingest tracks ─▶ per track: ─▶ aggregate + weight ─▶ prompt LLM ─▶ image LLM ─▶ cover
  (OAuth)     (normalized      audio features    into a color        (sidecar)     (sidecar)    (stored
-             model)           + lyric sentiment palette                                         in Mongo)
+             model)           + lyric sentiment palette                                         in Postgres)
                               via lrclib.net    [0,1] weights
 ```
 
@@ -32,8 +32,8 @@ lyric polarity pushes weight toward the *melancholic* color. See
 
 | Layer | Choice |
 |-------|--------|
-| Backend | Go 1.26, [fgrzl/mux](https://github.com/fgrzl/mux), [mongo-driver/v2](https://github.com/mongodb/mongo-go-driver) |
-| Storage | MongoDB 8.0 |
+| Backend | Go 1.26, [fgrzl/mux](https://github.com/fgrzl/mux), [pgx/v5](https://github.com/jackc/pgx) + [sqlc](https://sqlc.dev) |
+| Storage | PostgreSQL 17 (relational + JSONB; see [ADR 0010](docs/adr/0010-postgresql-storage.md)) |
 | Frontend | TypeScript 6, React 19, [Vite+](https://viteplus.dev/), [TanStack Query](https://tanstack.com/query) + [Router](https://tanstack.com/router), [Tailwind v4](https://tailwindcss.com), [shadcn/ui](https://ui.shadcn.com) |
 | Architecture | Lightweight CQRS across backend & frontend (see [ADR 0003](docs/adr/0003-lightweight-cqrs.md)) |
 
@@ -44,7 +44,7 @@ aurify/
 ├── backend/            # Go API (CQRS app layer, hexagonal ports/adapters)
 ├── frontend/           # React 19 PWA (Vite+, TanStack, Tailwind)
 ├── docs/adr/           # Architecture Decision Records
-├── docker-compose.yml  # MongoDB (+ placeholders for the LLM sidecars)
+├── docker-compose.yml  # PostgreSQL (+ placeholders for the LLM sidecars)
 ├── AGENTS.md           # contributor & AI-agent guide
 └── CLAUDE.md           # pointer for Claude Code
 ```
@@ -57,15 +57,15 @@ See [`backend/README.md`](backend/README.md) and
 **Option A — full stack in Docker** (one command):
 
 ```bash
-./start_container.sh -mb       # -m creates the Mongo data dir, -b builds images
+./start_container.sh -mb       # -m creates the Postgres data dir, -b builds images
                                # add -d to run detached; see ./start_container.sh --help
 ```
 
 **Option B — native dev loop** (hot reload on the frontend):
 
 ```bash
-# 1. Storage
-docker compose up -d mongo
+# 1. Storage (schema is created/migrated automatically on API startup)
+docker compose up -d postgres
 
 # 2. API  (http://localhost:8080)
 cd backend && go mod tidy && go run build.go && ./bin/aurify
@@ -77,7 +77,7 @@ cd frontend && vp install && vp dev
 Before committing, install the git hooks once: `lefthook install` (see
 [AGENTS.md](AGENTS.md#git-hooks-lefthook)).
 
-Toolchain versions: Go 1.26.3 · Node 24.16.0 · pnpm 11.5.0 · MongoDB 8.0.
+Toolchain versions: Go 1.26.3 · Node 24.16.0 · pnpm 11.5.0 · PostgreSQL 17.
 
 ## What's stubbed (and where to look)
 

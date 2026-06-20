@@ -1,5 +1,5 @@
 // Command api is the Aurify HTTP API server. It wires the concrete adapters
-// (MongoDB, DSP providers, lyrics/NLP, LLM sidecars) into the CQRS application
+// (PostgreSQL, DSP providers, lyrics/NLP, LLM sidecars) into the CQRS application
 // layer and serves the mux router.
 package main
 
@@ -9,7 +9,6 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
-	"time"
 
 	"github.com/fgrzl/mux"
 
@@ -31,7 +30,7 @@ import (
 	"github.com/phillipjad/aurify/backend/internal/platform/llm/promptgen"
 	"github.com/phillipjad/aurify/backend/internal/platform/lyrics/lrclib"
 	"github.com/phillipjad/aurify/backend/internal/platform/nlp"
-	"github.com/phillipjad/aurify/backend/internal/storage/mongo"
+	"github.com/phillipjad/aurify/backend/internal/storage/postgres"
 	httptransport "github.com/phillipjad/aurify/backend/internal/transport/http"
 )
 
@@ -57,15 +56,11 @@ func run() error {
 	defer stop()
 
 	// --- storage ---
-	store, err := mongo.Connect(ctx, cfg.MongoURI, cfg.MongoDatabase)
+	store, err := postgres.Connect(ctx, cfg.DatabaseURL)
 	if err != nil {
 		return err
 	}
-	defer func() {
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		_ = store.Disconnect(shutdownCtx)
-	}()
+	defer store.Close()
 
 	// --- DSP providers + registry ---
 	providers := dsp.NewRegistry(
