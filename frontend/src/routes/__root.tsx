@@ -1,5 +1,6 @@
+import { useEffect, useRef, useState, type RefObject } from 'react'
 import type { QueryClient } from '@tanstack/react-query'
-import { createRootRouteWithContext, Link, Outlet } from '@tanstack/react-router'
+import { createRootRouteWithContext, Link, Outlet, useRouterState } from '@tanstack/react-router'
 
 import { AurifyLogo } from '@/components/aurify-logo'
 import { ThemeToggle } from '@/components/theme-toggle'
@@ -23,6 +24,9 @@ const navLinkClass = [
 ].join(' ')
 
 function RootLayout() {
+  const mainRef = useRef<HTMLElement>(null)
+  const announcement = useRouteAnnouncement(mainRef)
+
   return (
     <div className="min-h-dvh">
       <a
@@ -52,9 +56,45 @@ function RootLayout() {
           </nav>
         </div>
       </header>
-      <main id="main" className="mx-auto max-w-5xl px-4 py-10">
+      <main id="main" ref={mainRef} tabIndex={-1} className="mx-auto max-w-5xl px-4 py-10 focus:outline-none">
         <Outlet />
       </main>
+
+      {/* On navigation the SPA swaps content silently; announce the new page to
+          assistive tech (focus moves to <main> in the hook above). */}
+      <div role="status" aria-live="polite" className="sr-only">
+        {announcement}
+      </div>
     </div>
   )
+}
+
+/**
+ * After a client-side navigation, move focus to the main region and announce the
+ * new page. Skipped on first paint so we neither steal focus on load nor
+ * announce a page the user just opened directly.
+ */
+function useRouteAnnouncement(mainRef: RefObject<HTMLElement | null>): string {
+  const pathname = useRouterState({ select: (state) => state.location.pathname })
+  const [message, setMessage] = useState('')
+  const firstRender = useRef(true)
+
+  useEffect(() => {
+    if (firstRender.current) {
+      firstRender.current = false
+      return
+    }
+    mainRef.current?.focus()
+    setMessage(`${pageName(pathname)}, Aurify`)
+  }, [pathname, mainRef])
+
+  return message
+}
+
+function pageName(pathname: string): string {
+  if (pathname === '/') return 'Home'
+  if (pathname.startsWith('/playlists')) return 'Playlists'
+  if (/^\/covers\/.+/.test(pathname)) return 'Cover details'
+  if (pathname.startsWith('/covers')) return 'Your covers'
+  return 'Page'
 }

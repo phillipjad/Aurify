@@ -65,6 +65,17 @@ describe('app routing', () => {
     expect(screen.getByRole('radio', { name: 'Spotify' })).toBeInTheDocument()
   })
 
+  it('announces the new page and moves focus to main on navigation', async () => {
+    renderApp(['/'])
+    await userEvent.click(await screen.findByRole('link', { name: 'Playlists' }))
+    await screen.findByRole('heading', { name: 'Your playlists' })
+
+    // Screen-reader users get told the page changed, and focus lands in the
+    // new content instead of staying on the (now-stale) nav link.
+    expect(screen.getByRole('status')).toHaveTextContent(/playlists/i)
+    expect(document.getElementById('main')).toHaveFocus()
+  })
+
   it('renders the covers page with its empty state and CTA link', async () => {
     renderApp(['/covers'])
 
