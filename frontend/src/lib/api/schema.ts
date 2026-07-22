@@ -67,7 +67,8 @@ export interface paths {
         get: operations["getCover"];
         put?: never;
         post?: never;
-        delete?: never;
+        /** Delete a generated cover */
+        delete: operations["deleteCover"];
         options?: never;
         head?: never;
         patch?: never;
@@ -299,6 +300,48 @@ export interface operations {
                      */
                     "application/json": components["schemas"]["CoverResponse"];
                 };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "type": "",
+                     *       "title": "",
+                     *       "status": 0,
+                     *       "detail": "",
+                     *       "instance": null
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    deleteCover: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description Cover id
+                 * @example 000000000000000000000000
+                 */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Not Found */
             404: {

@@ -10,6 +10,9 @@ import (
 
 type Querier interface {
 	DeleteConnectionsByUser(ctx context.Context, userID string) error
+	// Scoped to the owner so a user can never delete another user's cover; the
+	// rows-affected count lets the caller distinguish "deleted" from "not found".
+	DeleteCover(ctx context.Context, arg DeleteCoverParams) (int64, error)
 	GetCoverByID(ctx context.Context, id string) (Cover, error)
 	GetUserByEmail(ctx context.Context, email string) (User, error)
 	GetUserByID(ctx context.Context, id string) (User, error)

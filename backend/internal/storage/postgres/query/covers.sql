@@ -28,3 +28,9 @@ FROM covers
 WHERE user_id = $1
 ORDER BY created_at DESC
 LIMIT $2 OFFSET $3;
+
+-- name: DeleteCover :execrows
+-- Scoped to the owner so a user can never delete another user's cover; the
+-- rows-affected count lets the caller distinguish "deleted" from "not found".
+DELETE FROM covers
+WHERE id = $1 AND user_id = $2;

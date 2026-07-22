@@ -140,6 +140,34 @@ paths:
                 status: 0
                 detail: ""
                 instance: null
+    delete:
+      tags:
+        - aurify
+      summary: Delete a generated cover
+      operationId: deleteCover
+      parameters:
+        - name: id
+          in: path
+          description: Cover id
+          required: true
+          schema:
+            type: string
+          example: "000000000000000000000000"
+      responses:
+        "204":
+          description: No Content
+        "404":
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+              example:
+                type: ""
+                title: ""
+                status: 0
+                detail: ""
+                instance: null
   /api/v1/playlists:
     get:
       tags:

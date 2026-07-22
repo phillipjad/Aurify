@@ -92,6 +92,21 @@ func (r *CoverRepository) ListByUser(ctx context.Context, userID string, limit, 
 	return covers, nil
 }
 
+// Delete removes a user's cover. The DELETE is scoped to the owner in SQL, so a
+// zero rows-affected count means the cover either does not exist or belongs to
+// someone else — both map to domain.ErrNotFound so callers can't probe for the
+// existence of covers they don't own.
+func (r *CoverRepository) Delete(ctx context.Context, id, userID string) error {
+	n, err := r.q.DeleteCover(ctx, db.DeleteCoverParams{ID: id, UserID: userID})
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return domain.ErrNotFound
+	}
+	return nil
+}
+
 // toDomainCover maps a stored row to the domain aggregate, decoding the JSONB
 // analysis payload back into PlaylistAnalysis.
 func toDomainCover(row db.Cover) (domain.Cover, error) {

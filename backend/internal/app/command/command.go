@@ -5,6 +5,7 @@ package command
 
 import (
 	"github.com/phillipjad/aurify/backend/internal/app/command/connectdsp"
+	"github.com/phillipjad/aurify/backend/internal/app/command/deletecover"
 	"github.com/phillipjad/aurify/backend/internal/app/command/generatecover"
 )
 
@@ -12,4 +13,5 @@ import (
 type Bus struct {
 	ConnectDSP    *connectdsp.Handler
 	GenerateCover *generatecover.Handler
+	DeleteCover   *deletecover.Handler
 }

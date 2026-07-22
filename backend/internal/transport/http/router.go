@@ -109,6 +109,13 @@ func NewRouter(
 			WithOKResponse(dto.CoverResponse{}).
 			WithResponse(404, mux.ProblemDetails{})
 
+		api.DELETE("/covers/{id}", covers.Delete).
+			WithOperationID("deleteCover").
+			WithSummary("Delete a generated cover").
+			WithPathParam("id", "Cover id", "000000000000000000000000").
+			WithNoContentResponse().
+			WithResponse(404, mux.ProblemDetails{})
+
 		// Serve the SPA for all non-API routes. Two registrations are required:
 		// "" catches the root ("/") and "/**" catches every deeper path.
 		// Both must come after API routes so that specific paths take priority.

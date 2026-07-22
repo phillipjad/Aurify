@@ -11,6 +11,26 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const deleteCover = `-- name: DeleteCover :execrows
+DELETE FROM covers
+WHERE id = $1 AND user_id = $2
+`
+
+type DeleteCoverParams struct {
+	ID     string
+	UserID string
+}
+
+// Scoped to the owner so a user can never delete another user's cover; the
+// rows-affected count lets the caller distinguish "deleted" from "not found".
+func (q *Queries) DeleteCover(ctx context.Context, arg DeleteCoverParams) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteCover, arg.ID, arg.UserID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const getCoverByID = `-- name: GetCoverByID :one
 SELECT id, user_id, platform, playlist_id, playlist_name, status,
        prompt, image_url, analysis, error, created_at, updated_at

@@ -23,6 +23,9 @@ type CoverRepository interface {
 	Save(ctx context.Context, cover *domain.Cover) error
 	FindByID(ctx context.Context, id string) (*domain.Cover, error)
 	ListByUser(ctx context.Context, userID string, limit, offset int) ([]domain.Cover, error)
+	// Delete removes a cover the user owns; it returns domain.ErrNotFound when
+	// no such cover exists for that user.
+	Delete(ctx context.Context, id, userID string) error
 }
 
 // DSPProvider is implemented by each platform integration (Spotify, Apple
