@@ -60,11 +60,15 @@ func NewHandler(
 
 // Handle registers the account and emails a verification link.
 //
-// When the address is already registered it returns nil without touching the
-// existing account. The caller therefore answers identically whether or not the
-// address was free, which is what stops signup from being used to enumerate
-// accounts. The real owner is not disturbed, and someone who genuinely owns the
-// address can still recover it through password reset.
+// An already-registered address returns domain.ErrEmailTaken, so the caller can
+// tell the user an account exists and send them to sign in. That is a
+// deliberate choice: silently returning success hides account existence, but it
+// also leaves someone who mistyped an address with no idea why they never got
+// an email.
+//
+// The cost is that signup becomes an account-existence oracle, so the route
+// must be rate limited per IP in the transport layer. The existing account is
+// never modified here, so the disclosure is the whole of the exposure.
 func (h *Handler) Handle(ctx context.Context, cmd Command) error {
 	email, err := NormalizeEmail(cmd.Email)
 	if err != nil {
@@ -75,7 +79,7 @@ func (h *Handler) Handle(ctx context.Context, cmd Command) error {
 	}
 
 	if _, err := h.users.FindByEmail(ctx, email); err == nil {
-		return nil
+		return domain.ErrEmailTaken
 	} else if !errors.Is(err, domain.ErrNotFound) {
 		return err
 	}
