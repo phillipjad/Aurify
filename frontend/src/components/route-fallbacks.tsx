@@ -12,7 +12,7 @@ export function NotFound() {
       <EmptyState
         icon={Compass}
         title="Page not found"
-        description="That page doesn’t exist — it may have moved, or the link was mistyped."
+        description="That page doesn’t exist. It may have moved, or the link was mistyped."
         action={
           <Link to="/" className={buttonVariants({ size: 'sm' })}>
             Back home

@@ -175,7 +175,7 @@ function PlaylistRow({ playlist, generating, error, succeeded, onGenerate }: Pla
           </Button>
           {succeeded && (
             <Link to="/covers" className="text-xs font-medium text-primary underline underline-offset-2">
-              Cover started — view it
+              Cover started, view it
             </Link>
           )}
         </div>

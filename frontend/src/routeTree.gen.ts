@@ -9,12 +9,38 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as SignUpRouteImport } from './routes/sign-up'
+import { Route as SignInRouteImport } from './routes/sign-in'
+import { Route as SecurityRouteImport } from './routes/security'
+import { Route as PrivacyRouteImport } from './routes/privacy'
 import { Route as PlaylistsRouteImport } from './routes/playlists'
 import { Route as CoversRouteImport } from './routes/covers'
+import { Route as ContactRouteImport } from './routes/contact'
+import { Route as AboutRouteImport } from './routes/about'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as CoversIndexRouteImport } from './routes/covers.index'
 import { Route as CoversCoverIdRouteImport } from './routes/covers.$coverId'
 
+const SignUpRoute = SignUpRouteImport.update({
+  id: '/sign-up',
+  path: '/sign-up',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SignInRoute = SignInRouteImport.update({
+  id: '/sign-in',
+  path: '/sign-in',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SecurityRoute = SecurityRouteImport.update({
+  id: '/security',
+  path: '/security',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PrivacyRoute = PrivacyRouteImport.update({
+  id: '/privacy',
+  path: '/privacy',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const PlaylistsRoute = PlaylistsRouteImport.update({
   id: '/playlists',
   path: '/playlists',
@@ -23,6 +49,16 @@ const PlaylistsRoute = PlaylistsRouteImport.update({
 const CoversRoute = CoversRouteImport.update({
   id: '/covers',
   path: '/covers',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ContactRoute = ContactRouteImport.update({
+  id: '/contact',
+  path: '/contact',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AboutRoute = AboutRouteImport.update({
+  id: '/about',
+  path: '/about',
   getParentRoute: () => rootRouteImport,
 } as any)
 const IndexRoute = IndexRouteImport.update({
@@ -43,47 +79,126 @@ const CoversCoverIdRoute = CoversCoverIdRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/about': typeof AboutRoute
+  '/contact': typeof ContactRoute
   '/covers': typeof CoversRouteWithChildren
   '/playlists': typeof PlaylistsRoute
+  '/privacy': typeof PrivacyRoute
+  '/security': typeof SecurityRoute
+  '/sign-in': typeof SignInRoute
+  '/sign-up': typeof SignUpRoute
   '/covers/$coverId': typeof CoversCoverIdRoute
   '/covers/': typeof CoversIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/about': typeof AboutRoute
+  '/contact': typeof ContactRoute
   '/playlists': typeof PlaylistsRoute
+  '/privacy': typeof PrivacyRoute
+  '/security': typeof SecurityRoute
+  '/sign-in': typeof SignInRoute
+  '/sign-up': typeof SignUpRoute
   '/covers/$coverId': typeof CoversCoverIdRoute
   '/covers': typeof CoversIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/about': typeof AboutRoute
+  '/contact': typeof ContactRoute
   '/covers': typeof CoversRouteWithChildren
   '/playlists': typeof PlaylistsRoute
+  '/privacy': typeof PrivacyRoute
+  '/security': typeof SecurityRoute
+  '/sign-in': typeof SignInRoute
+  '/sign-up': typeof SignUpRoute
   '/covers/$coverId': typeof CoversCoverIdRoute
   '/covers/': typeof CoversIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/covers' | '/playlists' | '/covers/$coverId' | '/covers/'
+  fullPaths:
+    | '/'
+    | '/about'
+    | '/contact'
+    | '/covers'
+    | '/playlists'
+    | '/privacy'
+    | '/security'
+    | '/sign-in'
+    | '/sign-up'
+    | '/covers/$coverId'
+    | '/covers/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/playlists' | '/covers/$coverId' | '/covers'
+  to:
+    | '/'
+    | '/about'
+    | '/contact'
+    | '/playlists'
+    | '/privacy'
+    | '/security'
+    | '/sign-in'
+    | '/sign-up'
+    | '/covers/$coverId'
+    | '/covers'
   id:
     | '__root__'
     | '/'
+    | '/about'
+    | '/contact'
     | '/covers'
     | '/playlists'
+    | '/privacy'
+    | '/security'
+    | '/sign-in'
+    | '/sign-up'
     | '/covers/$coverId'
     | '/covers/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  AboutRoute: typeof AboutRoute
+  ContactRoute: typeof ContactRoute
   CoversRoute: typeof CoversRouteWithChildren
   PlaylistsRoute: typeof PlaylistsRoute
+  PrivacyRoute: typeof PrivacyRoute
+  SecurityRoute: typeof SecurityRoute
+  SignInRoute: typeof SignInRoute
+  SignUpRoute: typeof SignUpRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/sign-up': {
+      id: '/sign-up'
+      path: '/sign-up'
+      fullPath: '/sign-up'
+      preLoaderRoute: typeof SignUpRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/sign-in': {
+      id: '/sign-in'
+      path: '/sign-in'
+      fullPath: '/sign-in'
+      preLoaderRoute: typeof SignInRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/security': {
+      id: '/security'
+      path: '/security'
+      fullPath: '/security'
+      preLoaderRoute: typeof SecurityRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/privacy': {
+      id: '/privacy'
+      path: '/privacy'
+      fullPath: '/privacy'
+      preLoaderRoute: typeof PrivacyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/playlists': {
       id: '/playlists'
       path: '/playlists'
@@ -96,6 +211,20 @@ declare module '@tanstack/react-router' {
       path: '/covers'
       fullPath: '/covers'
       preLoaderRoute: typeof CoversRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/contact': {
+      id: '/contact'
+      path: '/contact'
+      fullPath: '/contact'
+      preLoaderRoute: typeof ContactRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/about': {
+      id: '/about'
+      path: '/about'
+      fullPath: '/about'
+      preLoaderRoute: typeof AboutRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/': {
@@ -137,8 +266,14 @@ const CoversRouteWithChildren =
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AboutRoute: AboutRoute,
+  ContactRoute: ContactRoute,
   CoversRoute: CoversRouteWithChildren,
   PlaylistsRoute: PlaylistsRoute,
+  PrivacyRoute: PrivacyRoute,
+  SecurityRoute: SecurityRoute,
+  SignInRoute: SignInRoute,
+  SignUpRoute: SignUpRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
