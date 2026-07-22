@@ -3,6 +3,9 @@ import { createRoot } from 'react-dom/client'
 import { QueryClientProvider } from '@tanstack/react-query'
 import { RouterProvider, createRouter } from '@tanstack/react-router'
 
+import '@fontsource-variable/ibm-plex-sans'
+import '@fontsource-variable/familjen-grotesk'
+
 import { ThemeProvider } from './components/theme-provider'
 import { NotFound, RouteError } from './components/route-fallbacks'
 import { routeTree } from './routeTree.gen'

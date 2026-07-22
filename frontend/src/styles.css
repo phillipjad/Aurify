@@ -8,8 +8,11 @@
    A vibrant violet/aurora palette. Foreground colors are high-contrast (not
    washed out) and muted-foreground is kept readable. */
 :root {
-  --font-body: 'Inter', ui-sans-serif, system-ui, sans-serif;
-  --font-heading: 'Space Grotesk', 'Inter', ui-sans-serif, system-ui, sans-serif;
+  /* Self-hosted (see @fontsource imports in main.tsx). Humanist body (IBM Plex
+     Sans) paired with a grotesque display (Familjen Grotesk) for a real
+     contrast axis between the two faces. */
+  --font-body: 'IBM Plex Sans Variable', ui-sans-serif, system-ui, sans-serif;
+  --font-heading: 'Familjen Grotesk Variable', 'IBM Plex Sans Variable', ui-sans-serif, system-ui, sans-serif;
 
   /* Pale blue-tinted white base. NOTE: chroma must stay low enough to remain in
      sRGB at this lightness — oklch(1 0.1 265) is out of gamut and CSS gamut
