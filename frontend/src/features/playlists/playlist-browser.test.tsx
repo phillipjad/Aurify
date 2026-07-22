@@ -38,7 +38,7 @@ describe('PlaylistBrowser', () => {
     expect(screen.getByRole('radio', { name: 'Spotify' })).toHaveAttribute('aria-checked', 'true')
     expect(screen.getByRole('radio', { name: 'Apple Music' })).toHaveAttribute('aria-checked', 'false')
 
-    await waitFor(() => expect(mockFetch).toHaveBeenCalledWith('/playlists?platform=spotify'))
+    await waitFor(() => expect(mockFetch).toHaveBeenCalledWith(expect.stringContaining('platform=spotify')))
   })
 
   it("lists the active platform's playlists", async () => {
@@ -61,7 +61,7 @@ describe('PlaylistBrowser', () => {
     await userEvent.click(screen.getByRole('radio', { name: 'YouTube Music' }))
 
     expect(await screen.findByText('YT Mix')).toBeInTheDocument()
-    expect(mockFetch).toHaveBeenCalledWith('/playlists?platform=youtube_music')
+    expect(mockFetch).toHaveBeenCalledWith(expect.stringContaining('platform=youtube_music'))
     expect(screen.getByRole('radio', { name: 'YouTube Music' })).toHaveAttribute('aria-checked', 'true')
   })
 
@@ -74,25 +74,36 @@ describe('PlaylistBrowser', () => {
     await userEvent.keyboard('{ArrowRight}')
 
     expect(screen.getByRole('radio', { name: 'Apple Music' })).toHaveAttribute('aria-checked', 'true')
-    await waitFor(() => expect(mockFetch).toHaveBeenCalledWith('/playlists?platform=apple_music'))
+    await waitFor(() => expect(mockFetch).toHaveBeenCalledWith(expect.stringContaining('platform=apple_music')))
   })
 
-  it('filters playlists by a search query', async () => {
-    mockFetch.mockResolvedValue([
-      MORNING_COFFEE,
-      { id: 'sp2', platform: 'spotify', name: 'Gym Bangers', description: 'high energy', trackCount: 30 },
-    ])
+  it('searches on the server: the request carries q, and the result replaces the list', async () => {
+    // The mock keys off the q param, so search is exercised server-side rather
+    // than by trimming a client-loaded list.
+    mockFetch.mockImplementation((path: string) => {
+      const q = new URL(`http://x${path}`).searchParams.get('q')
+      if (q === 'gym') {
+        return Promise.resolve([
+          { id: 'sp2', platform: 'spotify', name: 'Gym Bangers', description: '', trackCount: 30 },
+        ])
+      }
+      return Promise.resolve([MORNING_COFFEE])
+    })
     renderWithProviders(<PlaylistBrowser />)
     await screen.findByText('Morning Coffee')
 
     await userEvent.type(screen.getByRole('searchbox', { name: /search playlists/i }), 'gym')
 
-    expect(screen.getByText('Gym Bangers')).toBeInTheDocument()
+    expect(await screen.findByText('Gym Bangers')).toBeInTheDocument()
     expect(screen.queryByText('Morning Coffee')).not.toBeInTheDocument()
+    await waitFor(() => expect(mockFetch).toHaveBeenCalledWith(expect.stringContaining('q=gym')))
   })
 
-  it('shows a no-matches state when the search excludes everything', async () => {
-    mockFetch.mockResolvedValue([MORNING_COFFEE])
+  it('shows a no-matches state when the server returns nothing for the search', async () => {
+    mockFetch.mockImplementation((path: string) => {
+      const q = new URL(`http://x${path}`).searchParams.get('q')
+      return Promise.resolve(q ? [] : [MORNING_COFFEE])
+    })
     renderWithProviders(<PlaylistBrowser />)
     await screen.findByText('Morning Coffee')
 
@@ -101,19 +112,23 @@ describe('PlaylistBrowser', () => {
     expect(await screen.findByText('No matches')).toBeInTheDocument()
   })
 
-  it('sorts playlists by track count when chosen', async () => {
-    mockFetch.mockResolvedValue([
-      { id: 'a', platform: 'spotify', name: 'Alpha', description: '', trackCount: 5 },
-      { id: 'z', platform: 'spotify', name: 'Zeta', description: '', trackCount: 99 },
-    ])
+  it('sorts on the server: the request carries sort, and the server order is honored', async () => {
+    const alpha = { id: 'a', platform: 'spotify', name: 'Alpha', description: '', trackCount: 5 }
+    const zeta = { id: 'z', platform: 'spotify', name: 'Zeta', description: '', trackCount: 99 }
+    mockFetch.mockImplementation((path: string) => {
+      const sort = new URL(`http://x${path}`).searchParams.get('sort')
+      return Promise.resolve(sort === 'tracks' ? [zeta, alpha] : [alpha, zeta])
+    })
     renderWithProviders(<PlaylistBrowser />)
     await screen.findByText('Alpha')
 
-    // Default sort is by name (Alpha first); switching to Tracks puts Zeta first.
     await userEvent.selectOptions(screen.getByRole('combobox', { name: /sort/i }), 'tracks')
 
-    const names = screen.getAllByRole('heading', { level: 3 }).map((h) => h.textContent)
-    expect(names).toEqual(['Zeta', 'Alpha'])
+    await waitFor(() => expect(mockFetch).toHaveBeenCalledWith(expect.stringContaining('sort=tracks')))
+    await waitFor(() => {
+      const names = screen.getAllByRole('heading', { level: 3 }).map((h) => h.textContent)
+      expect(names).toEqual(['Zeta', 'Alpha'])
+    })
   })
 
   it('shows an empty state when the platform has no playlists', async () => {

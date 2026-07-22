@@ -56,18 +56,26 @@ describe('CoverGallery', () => {
     expect(within(tile).getByText('Ready')).toBeInTheDocument()
   })
 
-  it('filters covers by status over the loaded set', async () => {
-    mockFetch.mockResolvedValue([
-      { ...READY_COVER, id: 'r1', playlistName: 'Ready One', status: 'ready' },
-      { ...READY_COVER, id: 'f1', playlistName: 'Failed One', status: 'failed', imageUrl: undefined, error: 'boom' },
-    ])
+  it('filters by status on the server (the request carries the status param)', async () => {
+    // The mock keys off the status query param, so the filter is exercised
+    // server-side, not by trimming a client-loaded list.
+    mockFetch.mockImplementation((path: string) => {
+      const status = new URL(`http://x${path}`).searchParams.get('status')
+      if (status === 'failed') {
+        return Promise.resolve([
+          { ...READY_COVER, id: 'f1', playlistName: 'Failed One', status: 'failed', imageUrl: undefined, error: 'x' },
+        ])
+      }
+      return Promise.resolve([{ ...READY_COVER, id: 'r1', playlistName: 'Ready One', status: 'ready' }])
+    })
     renderWithProviders(<CoverGallery />)
     await screen.findByRole('heading', { name: 'Ready One' })
 
     await userEvent.click(screen.getByRole('button', { name: 'Failed', pressed: false }))
 
-    expect(screen.getByRole('heading', { name: 'Failed One' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'Failed One' })).toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: 'Ready One' })).not.toBeInTheDocument()
+    expect(mockFetch).toHaveBeenCalledWith('/covers?limit=20&offset=0&status=failed')
   })
 
   it('pages through covers: a full first page reveals Load more, which fetches the next offset', async () => {

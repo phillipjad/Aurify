@@ -1,42 +1,38 @@
-import { useMemo, useState } from 'react'
+import { useState } from 'react'
 import { AlertTriangle, ListMusic, RefreshCw, SearchX, Unplug } from 'lucide-react'
 import { Link } from '@tanstack/react-router'
 
 import { EmptyState } from '@/components/empty-state'
 import { ImageWithFallback } from '@/components/image-with-fallback'
+import { LoadMore } from '@/components/load-more'
 import { SearchInput } from '@/components/search-input'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { isApiError } from '@/lib/api/client'
 import { useConnectDsp, useGenerateCover } from '@/lib/api/commands'
-import { usePlaylists } from '@/lib/api/queries'
+import { usePlaylists, type PlaylistSort } from '@/lib/api/queries'
+import { useDebouncedValue } from '@/lib/use-debounced-value'
 import type { Platform, Playlist } from '@/lib/api/types'
 import { PlatformPicker } from './platform-picker'
 import { platformLabel } from './platforms'
 
-type SortKey = 'name' | 'tracks'
-
 export function PlaylistBrowser() {
   const [platform, setPlatform] = useState<Platform>('spotify')
   const [query, setQuery] = useState('')
-  const [sort, setSort] = useState<SortKey>('name')
-  const playlists = usePlaylists(platform)
+  const [sort, setSort] = useState<PlaylistSort>('name')
+  // Debounce so typing doesn't fire a request per keystroke; the search runs on
+  // the server (see the /playlists q param) so it covers every page, not just
+  // the ones already loaded.
+  const search = useDebouncedValue(query.trim())
+
+  const playlists = usePlaylists({ platform, search, sort })
   const connect = useConnectDsp()
   const generate = useGenerateCover()
 
   const activeLabel = platformLabel(platform)
-
-  // Playlists arrive in full (no server paging), so filtering and sorting on the
-  // client is complete and correct.
-  const visible = useMemo(() => {
-    const list = playlists.data ?? []
-    const q = query.trim().toLowerCase()
-    const filtered = q
-      ? list.filter((p) => p.name.toLowerCase().includes(q) || p.description.toLowerCase().includes(q))
-      : list
-    return [...filtered].sort((a, b) => (sort === 'name' ? a.name.localeCompare(b.name) : b.trackCount - a.trackCount))
-  }, [playlists.data, query, sort])
+  const items = playlists.data?.pages.flat() ?? []
+  const hasQuery = search.length > 0
 
   // The mutation is shared across the list, so derive per-row state from the
   // variables it was last called with. Without this, one in-flight generation
@@ -59,10 +55,8 @@ export function PlaylistBrowser() {
         </div>
       </div>
 
-      {playlists.isPending && <PlaylistSkeletons />}
-
-      {playlists.isError &&
-        (isApiError(playlists.error) && playlists.error.isUnauthorized ? (
+      {playlists.isError ? (
+        isApiError(playlists.error) && playlists.error.isUnauthorized ? (
           <EmptyState
             icon={Unplug}
             title={`Connect your ${activeLabel} account`}
@@ -90,25 +84,24 @@ export function PlaylistBrowser() {
               </Button>
             }
           />
-        ))}
-
-      {playlists.data?.length === 0 && (
+        )
+      ) : playlists.isPending ? (
+        <PlaylistSkeletons />
+      ) : !hasQuery && items.length === 0 ? (
         <EmptyState
           icon={ListMusic}
           title="No playlists found"
           description={`We didn’t find any playlists on ${activeLabel}. Create one there and it’ll show up here.`}
         />
-      )}
-
-      {playlists.data && playlists.data.length > 0 && (
-        <div className="space-y-4">
+      ) : (
+        <div className="space-y-4" aria-busy={playlists.isFetching || undefined}>
           <div className="flex flex-wrap items-center gap-3">
             <SearchInput className="min-w-56 flex-1" value={query} onChange={setQuery} label="Search playlists" />
             <label className="flex items-center gap-2 text-sm text-muted-foreground">
               Sort
               <select
                 value={sort}
-                onChange={(event) => setSort(event.target.value as SortKey)}
+                onChange={(event) => setSort(event.target.value as PlaylistSort)}
                 className="h-9 rounded-lg border border-border bg-card px-2 text-sm text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background focus-visible:outline-none"
               >
                 <option value="name">Name</option>
@@ -117,9 +110,9 @@ export function PlaylistBrowser() {
             </label>
           </div>
 
-          {visible.length > 0 ? (
+          {items.length > 0 ? (
             <ul className="space-y-2">
-              {visible.map((playlist) => (
+              {items.map((playlist) => (
                 <PlaylistRow
                   key={playlist.id}
                   playlist={playlist}
@@ -136,6 +129,13 @@ export function PlaylistBrowser() {
           ) : (
             <EmptyState icon={SearchX} title="No matches" description={`No playlists match “${query.trim()}”.`} />
           )}
+
+          <LoadMore
+            label="Load more playlists"
+            hasNextPage={playlists.hasNextPage}
+            isFetchingNextPage={playlists.isFetchingNextPage}
+            fetchNextPage={() => void playlists.fetchNextPage()}
+          />
         </div>
       )}
     </div>
@@ -228,13 +228,7 @@ function PlaylistSkeletons() {
   )
 }
 
-/**
- * Read a user-facing message off an unknown error, falling back to plain copy.
- *
- * Only `detail` is used: RFC 7807 defines it as the explanation specific to this
- * occurrence, while `title` summarizes the problem *type* and in practice is the
- * bare HTTP status phrase ("Not Found"). Our own sentence beats that every time.
- */
+/** Read a user-facing message off an unknown error, falling back to plain copy. */
 function errorMessage(error: unknown, fallback: string): string {
   return isApiError(error) ? (error.detail ?? fallback) : fallback
 }

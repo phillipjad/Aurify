@@ -1,36 +1,65 @@
-// READ side. TanStack Query options + hooks for the API's query endpoints.
-// Mirrors the backend's CQRS query handlers (see backend/internal/app/query).
-import { infiniteQueryOptions, queryOptions, useInfiniteQuery, useQuery } from '@tanstack/react-query'
+// READ side. TanStack Query definitions for the API's query endpoints.
+import { infiniteQueryOptions, keepPreviousData, queryOptions, useInfiniteQuery, useQuery } from '@tanstack/react-query'
 
 import { apiFetch } from './client'
 import type { Cover, CoverStatus, Platform, Playlist } from './types'
 
-/** How many covers a single page requests (matches the API's default limit). */
-export const COVERS_PAGE_SIZE = 20
+/** Page size for the paginated list endpoints (matches the API's default). */
+export const PAGE_SIZE = 20
+
+/** Ordering accepted by the playlists endpoint. */
+export type PlaylistSort = 'name' | 'tracks'
+
+/** Covers list filter: a single lifecycle status, or all of them. */
+export type CoverFilter = CoverStatus | 'all'
 
 export const queryKeys = {
-  playlists: (platform: Platform) => ['playlists', platform] as const,
+  playlists: (platform: Platform, search: string, sort: PlaylistSort) => ['playlists', platform, search, sort] as const,
+  // Broad prefix used to invalidate every covers query (list + detail).
   covers: () => ['covers'] as const,
-  cover: (id: string) => ['covers', id] as const,
+  coversList: (filter: CoverFilter) => ['covers', 'list', filter] as const,
+  cover: (id: string) => ['covers', 'detail', id] as const,
 }
 
-export const playlistsQuery = (platform: Platform) =>
-  queryOptions({
-    queryKey: queryKeys.playlists(platform),
-    queryFn: () => apiFetch<Playlist[]>(`/playlists?platform=${encodeURIComponent(platform)}`),
+interface PlaylistsArgs {
+  platform: Platform
+  search: string
+  sort: PlaylistSort
+}
+
+export const playlistsInfiniteQuery = ({ platform, search, sort }: PlaylistsArgs) =>
+  infiniteQueryOptions({
+    queryKey: queryKeys.playlists(platform, search, sort),
+    queryFn: ({ pageParam }) => {
+      const params = new URLSearchParams({
+        platform,
+        sort,
+        limit: String(PAGE_SIZE),
+        offset: String(pageParam),
+      })
+      if (search) params.set('q', search)
+      return apiFetch<Playlist[]>(`/playlists?${params.toString()}`)
+    },
+    initialPageParam: 0,
+    getNextPageParam: (lastPage, allPages) => (lastPage.length < PAGE_SIZE ? undefined : allPages.length * PAGE_SIZE),
+    // Keep the current results on screen while a new search/sort/platform loads,
+    // rather than flashing skeletons on every keystroke.
+    placeholderData: keepPreviousData,
   })
 
 /** Cover statuses that will never change again without a new user action. */
 const TERMINAL_STATUSES: ReadonlySet<CoverStatus> = new Set<CoverStatus>(['ready', 'failed'])
 
-export const coversInfiniteQuery = () =>
+export const coversInfiniteQuery = (filter: CoverFilter = 'all') =>
   infiniteQueryOptions({
-    queryKey: queryKeys.covers(),
-    queryFn: ({ pageParam }) => apiFetch<Cover[]>(`/covers?limit=${COVERS_PAGE_SIZE}&offset=${pageParam}`),
+    queryKey: queryKeys.coversList(filter),
+    queryFn: ({ pageParam }) => {
+      const params = new URLSearchParams({ limit: String(PAGE_SIZE), offset: String(pageParam) })
+      if (filter !== 'all') params.set('status', filter)
+      return apiFetch<Cover[]>(`/covers?${params.toString()}`)
+    },
     initialPageParam: 0,
-    // A short page means the end; otherwise the next offset is one page further.
-    getNextPageParam: (lastPage, allPages) =>
-      lastPage.length < COVERS_PAGE_SIZE ? undefined : allPages.length * COVERS_PAGE_SIZE,
+    getNextPageParam: (lastPage, allPages) => (lastPage.length < PAGE_SIZE ? undefined : allPages.length * PAGE_SIZE),
     // Generation is a multi-stage pipeline, so a cover's status changes server
     // side with no client event to hang off. Poll (refetching every loaded page)
     // while anything is still moving and stop once everything has settled —
@@ -41,6 +70,8 @@ export const coversInfiniteQuery = () =>
       const stillWorking = pages.some((page) => page.some((cover) => !TERMINAL_STATUSES.has(cover.status)))
       return stillWorking ? 3_000 : false
     },
+    // Keep the current grid on screen while switching status filters.
+    placeholderData: keepPreviousData,
   })
 
 export const coverQuery = (id: string) =>
@@ -49,12 +80,12 @@ export const coverQuery = (id: string) =>
     queryFn: () => apiFetch<Cover>(`/covers/${encodeURIComponent(id)}`),
   })
 
-export function usePlaylists(platform: Platform) {
-  return useQuery(playlistsQuery(platform))
+export function usePlaylists(args: PlaylistsArgs) {
+  return useInfiniteQuery(playlistsInfiniteQuery(args))
 }
 
-export function useCovers() {
-  return useInfiniteQuery(coversInfiniteQuery())
+export function useCovers(filter: CoverFilter = 'all') {
+  return useInfiniteQuery(coversInfiniteQuery(filter))
 }
 
 export function useCover(id: string) {

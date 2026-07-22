@@ -1,8 +1,9 @@
-import { useEffect, useRef, useState } from 'react'
-import { AlertTriangle, ImageOff, Loader2, RefreshCw, Sparkles } from 'lucide-react'
+import { useState } from 'react'
+import { AlertTriangle, ImageOff, RefreshCw, Sparkles } from 'lucide-react'
 import { Link } from '@tanstack/react-router'
 
 import { EmptyState } from '@/components/empty-state'
+import { LoadMore } from '@/components/load-more'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { buttonVariants } from '@/components/ui/button-variants'
@@ -11,34 +12,23 @@ import { ImageWithFallback } from '@/components/image-with-fallback'
 import { Skeleton } from '@/components/ui/skeleton'
 import { cn } from '@/lib/utils'
 import { isApiError } from '@/lib/api/client'
-import { useCovers } from '@/lib/api/queries'
+import { useCovers, type CoverFilter } from '@/lib/api/queries'
 import type { ColorWeight, Cover } from '@/lib/api/types'
 import { STATUS_LABEL, STATUS_VARIANT, isInProgress } from './cover-status'
 
 const GRID = 'grid gap-4 sm:grid-cols-2 lg:grid-cols-3'
 
-type CoverFilter = 'all' | 'in_progress' | 'ready' | 'failed'
-
+// Filter options map 1:1 to a single backend status (or "all"), so the server
+// does the filtering across every page, not just the ones already loaded.
 const FILTERS: { id: CoverFilter; label: string }[] = [
   { id: 'all', label: 'All' },
-  { id: 'in_progress', label: 'In progress' },
   { id: 'ready', label: 'Ready' },
   { id: 'failed', label: 'Failed' },
 ]
 
-function matchesFilter(cover: Cover, filter: CoverFilter): boolean {
-  if (filter === 'all') return true
-  if (filter === 'in_progress') return isInProgress(cover.status)
-  return cover.status === filter
-}
-
 export function CoverGallery() {
-  const covers = useCovers()
   const [filter, setFilter] = useState<CoverFilter>('all')
-
-  if (covers.isPending) {
-    return <CoverSkeletons />
-  }
+  const covers = useCovers(filter)
 
   if (covers.isError) {
     return (
@@ -56,11 +46,23 @@ export function CoverGallery() {
     )
   }
 
+  // First load for this filter (keepPreviousData means switching filters won't
+  // land here — the previous grid stays up while the new one loads).
+  if (covers.isPending) {
+    return (
+      <div className="space-y-4">
+        {filter !== 'all' && <FilterBar value={filter} onChange={setFilter} />}
+        <CoverSkeletons />
+      </div>
+    )
+  }
+
   // Pages partition by offset, but dedupe by id anyway so a cover created or
   // deleted between page refetches can never surface a duplicate React key.
   const items = dedupeById(covers.data?.pages.flat() ?? [])
 
-  if (items.length === 0) {
+  // Genuinely empty (unfiltered) → the onboarding empty state.
+  if (filter === 'all' && items.length === 0) {
     return (
       <EmptyState
         icon={Sparkles}
@@ -75,28 +77,26 @@ export function CoverGallery() {
     )
   }
 
-  const shown = filter === 'all' ? items : items.filter((cover) => matchesFilter(cover, filter))
-
   return (
-    <div className="space-y-4">
+    <div className="space-y-4" aria-busy={covers.isFetching || undefined}>
       <FilterBar value={filter} onChange={setFilter} />
 
-      {shown.length > 0 ? (
+      {items.length > 0 ? (
         <ul className={GRID}>
-          {shown.map((cover) => (
+          {items.map((cover) => (
             <li key={cover.id}>
               <CoverTile cover={cover} />
             </li>
           ))}
         </ul>
       ) : (
-        // The filter runs over loaded covers; more may arrive as you scroll.
         <p className="py-6 text-center text-sm text-muted-foreground">
-          No {FILTERS.find((f) => f.id === filter)?.label.toLowerCase()} covers loaded yet.
+          No {FILTERS.find((f) => f.id === filter)?.label.toLowerCase()} covers.
         </p>
       )}
 
       <LoadMore
+        label="Load more covers"
         hasNextPage={covers.hasNextPage}
         isFetchingNextPage={covers.isFetchingNextPage}
         fetchNextPage={() => void covers.fetchNextPage()}
@@ -105,7 +105,7 @@ export function CoverGallery() {
   )
 }
 
-/** Mutually-exclusive status filter over the loaded covers. */
+/** Mutually-exclusive, server-driven status filter. */
 function FilterBar({ value, onChange }: { value: CoverFilter; onChange: (filter: CoverFilter) => void }) {
   return (
     <div role="group" aria-label="Filter covers by status" className="flex flex-wrap gap-2">
@@ -128,56 +128,6 @@ function FilterBar({ value, onChange }: { value: CoverFilter; onChange: (filter:
           </button>
         )
       })}
-    </div>
-  )
-}
-
-/**
- * Infinite-scroll trigger: an off-screen sentinel loads the next page as it
- * nears the viewport, and a real "Load more" button is the keyboard / no-observer
- * fallback (and the visible affordance that more exists).
- */
-function LoadMore({
-  hasNextPage,
-  isFetchingNextPage,
-  fetchNextPage,
-}: {
-  hasNextPage: boolean
-  isFetchingNextPage: boolean
-  fetchNextPage: () => void
-}) {
-  const sentinel = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    const el = sentinel.current
-    // No observer (SSR, jsdom, ancient browsers) → the "Load more" button below
-    // is the fallback, so auto-loading is a progressive enhancement, not a
-    // requirement.
-    if (!el || !hasNextPage || typeof IntersectionObserver === 'undefined') return
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries[0]?.isIntersecting && !isFetchingNextPage) fetchNextPage()
-      },
-      { rootMargin: '400px' },
-    )
-    observer.observe(el)
-    return () => observer.disconnect()
-  }, [hasNextPage, isFetchingNextPage, fetchNextPage])
-
-  if (!hasNextPage && !isFetchingNextPage) return null
-
-  return (
-    <div ref={sentinel} className="flex justify-center pt-2">
-      {isFetchingNextPage ? (
-        <span className="flex items-center gap-2 text-sm text-muted-foreground">
-          <Loader2 aria-hidden="true" className="size-4 animate-spin" />
-          Loading more…
-        </span>
-      ) : (
-        <Button variant="outline" size="sm" onClick={fetchNextPage}>
-          Load more covers
-        </Button>
-      )}
     </div>
   )
 }
