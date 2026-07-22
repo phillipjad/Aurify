@@ -15,6 +15,8 @@ lightweight [MADR](https://adr.github.io/madr/)-style records.
 | [0008](0008-openapi-contract.md) | OpenAPI as the API contract; generated frontend types | Accepted |
 | [0009](0009-youtube-music-via-data-api-v3.md) | YouTube Music via the YouTube Data API v3 | Accepted |
 | [0010](0010-postgresql-storage.md) | PostgreSQL (relational + JSONB) via pgx + sqlc | Accepted |
+| [0011](0011-authentication-and-sessions.md) | Hand-built auth: Ed25519 access tokens + opaque refresh tokens | Accepted |
+| [0012](0012-account-lockout-policy.md) | Warn-then-block lockout on the (IP, address) pair | Accepted |
 
 ## Adding a new ADR
 
