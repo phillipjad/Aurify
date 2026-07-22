@@ -51,7 +51,23 @@ describe('CoverGallery', () => {
   it('renders the status in plain language', async () => {
     mockFetch.mockResolvedValue([READY_COVER])
     renderWithProviders(<CoverGallery />)
-    expect(await screen.findByText('Ready')).toBeInTheDocument()
+    // Scope to the tile so we read the status badge, not the "Ready" filter chip.
+    const tile = (await screen.findByRole('heading', { name: 'Morning Coffee' })).closest('li') as HTMLElement
+    expect(within(tile).getByText('Ready')).toBeInTheDocument()
+  })
+
+  it('filters covers by status over the loaded set', async () => {
+    mockFetch.mockResolvedValue([
+      { ...READY_COVER, id: 'r1', playlistName: 'Ready One', status: 'ready' },
+      { ...READY_COVER, id: 'f1', playlistName: 'Failed One', status: 'failed', imageUrl: undefined, error: 'boom' },
+    ])
+    renderWithProviders(<CoverGallery />)
+    await screen.findByRole('heading', { name: 'Ready One' })
+
+    await userEvent.click(screen.getByRole('button', { name: 'Failed', pressed: false }))
+
+    expect(screen.getByRole('heading', { name: 'Failed One' })).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Ready One' })).not.toBeInTheDocument()
   })
 
   it('pages through covers: a full first page reveals Load more, which fetches the next offset', async () => {

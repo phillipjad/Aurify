@@ -1,9 +1,10 @@
-import { useState } from 'react'
-import { AlertTriangle, ListMusic, RefreshCw, Unplug } from 'lucide-react'
+import { useMemo, useState } from 'react'
+import { AlertTriangle, ListMusic, RefreshCw, SearchX, Unplug } from 'lucide-react'
 import { Link } from '@tanstack/react-router'
 
 import { EmptyState } from '@/components/empty-state'
 import { ImageWithFallback } from '@/components/image-with-fallback'
+import { SearchInput } from '@/components/search-input'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -14,13 +15,28 @@ import type { Platform, Playlist } from '@/lib/api/types'
 import { PlatformPicker } from './platform-picker'
 import { platformLabel } from './platforms'
 
+type SortKey = 'name' | 'tracks'
+
 export function PlaylistBrowser() {
   const [platform, setPlatform] = useState<Platform>('spotify')
+  const [query, setQuery] = useState('')
+  const [sort, setSort] = useState<SortKey>('name')
   const playlists = usePlaylists(platform)
   const connect = useConnectDsp()
   const generate = useGenerateCover()
 
   const activeLabel = platformLabel(platform)
+
+  // Playlists arrive in full (no server paging), so filtering and sorting on the
+  // client is complete and correct.
+  const visible = useMemo(() => {
+    const list = playlists.data ?? []
+    const q = query.trim().toLowerCase()
+    const filtered = q
+      ? list.filter((p) => p.name.toLowerCase().includes(q) || p.description.toLowerCase().includes(q))
+      : list
+    return [...filtered].sort((a, b) => (sort === 'name' ? a.name.localeCompare(b.name) : b.trackCount - a.trackCount))
+  }, [playlists.data, query, sort])
 
   // The mutation is shared across the list, so derive per-row state from the
   // variables it was last called with. Without this, one in-flight generation
@@ -85,19 +101,42 @@ export function PlaylistBrowser() {
       )}
 
       {playlists.data && playlists.data.length > 0 && (
-        <ul className="space-y-2">
-          {playlists.data.map((playlist) => (
-            <PlaylistRow
-              key={playlist.id}
-              playlist={playlist}
-              generating={inFlightId === playlist.id}
-              // Only the row that was acted on reports the outcome.
-              error={generate.isError && generate.variables?.playlistId === playlist.id ? generate.error : undefined}
-              succeeded={generate.isSuccess && generate.variables?.playlistId === playlist.id}
-              onGenerate={() => generate.mutate({ platform, playlistId: playlist.id })}
-            />
-          ))}
-        </ul>
+        <div className="space-y-4">
+          <div className="flex flex-wrap items-center gap-3">
+            <SearchInput className="min-w-56 flex-1" value={query} onChange={setQuery} label="Search playlists" />
+            <label className="flex items-center gap-2 text-sm text-muted-foreground">
+              Sort
+              <select
+                value={sort}
+                onChange={(event) => setSort(event.target.value as SortKey)}
+                className="h-9 rounded-lg border border-border bg-card px-2 text-sm text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background focus-visible:outline-none"
+              >
+                <option value="name">Name</option>
+                <option value="tracks">Tracks</option>
+              </select>
+            </label>
+          </div>
+
+          {visible.length > 0 ? (
+            <ul className="space-y-2">
+              {visible.map((playlist) => (
+                <PlaylistRow
+                  key={playlist.id}
+                  playlist={playlist}
+                  generating={inFlightId === playlist.id}
+                  // Only the row that was acted on reports the outcome.
+                  error={
+                    generate.isError && generate.variables?.playlistId === playlist.id ? generate.error : undefined
+                  }
+                  succeeded={generate.isSuccess && generate.variables?.playlistId === playlist.id}
+                  onGenerate={() => generate.mutate({ platform, playlistId: playlist.id })}
+                />
+              ))}
+            </ul>
+          ) : (
+            <EmptyState icon={SearchX} title="No matches" description={`No playlists match “${query.trim()}”.`} />
+          )}
+        </div>
       )}
     </div>
   )

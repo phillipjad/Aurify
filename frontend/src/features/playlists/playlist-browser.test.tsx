@@ -77,6 +77,45 @@ describe('PlaylistBrowser', () => {
     await waitFor(() => expect(mockFetch).toHaveBeenCalledWith('/playlists?platform=apple_music'))
   })
 
+  it('filters playlists by a search query', async () => {
+    mockFetch.mockResolvedValue([
+      MORNING_COFFEE,
+      { id: 'sp2', platform: 'spotify', name: 'Gym Bangers', description: 'high energy', trackCount: 30 },
+    ])
+    renderWithProviders(<PlaylistBrowser />)
+    await screen.findByText('Morning Coffee')
+
+    await userEvent.type(screen.getByRole('searchbox', { name: /search playlists/i }), 'gym')
+
+    expect(screen.getByText('Gym Bangers')).toBeInTheDocument()
+    expect(screen.queryByText('Morning Coffee')).not.toBeInTheDocument()
+  })
+
+  it('shows a no-matches state when the search excludes everything', async () => {
+    mockFetch.mockResolvedValue([MORNING_COFFEE])
+    renderWithProviders(<PlaylistBrowser />)
+    await screen.findByText('Morning Coffee')
+
+    await userEvent.type(screen.getByRole('searchbox', { name: /search playlists/i }), 'zzz')
+
+    expect(await screen.findByText('No matches')).toBeInTheDocument()
+  })
+
+  it('sorts playlists by track count when chosen', async () => {
+    mockFetch.mockResolvedValue([
+      { id: 'a', platform: 'spotify', name: 'Alpha', description: '', trackCount: 5 },
+      { id: 'z', platform: 'spotify', name: 'Zeta', description: '', trackCount: 99 },
+    ])
+    renderWithProviders(<PlaylistBrowser />)
+    await screen.findByText('Alpha')
+
+    // Default sort is by name (Alpha first); switching to Tracks puts Zeta first.
+    await userEvent.selectOptions(screen.getByRole('combobox', { name: /sort/i }), 'tracks')
+
+    const names = screen.getAllByRole('heading', { level: 3 }).map((h) => h.textContent)
+    expect(names).toEqual(['Zeta', 'Alpha'])
+  })
+
   it('shows an empty state when the platform has no playlists', async () => {
     mockFetch.mockResolvedValue([])
     renderWithProviders(<PlaylistBrowser />)

@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { AlertTriangle, ImageOff, Loader2, RefreshCw, Sparkles } from 'lucide-react'
 import { Link } from '@tanstack/react-router'
 
@@ -9,16 +9,32 @@ import { buttonVariants } from '@/components/ui/button-variants'
 import { Card } from '@/components/ui/card'
 import { ImageWithFallback } from '@/components/image-with-fallback'
 import { Skeleton } from '@/components/ui/skeleton'
+import { cn } from '@/lib/utils'
 import { isApiError } from '@/lib/api/client'
 import { useCovers } from '@/lib/api/queries'
-import { cn } from '@/lib/utils'
 import type { ColorWeight, Cover } from '@/lib/api/types'
 import { STATUS_LABEL, STATUS_VARIANT, isInProgress } from './cover-status'
 
 const GRID = 'grid gap-4 sm:grid-cols-2 lg:grid-cols-3'
 
+type CoverFilter = 'all' | 'in_progress' | 'ready' | 'failed'
+
+const FILTERS: { id: CoverFilter; label: string }[] = [
+  { id: 'all', label: 'All' },
+  { id: 'in_progress', label: 'In progress' },
+  { id: 'ready', label: 'Ready' },
+  { id: 'failed', label: 'Failed' },
+]
+
+function matchesFilter(cover: Cover, filter: CoverFilter): boolean {
+  if (filter === 'all') return true
+  if (filter === 'in_progress') return isInProgress(cover.status)
+  return cover.status === filter
+}
+
 export function CoverGallery() {
   const covers = useCovers()
+  const [filter, setFilter] = useState<CoverFilter>('all')
 
   if (covers.isPending) {
     return <CoverSkeletons />
@@ -59,20 +75,59 @@ export function CoverGallery() {
     )
   }
 
+  const shown = filter === 'all' ? items : items.filter((cover) => matchesFilter(cover, filter))
+
   return (
     <div className="space-y-4">
-      <ul className={GRID}>
-        {items.map((cover) => (
-          <li key={cover.id}>
-            <CoverTile cover={cover} />
-          </li>
-        ))}
-      </ul>
+      <FilterBar value={filter} onChange={setFilter} />
+
+      {shown.length > 0 ? (
+        <ul className={GRID}>
+          {shown.map((cover) => (
+            <li key={cover.id}>
+              <CoverTile cover={cover} />
+            </li>
+          ))}
+        </ul>
+      ) : (
+        // The filter runs over loaded covers; more may arrive as you scroll.
+        <p className="py-6 text-center text-sm text-muted-foreground">
+          No {FILTERS.find((f) => f.id === filter)?.label.toLowerCase()} covers loaded yet.
+        </p>
+      )}
+
       <LoadMore
         hasNextPage={covers.hasNextPage}
         isFetchingNextPage={covers.isFetchingNextPage}
         fetchNextPage={() => void covers.fetchNextPage()}
       />
+    </div>
+  )
+}
+
+/** Mutually-exclusive status filter over the loaded covers. */
+function FilterBar({ value, onChange }: { value: CoverFilter; onChange: (filter: CoverFilter) => void }) {
+  return (
+    <div role="group" aria-label="Filter covers by status" className="flex flex-wrap gap-2">
+      {FILTERS.map((option) => {
+        const active = option.id === value
+        return (
+          <button
+            key={option.id}
+            type="button"
+            aria-pressed={active}
+            onClick={() => onChange(option.id)}
+            className={cn(
+              'rounded-full border px-3 py-1 text-sm transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background focus-visible:outline-none',
+              active
+                ? 'border-transparent bg-primary text-primary-foreground'
+                : 'border-border text-muted-foreground hover:text-foreground',
+            )}
+          >
+            {option.label}
+          </button>
+        )
+      })}
     </div>
   )
 }
