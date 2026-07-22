@@ -8,6 +8,7 @@ import (
 
 	"context"
 	"errors"
+	"net/http"
 
 	"github.com/fgrzl/mux"
 
@@ -83,15 +84,33 @@ func NewRouter(deps Deps) (*mux.Router, error) {
 	// Authentication. mux supplies only the mounting point and the AllowAnonymous
 	// bookkeeping; the validator below is ours, and it verifies the token rather
 	// than trusting anything the client asserts.
-	mux.UseAuthentication(router, mux.WithAuthValidator(func(token string) (claims.Principal, error) {
-		verified, err := deps.Verifier.Verify(token)
-		if err != nil {
-			return nil, err
-		}
-		set := claims.NewClaimsSet(verified.Subject)
-		set.Set(handlers.SessionClaim, verified.SessionID)
-		return claims.NewPrincipal(set), nil
-	}))
+	mux.UseAuthentication(router,
+		mux.WithAuthValidator(func(token string) (claims.Principal, error) {
+			verified, err := deps.Verifier.Verify(token)
+			if err != nil {
+				return nil, err
+			}
+			set := claims.NewClaimsSet(verified.Subject)
+			set.Set(handlers.SessionClaim, verified.SessionID)
+			return claims.NewPrincipal(set), nil
+		}),
+		// The middleware must be told which cookie carries the token. Its
+		// default is "app_token", so without this it looks for a cookie we never
+		// write and every cookie-authenticated request quietly 401s.
+		mux.WithAuthAppSessionCookieName(deps.Cookies.AccessCookieName()),
+		// These have to mirror how the cookie was written. On a successful
+		// cookie authentication the middleware may re-issue the cookie to extend
+		// it, and it applies these options when it does. Left unset it would
+		// fall back to its own defaults, whose SameSite is Strict, silently
+		// undoing the Lax setting that the federated sign-in callback depends on
+		// (see docs/adr/0011-authentication-and-sessions.md).
+		mux.WithAuthCookieOptions(
+			mux.WithCookiePath("/"),
+			mux.WithCookieSecure(deps.Cookies.Secure()),
+			mux.WithCookieHTTPOnly(true),
+			mux.WithCookieSameSite(http.SameSiteLaxMode),
+		),
+	)
 
 	// Revocation, immediately after authentication so the principal is populated.
 	// The token is trusted cryptographically by this point but has not been
