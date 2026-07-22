@@ -11,16 +11,21 @@
   --font-body: 'Inter', ui-sans-serif, system-ui, sans-serif;
   --font-heading: 'Space Grotesk', 'Inter', ui-sans-serif, system-ui, sans-serif;
 
-  /* Pale blue-tinted white base (cool, low chroma at a blue hue) so the
-     gradient reads blue -> white-blue -> yellow instead of washing out. */
-  --background: oklch(1 0.1 265);
+  /* Pale blue-tinted white base. NOTE: chroma must stay low enough to remain in
+     sRGB at this lightness — oklch(1 0.1 265) is out of gamut and CSS gamut
+     mapping collapses it to pure #fff, which erased the tint AND made
+     --background identical to --card. Verified in-gamut: sRGB(0.919 0.943 0.992). */
+  --background: oklch(0.98 0.008 265);
   --foreground: oklch(0.22 0.03 285);
 
+  /* Card sits a step *lighter* than the page so panels lift off it. */
   --card: oklch(1 0 0);
   --card-foreground: oklch(0.22 0.03 285);
 
   --primary: oklch(0.55 0.23 295);
-  --primary-foreground: oklch(0.99 0.01 300);
+  --primary-hover: oklch(0.5 0.23 295);
+  --primary-active: oklch(0.45 0.22 295);
+  --primary-foreground: oklch(0.99 0.005 300);
 
   --secondary: oklch(0.95 0.02 300);
   --secondary-foreground: oklch(0.3 0.05 290);
@@ -31,10 +36,14 @@
   --accent: oklch(0.7 0.18 40);
   --accent-foreground: oklch(0.22 0.04 40);
 
-  --destructive: oklch(0.58 0.22 25);
-  --destructive-foreground: oklch(0.99 0.01 0);
+  /* Status colors are darkened from their first pass so their near-white
+     foreground clears WCAG AA (4.5:1) on the 12px badge text that uses them.
+     Previously: success 3.54:1, destructive 4.59:1. Now 5.04:1 and 5.21:1.
+     Foreground chroma is kept low enough to stay in sRGB at these lightnesses. */
+  --destructive: oklch(0.55 0.21 25);
+  --destructive-foreground: oklch(0.99 0.005 0);
 
-  --success: oklch(0.6 0.15 150);
+  --success: oklch(0.52 0.14 150);
   --success-foreground: oklch(0.99 0.01 150);
 
   --border: oklch(0.9 0.014 290);
@@ -55,7 +64,13 @@
   --card: oklch(0.22 0.03 285);
   --card-foreground: oklch(0.96 0.012 300);
 
-  --primary: oklch(0.72 0.18 300);
+  /* On dark, hover/active step *lighter* — the conventional direction when the
+     surface is darker than the control. Chroma tapers as lightness climbs
+     because sRGB simply has less violet available up there; holding 0.18 would
+     put these outside the gamut and let the browser pick the real color. */
+  --primary: oklch(0.72 0.17 300);
+  --primary-hover: oklch(0.77 0.13 300);
+  --primary-active: oklch(0.82 0.1 300);
   --primary-foreground: oklch(0.16 0.03 290);
 
   --secondary: oklch(0.3 0.03 290);
@@ -67,8 +82,10 @@
   --accent: oklch(0.74 0.17 45);
   --accent-foreground: oklch(0.18 0.03 45);
 
-  --destructive: oklch(0.62 0.21 25);
-  --destructive-foreground: oklch(0.98 0.01 0);
+  /* Dark mode needs its own darkening: at L=0.62 this badge sat at 3.80:1
+     against its near-white label, below AA. L=0.56 brings it to 4.88:1. */
+  --destructive: oklch(0.56 0.21 25);
+  --destructive-foreground: oklch(0.98 0.005 0);
 
   --success: oklch(0.7 0.16 155);
   --success-foreground: oklch(0.16 0.03 155);
@@ -87,6 +104,8 @@
   --color-card: var(--card);
   --color-card-foreground: var(--card-foreground);
   --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
+  --color-primary-active: var(--primary-active);
   --color-primary-foreground: var(--primary-foreground);
   --color-secondary: var(--secondary);
   --color-secondary-foreground: var(--secondary-foreground);
@@ -108,6 +127,18 @@
   --radius-lg: var(--radius);
 }
 
+/* ---- Semantic z-index scale ----------------------------------------------
+   Layer order is named, not guessed. Never use a raw z-index in a component. */
+:root {
+  --z-base: 0;
+  --z-sticky: 100;
+  --z-dropdown: 200;
+  --z-modal-backdrop: 300;
+  --z-modal: 400;
+  --z-toast: 500;
+  --z-tooltip: 600;
+}
+
 html {
   color-scheme: light dark;
 }
@@ -118,22 +149,45 @@ body {
   font-family: var(--font-body);
   color: var(--foreground);
   background-color: var(--background);
-  /* Aurora glow: soft radial pools of the brand hues in the corners. They use
-     color-mix over the base so the effect adapts to light/dark automatically. */
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* Aurora glow: soft radial pools of the brand hues in the corners, using
+   color-mix over the base so the effect adapts to light/dark automatically.
+   Painted on a fixed pseudo-element rather than via `background-attachment:
+   fixed` on <body> — the latter forces a full-viewport repaint on every scroll
+   frame (pronounced on mobile Safari), which is a steep price for decoration. */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
   background-image:
-    radial-gradient(ellipse 60% 50% at 12% -8%, color-mix(in oklch, var(--primary) 30%, transparent), transparent 60%),
+    radial-gradient(ellipse 60% 50% at 12% -8%, color-mix(in oklch, var(--primary) 22%, transparent), transparent 60%),
     radial-gradient(
       ellipse 50% 45% at 102% 0%,
-      color-mix(in oklch, var(--brand-warm) 24%, transparent),
+      color-mix(in oklch, var(--brand-warm) 18%, transparent),
       transparent 60%
     ),
     radial-gradient(
       ellipse 65% 55% at 50% 118%,
-      color-mix(in oklch, var(--brand-cool) 22%, transparent),
+      color-mix(in oklch, var(--brand-cool) 16%, transparent),
       transparent 62%
     );
-  background-attachment: fixed;
   background-repeat: no-repeat;
-  -webkit-font-smoothing: antialiased;
-  text-rendering: optimizeLegibility;
+}
+
+/* Reduced motion: kill spinners, pulses, and transitions rather than letting
+   Tailwind's animate-* utilities run regardless of the user's preference. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

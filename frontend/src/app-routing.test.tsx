@@ -59,7 +59,7 @@ describe('app routing', () => {
     await userEvent.click(playlistsNav)
 
     expect(await screen.findByRole('heading', { name: 'Your playlists' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Spotify' })).toBeInTheDocument()
+    expect(screen.getByRole('radio', { name: 'Spotify' })).toBeInTheDocument()
   })
 
   it('renders the covers page with its empty state and CTA link', async () => {

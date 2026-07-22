@@ -90,9 +90,11 @@ paths:
                 status: ""
                 platform: ""
                 playlistid: ""
+                playlistname: ""
                 imageurl: ""
                 prompt: ""
                 palette: []
+                error: ""
                 createdat: ""
   /api/v1/covers/{id}:
     get:
@@ -120,9 +122,11 @@ paths:
                 status: ""
                 platform: ""
                 playlistid: ""
+                playlistname: ""
                 imageurl: ""
                 prompt: ""
                 palette: []
+                error: ""
                 createdat: ""
         "404":
           description: Not Found
@@ -180,6 +184,8 @@ components:
       properties:
         createdAt:
           type: string
+        error:
+          type: string
         id:
           type: string
         imageUrl:
@@ -196,6 +202,8 @@ components:
             - youtube_music
         playlistId:
           type: string
+        playlistName:
+          type: string
         prompt:
           type: string
         status:
@@ -211,6 +219,7 @@ components:
         - status
         - platform
         - playlistId
+        - playlistName
         - createdAt
     GenerateCoverRequest:
       type: object

@@ -101,12 +101,14 @@ export interface components {
         };
         CoverResponse: {
             createdAt: string;
+            error?: string;
             id: string;
             imageUrl?: string;
             palette?: components["schemas"]["ColorWeightResponse"][];
             /** @enum {string} */
             platform: "spotify" | "apple_music" | "youtube_music";
             playlistId: string;
+            playlistName: string;
             prompt?: string;
             /** @enum {string} */
             status: "pending" | "analyzing" | "generating" | "ready" | "failed";
@@ -247,9 +249,11 @@ export interface operations {
                      *       "status": "",
                      *       "platform": "",
                      *       "playlistid": "",
+                     *       "playlistname": "",
                      *       "imageurl": "",
                      *       "prompt": "",
                      *       "palette": [],
+                     *       "error": "",
                      *       "createdat": ""
                      *     }
                      */
@@ -285,9 +289,11 @@ export interface operations {
                      *       "status": "",
                      *       "platform": "",
                      *       "playlistid": "",
+                     *       "playlistname": "",
                      *       "imageurl": "",
                      *       "prompt": "",
                      *       "palette": [],
+                     *       "error": "",
                      *       "createdat": ""
                      *     }
                      */

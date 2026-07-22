@@ -11,8 +11,8 @@ export function PageHeader({ title, description, action }: PageHeaderProps) {
   return (
     <header className="flex flex-wrap items-end justify-between gap-4">
       <div className="space-y-1.5">
-        <h1 className="font-display text-3xl font-bold tracking-tight">{title}</h1>
-        {description && <p className="max-w-prose text-muted-foreground">{description}</p>}
+        <h1 className="font-display text-3xl font-bold tracking-tight text-balance">{title}</h1>
+        {description && <p className="max-w-prose text-pretty text-muted-foreground">{description}</p>}
       </div>
       {action}
     </header>

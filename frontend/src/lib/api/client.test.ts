@@ -71,4 +71,48 @@ describe('apiFetch', () => {
       message: 'playlist not found',
     })
   })
+
+  it('parses RFC 7807 problem details into title and detail', async () => {
+    fetchMock.mockImplementation(() =>
+      Promise.resolve(
+        jsonResponse(
+          { type: 'about:blank', title: 'Unavailable', detail: 'Spotify is not responding.', status: 503 },
+          { status: 503 },
+        ),
+      ),
+    )
+
+    await expect(apiFetch('/playlists')).rejects.toMatchObject({
+      status: 503,
+      title: 'Unavailable',
+      detail: 'Spotify is not responding.',
+      message: 'Spotify is not responding.',
+    })
+  })
+
+  it('treats a blank problem detail as absent', async () => {
+    // The live API returns exactly this on a missing DSP connection. An empty
+    // string is not nullish, so leaving it intact rendered a blank message.
+    fetchMock.mockImplementation(() =>
+      Promise.resolve(
+        jsonResponse({ type: 'about:blank', title: 'Not Found', detail: '', status: 404 }, { status: 404 }),
+      ),
+    )
+
+    const err = (await apiFetch('/playlists').catch((e: unknown) => e)) as ApiError
+    expect(err.detail).toBeUndefined()
+    expect(err.title).toBe('Not Found')
+    expect(err.message).toBe('Not Found')
+  })
+
+  it('flags 401 and 403 as unauthorized, and other statuses as not', async () => {
+    for (const [status, expected] of [
+      [401, true],
+      [403, true],
+      [404, false],
+      [500, false],
+    ] as const) {
+      expect(new ApiError(status, 'x').isUnauthorized).toBe(expected)
+    }
+  })
 })

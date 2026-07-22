@@ -1,10 +1,10 @@
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest'
-import type { ReactElement } from 'react'
-import { render, screen } from '@testing-library/react'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { screen, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 
 import { CoverGallery } from '@/features/covers/cover-gallery'
-import { apiFetch } from '@/lib/api/client'
+import { ApiError, apiFetch } from '@/lib/api/client'
+import { renderWithProviders } from '@/test/render'
 
 vi.mock('@/lib/api/client', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/lib/api/client')>()
@@ -13,11 +13,18 @@ vi.mock('@/lib/api/client', async (importOriginal) => {
 
 const mockFetch = apiFetch as unknown as Mock
 
-function renderWithClient(ui: ReactElement) {
-  const client = new QueryClient({
-    defaultOptions: { queries: { retry: false } },
-  })
-  return render(<QueryClientProvider client={client}>{ui}</QueryClientProvider>)
+const READY_COVER = {
+  id: 'c1',
+  status: 'ready',
+  platform: 'spotify',
+  playlistId: 'pl1',
+  playlistName: 'Morning Coffee',
+  imageUrl: 'https://cdn.test/c1.png',
+  createdAt: '2026-01-01T00:00:00Z',
+  palette: [
+    { dimension: 'energetic', hexColor: '#ff5a36', weight: 0.8 },
+    { dimension: 'introspective', hexColor: '#4f86c6', weight: 0.4 },
+  ],
 }
 
 beforeEach(() => {
@@ -25,39 +32,70 @@ beforeEach(() => {
 })
 
 describe('CoverGallery', () => {
-  it('shows six skeleton placeholders while loading', () => {
+  it('shows six skeleton placeholders while loading', async () => {
     mockFetch.mockReturnValue(new Promise(() => {})) // never resolves
-    renderWithClient(<CoverGallery />)
-    expect(screen.getAllByRole('listitem')).toHaveLength(6)
+    renderWithProviders(<CoverGallery />)
+    // findAll: the router resolves its first render a tick after mount.
+    expect(await screen.findAllByRole('listitem')).toHaveLength(6)
   })
 
-  it('renders covers with status and palette once loaded', async () => {
-    mockFetch.mockResolvedValue([
-      {
-        id: 'c1',
-        status: 'ready',
-        playlistId: 'pl1',
-        imageUrl: 'https://cdn.test/c1.png',
-        palette: [
-          { dimension: 'energy', hexColor: '#ff5a36', weight: 0.8 },
-          { dimension: 'valence', hexColor: '#4f86c6', weight: 0.4 },
-        ],
-      },
-    ])
-    renderWithClient(<CoverGallery />)
+  it('identifies each cover by its playlist name', async () => {
+    mockFetch.mockResolvedValue([READY_COVER])
+    renderWithProviders(<CoverGallery />)
 
-    const img = await screen.findByRole('img', {
-      name: /generated cover for playlist pl1/i,
-    })
+    const img = await screen.findByRole('img', { name: /cover generated for morning coffee/i })
     expect(img).toHaveAttribute('src', 'https://cdn.test/c1.png')
-    expect(screen.getByText('ready')).toBeInTheDocument()
-    // Each palette swatch carries a "<dimension> <pct>%" tooltip.
-    expect(screen.getByTitle('energy 80%')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Morning Coffee' })).toBeInTheDocument()
   })
 
-  it('shows an error state when covers fail to load', async () => {
-    mockFetch.mockRejectedValue(new Error('boom'))
-    renderWithClient(<CoverGallery />)
-    expect(await screen.findByText(/couldn.t load covers/i)).toBeInTheDocument()
+  it('renders the status in plain language', async () => {
+    mockFetch.mockResolvedValue([READY_COVER])
+    renderWithProviders(<CoverGallery />)
+    expect(await screen.findByText('Ready')).toBeInTheDocument()
+  })
+
+  it('renders the palette as readable text, not a hover-only tooltip', async () => {
+    mockFetch.mockResolvedValue([READY_COVER])
+    renderWithProviders(<CoverGallery />)
+
+    // Dimension and weight are visible content now; the old UI hid them in title=.
+    expect(await screen.findByText('energetic')).toBeInTheDocument()
+    expect(screen.getByText('80%')).toBeInTheDocument()
+    expect(document.querySelector('[title]')).toBeNull()
+  })
+
+  it('explains a failed cover and offers a retry that regenerates it', async () => {
+    mockFetch.mockImplementation((_path: string, init?: RequestInit) =>
+      init?.method === 'POST'
+        ? Promise.resolve({ ...READY_COVER, status: 'pending' })
+        : Promise.resolve([
+            {
+              ...READY_COVER,
+              status: 'failed',
+              imageUrl: undefined,
+              error: 'The image service timed out.',
+            },
+          ]),
+    )
+    renderWithProviders(<CoverGallery />)
+
+    const tile = (await screen.findByRole('heading', { name: 'Morning Coffee' })).closest('li') as HTMLElement
+    expect(within(tile).getByText('The image service timed out.')).toBeInTheDocument()
+
+    await userEvent.click(within(tile).getByRole('button', { name: /try again/i }))
+
+    expect(mockFetch).toHaveBeenCalledWith('/covers', {
+      method: 'POST',
+      body: JSON.stringify({ platform: 'spotify', playlistId: 'pl1' }),
+    })
+  })
+
+  it("surfaces the API's problem detail when covers fail to load", async () => {
+    mockFetch.mockRejectedValue(new ApiError(503, 'unavailable', 'Unavailable', 'Storage is unreachable.'))
+    renderWithProviders(<CoverGallery />)
+
+    expect(await screen.findByText(/couldn.t load your covers/i)).toBeInTheDocument()
+    expect(screen.getByText('Storage is unreachable.')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /try again/i })).toBeInTheDocument()
   })
 })

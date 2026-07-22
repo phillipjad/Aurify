@@ -2,14 +2,27 @@ import type { ComponentProps } from 'react'
 
 import { cn } from '@/lib/utils'
 
-// shadcn/ui-style Card. Translucent + blurred so it reads as glass over the
-// app's gradient background.
-export function Card({ className, ...props }: ComponentProps<'div'>) {
+export type CardProps = ComponentProps<'div'> & {
+  /**
+   * Translucent + blurred, for the rare surface that should read as glass over
+   * the aurora background.
+   *
+   * Off by default on purpose: applying it to every card made blur the app's
+   * baseline cost — paid even by skeletons and empty states, which have nothing
+   * to show through — and left text contrast dependent on whatever gradient
+   * happened to sit behind it.
+   */
+  glass?: boolean
+}
+
+// shadcn/ui-style Card.
+export function Card({ className, glass = false, ...props }: CardProps) {
   return (
     <div
       data-slot="card"
       className={cn(
-        'rounded-xl border border-border bg-card/70 text-card-foreground shadow-sm backdrop-blur-md',
+        'rounded-xl border border-border text-card-foreground shadow-sm',
+        glass ? 'bg-card/70 backdrop-blur-md' : 'bg-card',
         className,
       )}
       {...props}

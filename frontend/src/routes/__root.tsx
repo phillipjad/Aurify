@@ -13,21 +13,35 @@ export const Route = createRootRouteWithContext<RouterContext>()({
   component: RootLayout,
 })
 
-const navLinkClass =
-  'rounded-md px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground [&.active]:text-foreground'
+// The active route is marked by weight and an underline as well as color, so
+// current location survives both color-blindness and a forced-colors mode.
+const navLinkClass = [
+  'rounded-md px-3 py-2 text-sm font-medium text-muted-foreground',
+  'transition-colors hover:text-foreground',
+  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background',
+  '[&.active]:font-semibold [&.active]:text-foreground [&.active]:underline [&.active]:decoration-primary [&.active]:decoration-2 [&.active]:underline-offset-8',
+].join(' ')
 
 function RootLayout() {
   return (
     <div className="min-h-dvh">
-      <header className="sticky top-0 z-20 border-b border-border/60 bg-background/70 backdrop-blur-md">
+      <a
+        href="#main"
+        className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-[var(--z-toast)] focus:rounded-md focus:bg-card focus:px-4 focus:py-2 focus:text-sm focus:font-medium focus:shadow-md focus:ring-2 focus:ring-ring"
+      >
+        Skip to content
+      </a>
+
+      <header className="sticky top-0 z-[var(--z-sticky)] border-b border-border/60 bg-background/80 backdrop-blur-md">
         <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-3">
-          <Link to="/" className="flex items-center gap-2.5">
+          <Link
+            to="/"
+            className="flex items-center gap-2.5 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+          >
             <AurifyLogo className="h-8 w-8" />
-            <span className="bg-gradient-to-r from-primary to-accent bg-clip-text font-display text-lg font-bold tracking-tight text-transparent">
-              Aurify
-            </span>
+            <span className="font-display text-lg font-bold tracking-tight text-foreground">Aurify</span>
           </Link>
-          <nav className="flex items-center gap-1">
+          <nav aria-label="Main" className="flex items-center gap-1">
             <Link to="/playlists" className={navLinkClass}>
               Playlists
             </Link>
@@ -38,7 +52,7 @@ function RootLayout() {
           </nav>
         </div>
       </header>
-      <main className="mx-auto max-w-5xl px-4 py-10">
+      <main id="main" className="mx-auto max-w-5xl px-4 py-10">
         <Outlet />
       </main>
     </div>
