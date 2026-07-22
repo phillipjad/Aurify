@@ -12,6 +12,8 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as PlaylistsRouteImport } from './routes/playlists'
 import { Route as CoversRouteImport } from './routes/covers'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as CoversIndexRouteImport } from './routes/covers.index'
+import { Route as CoversCoverIdRouteImport } from './routes/covers.$coverId'
 
 const PlaylistsRoute = PlaylistsRouteImport.update({
   id: '/playlists',
@@ -28,34 +30,55 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const CoversIndexRoute = CoversIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => CoversRoute,
+} as any)
+const CoversCoverIdRoute = CoversCoverIdRouteImport.update({
+  id: '/$coverId',
+  path: '/$coverId',
+  getParentRoute: () => CoversRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
-  '/covers': typeof CoversRoute
+  '/covers': typeof CoversRouteWithChildren
   '/playlists': typeof PlaylistsRoute
+  '/covers/$coverId': typeof CoversCoverIdRoute
+  '/covers/': typeof CoversIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
-  '/covers': typeof CoversRoute
   '/playlists': typeof PlaylistsRoute
+  '/covers/$coverId': typeof CoversCoverIdRoute
+  '/covers': typeof CoversIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
-  '/covers': typeof CoversRoute
+  '/covers': typeof CoversRouteWithChildren
   '/playlists': typeof PlaylistsRoute
+  '/covers/$coverId': typeof CoversCoverIdRoute
+  '/covers/': typeof CoversIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/covers' | '/playlists'
+  fullPaths: '/' | '/covers' | '/playlists' | '/covers/$coverId' | '/covers/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/covers' | '/playlists'
-  id: '__root__' | '/' | '/covers' | '/playlists'
+  to: '/' | '/playlists' | '/covers/$coverId' | '/covers'
+  id:
+    | '__root__'
+    | '/'
+    | '/covers'
+    | '/playlists'
+    | '/covers/$coverId'
+    | '/covers/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
-  CoversRoute: typeof CoversRoute
+  CoversRoute: typeof CoversRouteWithChildren
   PlaylistsRoute: typeof PlaylistsRoute
 }
 
@@ -82,12 +105,39 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/covers/': {
+      id: '/covers/'
+      path: '/'
+      fullPath: '/covers/'
+      preLoaderRoute: typeof CoversIndexRouteImport
+      parentRoute: typeof CoversRoute
+    }
+    '/covers/$coverId': {
+      id: '/covers/$coverId'
+      path: '/$coverId'
+      fullPath: '/covers/$coverId'
+      preLoaderRoute: typeof CoversCoverIdRouteImport
+      parentRoute: typeof CoversRoute
+    }
   }
 }
 
+interface CoversRouteChildren {
+  CoversCoverIdRoute: typeof CoversCoverIdRoute
+  CoversIndexRoute: typeof CoversIndexRoute
+}
+
+const CoversRouteChildren: CoversRouteChildren = {
+  CoversCoverIdRoute: CoversCoverIdRoute,
+  CoversIndexRoute: CoversIndexRoute,
+}
+
+const CoversRouteWithChildren =
+  CoversRoute._addFileChildren(CoversRouteChildren)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
-  CoversRoute: CoversRoute,
+  CoversRoute: CoversRouteWithChildren,
   PlaylistsRoute: PlaylistsRoute,
 }
 export const routeTree = rootRouteImport

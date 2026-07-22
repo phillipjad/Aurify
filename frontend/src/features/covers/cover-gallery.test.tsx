@@ -1,6 +1,5 @@
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest'
 import { screen, within } from '@testing-library/react'
-import userEvent from '@testing-library/user-event'
 
 import { CoverGallery } from '@/features/covers/cover-gallery'
 import { ApiError, apiFetch } from '@/lib/api/client'
@@ -64,30 +63,18 @@ describe('CoverGallery', () => {
     expect(document.querySelector('[title]')).toBeNull()
   })
 
-  it('explains a failed cover and offers a retry that regenerates it', async () => {
-    mockFetch.mockImplementation((_path: string, init?: RequestInit) =>
-      init?.method === 'POST'
-        ? Promise.resolve({ ...READY_COVER, status: 'pending' })
-        : Promise.resolve([
-            {
-              ...READY_COVER,
-              status: 'failed',
-              imageUrl: undefined,
-              error: 'The image service timed out.',
-            },
-          ]),
-    )
+  it('shows a failed cover’s error, and links the tile to its detail (retry lives there)', async () => {
+    mockFetch.mockResolvedValue([
+      { ...READY_COVER, status: 'failed', imageUrl: undefined, error: 'The image service timed out.' },
+    ])
     renderWithProviders(<CoverGallery />)
 
     const tile = (await screen.findByRole('heading', { name: 'Morning Coffee' })).closest('li') as HTMLElement
     expect(within(tile).getByText('The image service timed out.')).toBeInTheDocument()
-
-    await userEvent.click(within(tile).getByRole('button', { name: /try again/i }))
-
-    expect(mockFetch).toHaveBeenCalledWith('/covers', {
-      method: 'POST',
-      body: JSON.stringify({ platform: 'spotify', playlistId: 'pl1' }),
-    })
+    // The gallery no longer carries an inline retry; the whole tile is a link to
+    // the detail view, where regenerate/delete/download live.
+    expect(within(tile).queryByRole('button')).not.toBeInTheDocument()
+    expect(within(tile).getByRole('link')).toHaveAttribute('href', '/covers/c1')
   })
 
   it("surfaces the API's problem detail when covers fail to load", async () => {

@@ -19,7 +19,7 @@ export function renderWithProviders(ui: ReactElement) {
   })
 
   const rootRoute = createRootRoute({ component: () => ui })
-  const stubRoutes = ['/', '/playlists', '/covers'].map((path) =>
+  const stubRoutes = ['/', '/playlists', '/covers', '/covers/$coverId'].map((path) =>
     createRoute({ getParentRoute: () => rootRoute, path, component: () => null }),
   )
   const router = createRouter({

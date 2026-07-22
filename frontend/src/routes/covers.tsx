@@ -1,17 +1,11 @@
-import { createFileRoute } from '@tanstack/react-router'
+import { createFileRoute, Outlet } from '@tanstack/react-router'
 
-import { PageHeader } from '@/components/page-header'
-import { CoverGallery } from '@/features/covers/cover-gallery'
-
+// Layout for the /covers subtree: the gallery (index) and the detail view
+// ($coverId) both render through this Outlet.
 export const Route = createFileRoute('/covers')({
-  component: CoversPage,
+  component: CoversLayout,
 })
 
-function CoversPage() {
-  return (
-    <section className="space-y-8">
-      <PageHeader title="Your covers" description="Every cover you generate is saved here." />
-      <CoverGallery />
-    </section>
-  )
+function CoversLayout() {
+  return <Outlet />
 }
