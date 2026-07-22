@@ -70,12 +70,18 @@ func (r *CoverRepository) FindByID(ctx context.Context, id string) (*domain.Cove
 	return &cover, nil
 }
 
-// ListByUser returns a user's covers, newest first, paginated.
-func (r *CoverRepository) ListByUser(ctx context.Context, userID string, limit, offset int) ([]domain.Cover, error) {
+// ListByUser returns a user's covers, newest first, paginated, optionally
+// filtered to a single status (empty status = all).
+func (r *CoverRepository) ListByUser(
+	ctx context.Context,
+	userID, status string,
+	limit, offset int,
+) ([]domain.Cover, error) {
 	rows, err := r.q.ListCoversByUser(ctx, db.ListCoversByUserParams{
-		UserID: userID,
-		Limit:  int32(limit),
-		Offset: int32(offset),
+		UserID:    userID,
+		Status:    status,
+		RowLimit:  int32(limit),
+		RowOffset: int32(offset),
 	})
 	if err != nil {
 		return nil, err

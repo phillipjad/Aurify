@@ -17,6 +17,7 @@ type Querier interface {
 	GetUserByEmail(ctx context.Context, email string) (User, error)
 	GetUserByID(ctx context.Context, id string) (User, error)
 	ListConnectionsByUser(ctx context.Context, userID string) ([]DspConnection, error)
+	// An empty @status returns every lifecycle state; otherwise it filters to one.
 	ListCoversByUser(ctx context.Context, arg ListCoversByUserParams) ([]Cover, error)
 	UpsertCover(ctx context.Context, arg UpsertCoverParams) error
 	UpsertDSPConnection(ctx context.Context, arg UpsertDSPConnectionParams) error

@@ -63,18 +63,26 @@ SELECT id, user_id, platform, playlist_id, playlist_name, status,
        prompt, image_url, analysis, error, created_at, updated_at
 FROM covers
 WHERE user_id = $1
+  AND ($2::text = '' OR status = $2::text)
 ORDER BY created_at DESC
-LIMIT $2 OFFSET $3
+LIMIT $4 OFFSET $3
 `
 
 type ListCoversByUserParams struct {
-	UserID string
-	Limit  int32
-	Offset int32
+	UserID    string
+	Status    string
+	RowOffset int32
+	RowLimit  int32
 }
 
+// An empty @status returns every lifecycle state; otherwise it filters to one.
 func (q *Queries) ListCoversByUser(ctx context.Context, arg ListCoversByUserParams) ([]Cover, error) {
-	rows, err := q.db.Query(ctx, listCoversByUser, arg.UserID, arg.Limit, arg.Offset)
+	rows, err := q.db.Query(ctx, listCoversByUser,
+		arg.UserID,
+		arg.Status,
+		arg.RowOffset,
+		arg.RowLimit,
+	)
 	if err != nil {
 		return nil, err
 	}

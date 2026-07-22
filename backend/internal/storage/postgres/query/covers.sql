@@ -22,12 +22,14 @@ FROM covers
 WHERE id = $1;
 
 -- name: ListCoversByUser :many
+-- An empty @status returns every lifecycle state; otherwise it filters to one.
 SELECT id, user_id, platform, playlist_id, playlist_name, status,
        prompt, image_url, analysis, error, created_at, updated_at
 FROM covers
-WHERE user_id = $1
+WHERE user_id = @user_id
+  AND (@status::text = '' OR status = @status::text)
 ORDER BY created_at DESC
-LIMIT $2 OFFSET $3;
+LIMIT @row_limit OFFSET @row_offset;
 
 -- name: DeleteCover :execrows
 -- Scoped to the owner so a user can never delete another user's cover; the

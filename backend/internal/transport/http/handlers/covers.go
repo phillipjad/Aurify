@@ -8,6 +8,7 @@ import (
 	"github.com/phillipjad/aurify/backend/internal/app/command/generatecover"
 	"github.com/phillipjad/aurify/backend/internal/app/query/getcover"
 	"github.com/phillipjad/aurify/backend/internal/app/query/listcovers"
+	"github.com/phillipjad/aurify/backend/internal/domain"
 	"github.com/phillipjad/aurify/backend/internal/transport/http/dto"
 )
 
@@ -109,9 +110,11 @@ func (h *Covers) List(c mux.RouteContext) {
 
 	limit, _ := c.Query().Int("limit")
 	offset, _ := c.Query().Int("offset")
+	status, _ := c.Query().String("status")
 
 	covers, err := h.app.Queries.ListCovers.Handle(c, listcovers.Query{
 		UserID: userID,
+		Status: domain.CoverStatus(status),
 		Limit:  limit,
 		Offset: offset,
 	})

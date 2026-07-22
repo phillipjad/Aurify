@@ -200,7 +200,23 @@ export interface operations {
     };
     listCovers: {
         parameters: {
-            query?: never;
+            query?: {
+                /**
+                 * @description Filter to one lifecycle status (empty = all)
+                 * @example ready
+                 */
+                status?: string;
+                /**
+                 * @description Page size (default 20, max 100)
+                 * @example 20
+                 */
+                limit?: string;
+                /**
+                 * @description Rows to skip
+                 * @example 0
+                 */
+                offset?: string;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -371,6 +387,26 @@ export interface operations {
                  * @example spotify
                  */
                 platform: string;
+                /**
+                 * @description Case-insensitive search over name and description
+                 * @example coffee
+                 */
+                q?: string;
+                /**
+                 * @description Ordering: name or tracks
+                 * @example name
+                 */
+                sort?: string;
+                /**
+                 * @description Page size (default 20, max 100)
+                 * @example 20
+                 */
+                limit?: string;
+                /**
+                 * @description Rows to skip
+                 * @example 0
+                 */
+                offset?: string;
             };
             header?: never;
             path?: never;
