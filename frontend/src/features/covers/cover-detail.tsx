@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import { buttonVariants } from '@/components/ui/button-variants'
 import { Card } from '@/components/ui/card'
 import { EmptyState } from '@/components/empty-state'
+import { ImageWithFallback } from '@/components/image-with-fallback'
 import { Skeleton } from '@/components/ui/skeleton'
 import { isApiError } from '@/lib/api/client'
 import { useDeleteCover, useGenerateCover } from '@/lib/api/commands'
@@ -168,21 +169,20 @@ function CoverDetailView({ cover }: { cover: Cover }) {
 function CoverImage({ cover, working }: { cover: Cover; working: boolean }) {
   return (
     <Card className="overflow-hidden">
-      {cover.imageUrl ? (
-        <img
-          src={cover.imageUrl}
-          alt={`Cover generated for ${cover.playlistName}`}
-          className="aspect-square w-full object-cover"
-        />
-      ) : (
-        <div aria-hidden="true" className="flex aspect-square w-full items-center justify-center bg-muted">
-          {cover.status === 'failed' ? (
-            <AlertTriangle className="size-10 text-muted-foreground" />
-          ) : (
-            <Sparkles className={cn('size-10 text-muted-foreground', working && 'animate-pulse')} />
-          )}
-        </div>
-      )}
+      <ImageWithFallback
+        src={cover.imageUrl}
+        alt={`Cover generated for ${cover.playlistName}`}
+        className="aspect-square w-full object-cover"
+        fallback={
+          <div aria-hidden="true" className="flex aspect-square w-full items-center justify-center bg-muted">
+            {cover.status === 'failed' ? (
+              <AlertTriangle className="size-10 text-muted-foreground" />
+            ) : (
+              <Sparkles className={cn('size-10 text-muted-foreground', working && 'animate-pulse')} />
+            )}
+          </div>
+        }
+      />
     </Card>
   )
 }

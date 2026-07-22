@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { RouterProvider, createMemoryHistory, createRouter } from '@tanstack/react-router'
 
 import { ThemeProvider } from '@/components/theme-provider'
+import { NotFound, RouteError } from '@/components/route-fallbacks'
 import { routeTree } from '@/routeTree.gen'
 import { apiFetch } from '@/lib/api/client'
 
@@ -25,6 +26,8 @@ function renderApp(initialEntries: string[]) {
     routeTree,
     context: { queryClient },
     history: createMemoryHistory({ initialEntries }),
+    defaultNotFoundComponent: NotFound,
+    defaultErrorComponent: RouteError,
   })
   render(
     <ThemeProvider>
@@ -68,5 +71,12 @@ describe('app routing', () => {
     expect(await screen.findByText('No covers yet')).toBeInTheDocument()
     // The empty-state action is a real router <Link> to /playlists.
     expect(screen.getByRole('link', { name: 'Browse playlists' })).toBeInTheDocument()
+  })
+
+  it('shows the not-found page for an unknown URL', async () => {
+    renderApp(['/no-such-page'])
+
+    expect(await screen.findByText('Page not found')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /back home/i })).toBeInTheDocument()
   })
 })

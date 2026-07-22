@@ -7,6 +7,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { buttonVariants } from '@/components/ui/button-variants'
 import { Card } from '@/components/ui/card'
+import { ImageWithFallback } from '@/components/image-with-fallback'
 import { Skeleton } from '@/components/ui/skeleton'
 import { isApiError } from '@/lib/api/client'
 import { useCovers } from '@/lib/api/queries'
@@ -152,22 +153,21 @@ function CoverTile({ cover }: { cover: Cover }) {
         className="flex h-full flex-col rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
       >
         <div className="relative overflow-hidden">
-          {cover.imageUrl ? (
-            <img
-              src={cover.imageUrl}
-              alt={`Cover generated for ${cover.playlistName}`}
-              loading="lazy"
-              className="aspect-square w-full object-cover transition-transform duration-300 ease-out group-hover:scale-[1.03]"
-            />
-          ) : (
-            <div aria-hidden="true" className="flex aspect-square w-full items-center justify-center bg-muted">
-              {cover.status === 'failed' ? (
-                <AlertTriangle className="size-8 text-muted-foreground" />
-              ) : (
-                <Sparkles className={cn('size-8 text-muted-foreground', working && 'animate-pulse')} />
-              )}
-            </div>
-          )}
+          <ImageWithFallback
+            src={cover.imageUrl}
+            alt={`Cover generated for ${cover.playlistName}`}
+            loading="lazy"
+            className="aspect-square w-full object-cover transition-transform duration-300 ease-out group-hover:scale-[1.03]"
+            fallback={
+              <div aria-hidden="true" className="flex aspect-square w-full items-center justify-center bg-muted">
+                {cover.status === 'failed' ? (
+                  <AlertTriangle className="size-8 text-muted-foreground" />
+                ) : (
+                  <Sparkles className={cn('size-8 text-muted-foreground', working && 'animate-pulse')} />
+                )}
+              </div>
+            }
+          />
         </div>
 
         <div className="flex flex-1 flex-col gap-2 p-3">

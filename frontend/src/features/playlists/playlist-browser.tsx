@@ -3,6 +3,7 @@ import { AlertTriangle, ListMusic, RefreshCw, Unplug } from 'lucide-react'
 import { Link } from '@tanstack/react-router'
 
 import { EmptyState } from '@/components/empty-state'
+import { ImageWithFallback } from '@/components/image-with-fallback'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -151,16 +152,21 @@ function PlaylistRow({ playlist, generating, error, succeeded, onGenerate }: Pla
 }
 
 function PlaylistArtwork({ playlist }: { playlist: Playlist }) {
-  if (playlist.imageUrl) {
-    return <img src={playlist.imageUrl} alt="" loading="lazy" className="size-14 shrink-0 rounded-md object-cover" />
-  }
   return (
-    <span
-      aria-hidden="true"
-      className="flex size-14 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground"
-    >
-      <ListMusic className="size-5" />
-    </span>
+    <ImageWithFallback
+      src={playlist.imageUrl}
+      alt=""
+      loading="lazy"
+      className="size-14 shrink-0 rounded-md object-cover"
+      fallback={
+        <span
+          aria-hidden="true"
+          className="flex size-14 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground"
+        >
+          <ListMusic className="size-5" />
+        </span>
+      }
+    />
   )
 }
 
