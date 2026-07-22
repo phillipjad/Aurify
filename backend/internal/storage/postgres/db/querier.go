@@ -12,9 +12,16 @@ type Querier interface {
 	// Single-use: the consumed_at IS NULL guard means a replayed link affects zero
 	// rows, so the caller can reject it without a separate read.
 	ConsumeEmailToken(ctx context.Context, arg ConsumeEmailTokenParams) (int64, error)
+	// ON CONFLICT DO NOTHING keeps the original blocked_at, so a blocked pair that
+	// keeps trying does not roll its own timestamp forward and hide when the abuse
+	// actually started.
+	CreateAuthBlock(ctx context.Context, arg CreateAuthBlockParams) error
 	CreateEmailToken(ctx context.Context, arg CreateEmailTokenParams) error
 	CreateRefreshToken(ctx context.Context, arg CreateRefreshTokenParams) error
 	CreateSession(ctx context.Context, arg CreateSessionParams) error
+	// Operator-only. Nothing in the request path calls this; it exists for the
+	// future admin portal and for manual intervention.
+	DeleteAuthBlock(ctx context.Context, arg DeleteAuthBlockParams) error
 	DeleteConnectionsByUser(ctx context.Context, userID string) error
 	// Scoped to the owner so a user can never delete another user's cover; the
 	// rows-affected count lets the caller distinguish "deleted" from "not found".
@@ -22,6 +29,7 @@ type Querier interface {
 	DeleteCredentialByUser(ctx context.Context, userID string) error
 	DeleteEmailTokensByUserPurpose(ctx context.Context, arg DeleteEmailTokensByUserPurposeParams) error
 	DeleteRefreshTokensBySession(ctx context.Context, sessionID string) error
+	GetAuthBlock(ctx context.Context, arg GetAuthBlockParams) (AuthBlock, error)
 	GetCoverByID(ctx context.Context, id string) (Cover, error)
 	GetCredentialByUser(ctx context.Context, userID string) (UserCredential, error)
 	GetEmailToken(ctx context.Context, tokenHash []byte) (EmailToken, error)

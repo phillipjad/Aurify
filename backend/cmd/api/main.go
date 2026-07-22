@@ -10,7 +10,6 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
-	"time"
 
 	"github.com/fgrzl/mux"
 
@@ -27,6 +26,7 @@ import (
 	"github.com/phillipjad/aurify/backend/internal/app/command/signout"
 	"github.com/phillipjad/aurify/backend/internal/app/command/signup"
 	"github.com/phillipjad/aurify/backend/internal/app/command/verifyemail"
+	"github.com/phillipjad/aurify/backend/internal/app/lockout"
 	"github.com/phillipjad/aurify/backend/internal/app/ports"
 	"github.com/phillipjad/aurify/backend/internal/app/query"
 	"github.com/phillipjad/aurify/backend/internal/app/query/getcover"
@@ -155,11 +155,12 @@ func run() error {
 		Ready:       store.Ping,
 		Verifier:    verifier,
 		Cookies:     handlers.NewCookieWriter(cfg.Auth.CookieSecure),
-		// Ten attempts per address and per source every fifteen minutes. This is
-		// the control that keeps signup's "already registered" answer from
-		// scaling into bulk enumeration, and that makes credential stuffing
-		// against sign-in expensive.
-		Throttle: handlers.NewThrottle(10, 15*time.Minute),
+		// Warn at five failures, permanently block the (IP, address) pair at
+		// ten within fifteen minutes. This is the control that keeps signup's
+		// "already registered" answer from scaling into bulk enumeration, and
+		// that makes credential stuffing against sign-in expensive.
+		Guard:        lockout.NewGuard(store.AuthBlocks()),
+		SupportEmail: cfg.SupportEmail,
 		// Makes sign-out and refresh-reuse revocation take effect at once
 		// instead of lagging by the access-token lifetime.
 		SessionCheck: issuer.Verify,

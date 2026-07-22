@@ -12,6 +12,7 @@ import (
 	"github.com/fgrzl/mux"
 
 	"github.com/phillipjad/aurify/backend/internal/app"
+	"github.com/phillipjad/aurify/backend/internal/app/lockout"
 	"github.com/phillipjad/aurify/backend/internal/app/ports"
 	"github.com/phillipjad/aurify/backend/internal/platform/auth"
 	"github.com/phillipjad/aurify/backend/internal/transport/http/dto"
@@ -37,11 +38,15 @@ type Deps struct {
 	// database, so a forged or expired token is rejected cheaply.
 	Verifier *auth.Verifier
 	Cookies  *handlers.CookieWriter
-	Throttle *handlers.Throttle
 	// SessionCheck confirms the verified token's session is still live. Signature
 	// verification alone cannot see a revocation, so without this a signed-out
 	// user keeps access until their access token expires.
 	SessionCheck handlers.SessionCheck
+	// Guard enforces the failed-authentication lockout policy.
+	Guard *lockout.Guard
+	// SupportEmail is shown to users who are close to, or already under, a
+	// permanent lockout, since an operator is the only way back.
+	SupportEmail string
 }
 
 // NewRouter builds the fully configured API router. Version is reported in the
@@ -112,7 +117,7 @@ func NewRouter(deps Deps) (*mux.Router, error) {
 	}))
 
 	dspAuth := handlers.NewAuth(application, providers)
-	sessions := handlers.NewSessions(application, deps.Cookies, deps.Throttle, deps.Verifier)
+	sessions := handlers.NewSessions(application, deps.Cookies, deps.Guard, deps.Verifier, deps.SupportEmail)
 	playlists := handlers.NewPlaylists(application)
 	covers := handlers.NewCovers(application)
 

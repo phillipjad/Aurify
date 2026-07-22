@@ -30,6 +30,34 @@ func (q *Queries) ConsumeEmailToken(ctx context.Context, arg ConsumeEmailTokenPa
 	return result.RowsAffected(), nil
 }
 
+const createAuthBlock = `-- name: CreateAuthBlock :exec
+INSERT INTO auth_blocks (ip, identifier, blocked_at, failures, reason)
+VALUES ($1, $2, $3, $4, $5)
+ON CONFLICT (ip, identifier) DO NOTHING
+`
+
+type CreateAuthBlockParams struct {
+	Ip         string
+	Identifier string
+	BlockedAt  pgtype.Timestamptz
+	Failures   int32
+	Reason     string
+}
+
+// ON CONFLICT DO NOTHING keeps the original blocked_at, so a blocked pair that
+// keeps trying does not roll its own timestamp forward and hide when the abuse
+// actually started.
+func (q *Queries) CreateAuthBlock(ctx context.Context, arg CreateAuthBlockParams) error {
+	_, err := q.db.Exec(ctx, createAuthBlock,
+		arg.Ip,
+		arg.Identifier,
+		arg.BlockedAt,
+		arg.Failures,
+		arg.Reason,
+	)
+	return err
+}
+
 const createEmailToken = `-- name: CreateEmailToken :exec
 INSERT INTO email_tokens (token_hash, user_id, purpose, expires_at, created_at)
 VALUES ($1, $2, $3, $4, $5)
@@ -104,6 +132,22 @@ func (q *Queries) CreateSession(ctx context.Context, arg CreateSessionParams) er
 	return err
 }
 
+const deleteAuthBlock = `-- name: DeleteAuthBlock :exec
+DELETE FROM auth_blocks WHERE ip = $1 AND identifier = $2
+`
+
+type DeleteAuthBlockParams struct {
+	Ip         string
+	Identifier string
+}
+
+// Operator-only. Nothing in the request path calls this; it exists for the
+// future admin portal and for manual intervention.
+func (q *Queries) DeleteAuthBlock(ctx context.Context, arg DeleteAuthBlockParams) error {
+	_, err := q.db.Exec(ctx, deleteAuthBlock, arg.Ip, arg.Identifier)
+	return err
+}
+
 const deleteCredentialByUser = `-- name: DeleteCredentialByUser :exec
 DELETE FROM user_credentials WHERE user_id = $1
 `
@@ -134,6 +178,30 @@ DELETE FROM refresh_tokens WHERE session_id = $1
 func (q *Queries) DeleteRefreshTokensBySession(ctx context.Context, sessionID string) error {
 	_, err := q.db.Exec(ctx, deleteRefreshTokensBySession, sessionID)
 	return err
+}
+
+const getAuthBlock = `-- name: GetAuthBlock :one
+SELECT ip, identifier, blocked_at, failures, reason
+FROM auth_blocks
+WHERE ip = $1 AND identifier = $2
+`
+
+type GetAuthBlockParams struct {
+	Ip         string
+	Identifier string
+}
+
+func (q *Queries) GetAuthBlock(ctx context.Context, arg GetAuthBlockParams) (AuthBlock, error) {
+	row := q.db.QueryRow(ctx, getAuthBlock, arg.Ip, arg.Identifier)
+	var i AuthBlock
+	err := row.Scan(
+		&i.Ip,
+		&i.Identifier,
+		&i.BlockedAt,
+		&i.Failures,
+		&i.Reason,
+	)
+	return i, err
 }
 
 const getCredentialByUser = `-- name: GetCredentialByUser :one

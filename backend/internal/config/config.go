@@ -25,8 +25,11 @@ type Config struct {
 	// and password-reset links are built against, so it must be the address the
 	// user's browser can actually reach.
 	AppBaseURL string
-	Auth       AuthConfig
-	SMTP       SMTPConfig
+	// SupportEmail is shown to users who hit the permanent authentication
+	// lockout, since only an operator can lift one.
+	SupportEmail string
+	Auth         AuthConfig
+	SMTP         SMTPConfig
 }
 
 // AuthConfig holds the session and token settings.
@@ -84,6 +87,7 @@ func Load() Config {
 		ImageGenURL:   env("AURIFY_IMAGEGEN_URL", ""),
 		CORSOrigins:   splitList(env("AURIFY_CORS_ORIGINS", "http://localhost:5173")),
 		AppBaseURL:    env("AURIFY_APP_BASE_URL", "http://localhost:5173"),
+		SupportEmail:  env("AURIFY_SUPPORT_EMAIL", "support@aurify.local"),
 		Auth: AuthConfig{
 			SigningKeySeed: env("AURIFY_AUTH_SIGNING_KEY", ""),
 			Issuer:         env("AURIFY_AUTH_ISSUER", "aurify"),

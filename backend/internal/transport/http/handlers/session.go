@@ -1,6 +1,8 @@
 package handlers
 
 import (
+	"errors"
+
 	"github.com/fgrzl/mux"
 
 	"github.com/phillipjad/aurify/backend/internal/app"
@@ -11,8 +13,10 @@ import (
 	"github.com/phillipjad/aurify/backend/internal/app/command/signout"
 	"github.com/phillipjad/aurify/backend/internal/app/command/signup"
 	"github.com/phillipjad/aurify/backend/internal/app/command/verifyemail"
+	"github.com/phillipjad/aurify/backend/internal/app/lockout"
 	"github.com/phillipjad/aurify/backend/internal/app/query/getuser"
 	"github.com/phillipjad/aurify/backend/internal/app/sessions"
+	"github.com/phillipjad/aurify/backend/internal/domain"
 	"github.com/phillipjad/aurify/backend/internal/platform/auth"
 	"github.com/phillipjad/aurify/backend/internal/transport/http/dto"
 )
@@ -24,32 +28,84 @@ import (
 // the same concern: one establishes who the user is, the other grants Aurify
 // access to a music library.
 type Sessions struct {
-	app      *app.App
-	cookies  *CookieWriter
-	throttle *Throttle
-	verifier *auth.Verifier
+	app          *app.App
+	cookies      *CookieWriter
+	guard        *lockout.Guard
+	verifier     *auth.Verifier
+	supportEmail string
 }
 
 // NewSessions constructs the session handler.
-func NewSessions(a *app.App, cookies *CookieWriter, throttle *Throttle, verifier *auth.Verifier) *Sessions {
-	return &Sessions{app: a, cookies: cookies, throttle: throttle, verifier: verifier}
+func NewSessions(
+	a *app.App,
+	cookies *CookieWriter,
+	guard *lockout.Guard,
+	verifier *auth.Verifier,
+	supportEmail string,
+) *Sessions {
+	return &Sessions{app: a, cookies: cookies, guard: guard, verifier: verifier, supportEmail: supportEmail}
+}
+
+// guardOrReject consults the lockout policy before any work is done. It returns
+// false when the request must not proceed, having already written the response.
+//
+// Checking up front matters: a blocked pair should never reach password hashing
+// or the database, both so the block is cheap to enforce and so a locked-out
+// attacker learns nothing from timing.
+func (h *Sessions) guardOrReject(c mux.RouteContext, ip, identifier string) bool {
+	decision, err := h.guard.Check(c, ip, identifier)
+	if err != nil {
+		c.ServerError("internal error", err.Error())
+		return false
+	}
+	if decision.Blocked {
+		respondBlocked(c, h.supportEmail)
+		return false
+	}
+	return true
+}
+
+// recordFailure counts a failed attempt and writes the response, appending the
+// warning once the user is close to a permanent block.
+func (h *Sessions) recordFailure(c mux.RouteContext, ip, identifier string, cause error) {
+	decision, err := h.guard.RecordFailure(c, ip, identifier)
+	if err != nil {
+		c.ServerError("internal error", err.Error())
+		return
+	}
+	if decision.Blocked {
+		respondBlocked(c, h.supportEmail)
+		return
+	}
+	if note := warning(decision, h.supportEmail); note != "" {
+		c.JSON(401, map[string]string{
+			"title":  "Sign-in failed",
+			"detail": "Invalid email or password." + note,
+		})
+		return
+	}
+	respondError(c, cause)
 }
 
 // SignUp registers an account and sends a verification email.
 // POST /api/v1/auth/signup
 //
-// Throttled per IP and per submitted address. This endpoint reports whether an
-// address is already registered, which is a deliberate usability trade, and the
-// throttle is what keeps that disclosure from scaling into bulk enumeration of
-// the user table.
+// Guarded per (IP, address). This endpoint reports whether an address is
+// already registered, which is a deliberate usability trade, and the lockout is
+// what keeps that disclosure from scaling into bulk enumeration of the user
+// table.
+//
+// A duplicate address does not count as a failure: someone re-registering an
+// address they own is not attacking anything, and locking them out for it would
+// be hostile. Only malformed or rejected submissions count.
 func (h *Sessions) SignUp(c mux.RouteContext) {
 	var req dto.SignUpRequest
 	if err := c.Bind(&req); err != nil {
 		c.BadRequest("invalid request", "Body must be valid JSON.")
 		return
 	}
-	if !h.throttle.allowRequest(c, req.Email) {
-		tooManyRequests(c)
+	ip := clientIP(c.Request())
+	if !h.guardOrReject(c, ip, req.Email) {
 		return
 	}
 
@@ -58,9 +114,16 @@ func (h *Sessions) SignUp(c mux.RouteContext) {
 		Password:    req.Password,
 		DisplayName: req.DisplayName,
 	}); err != nil {
+		if !errors.Is(err, domain.ErrEmailTaken) {
+			if _, rerr := h.guard.RecordFailure(c, ip, req.Email); rerr != nil {
+				c.ServerError("internal error", rerr.Error())
+				return
+			}
+		}
 		respondError(c, err)
 		return
 	}
+	h.guard.Reset(ip, req.Email)
 	c.Created(dto.MessageResponse{Message: "Check your email for a verification link."})
 }
 
@@ -72,10 +135,10 @@ func (h *Sessions) SignIn(c mux.RouteContext) {
 		c.BadRequest("invalid request", "Body must be valid JSON.")
 		return
 	}
-	// Throttled on both the address and the source, so neither credential
-	// stuffing against one account nor spraying across many is cheap.
-	if !h.throttle.allowRequest(c, req.Email) {
-		tooManyRequests(c)
+	// Guarded on the (IP, address) pair, so neither credential stuffing against
+	// one account nor spraying across many is cheap.
+	ip := clientIP(c.Request())
+	if !h.guardOrReject(c, ip, req.Email) {
 		return
 	}
 
@@ -83,12 +146,20 @@ func (h *Sessions) SignIn(c mux.RouteContext) {
 		Email:     req.Email,
 		Password:  req.Password,
 		UserAgent: c.Request().UserAgent(),
-		IP:        clientIP(c.Request()),
+		IP:        ip,
 	})
 	if err != nil {
-		respondError(c, err)
+		// An unverified account is not a failed credential: the password was
+		// correct. Counting it would lock out the one user who most needs to
+		// retry after clicking their verification link.
+		if errors.Is(err, domain.ErrEmailNotVerified) {
+			respondError(c, err)
+			return
+		}
+		h.recordFailure(c, ip, req.Email, err)
 		return
 	}
+	h.guard.Reset(ip, req.Email)
 	h.respondWithSession(c, tokens)
 }
 
@@ -152,15 +223,17 @@ func (h *Sessions) VerifyEmail(c mux.RouteContext) {
 		c.BadRequest("invalid request", "Body must be valid JSON.")
 		return
 	}
-	if !h.throttle.allowRequest(c, "") {
-		tooManyRequests(c)
+	ip := clientIP(c.Request())
+	if !h.guardOrReject(c, ip, "") {
 		return
 	}
 
 	if err := h.app.Commands.VerifyEmail.Handle(c, verifyemail.Command{Token: req.Token}); err != nil {
-		respondError(c, err)
+		// A bad token here is a guess at a credential, so it counts.
+		h.recordFailure(c, ip, "", err)
 		return
 	}
+	h.guard.Reset(ip, "")
 	c.OK(dto.MessageResponse{Message: "Email verified. You can sign in now."})
 }
 
@@ -177,8 +250,7 @@ func (h *Sessions) ForgotPassword(c mux.RouteContext) {
 		c.BadRequest("invalid request", "Body must be valid JSON.")
 		return
 	}
-	if !h.throttle.allowRequest(c, req.Email) {
-		tooManyRequests(c)
+	if !h.guardOrReject(c, clientIP(c.Request()), req.Email) {
 		return
 	}
 
@@ -199,8 +271,8 @@ func (h *Sessions) ResetPassword(c mux.RouteContext) {
 		c.BadRequest("invalid request", "Body must be valid JSON.")
 		return
 	}
-	if !h.throttle.allowRequest(c, "") {
-		tooManyRequests(c)
+	ip := clientIP(c.Request())
+	if !h.guardOrReject(c, ip, "") {
 		return
 	}
 
@@ -208,9 +280,10 @@ func (h *Sessions) ResetPassword(c mux.RouteContext) {
 		Token:       req.Token,
 		NewPassword: req.NewPassword,
 	}); err != nil {
-		respondError(c, err)
+		h.recordFailure(c, ip, "", err)
 		return
 	}
+	h.guard.Reset(ip, "")
 	// Every session was revoked, so the browser's cookies are now worthless.
 	h.cookies.Clear(c)
 	c.OK(dto.MessageResponse{Message: "Password updated. Sign in with your new password."})

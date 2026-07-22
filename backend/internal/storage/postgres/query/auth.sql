@@ -88,3 +88,21 @@ UPDATE email_tokens SET consumed_at = $2 WHERE token_hash = $1 AND consumed_at I
 
 -- name: DeleteEmailTokensByUserPurpose :exec
 DELETE FROM email_tokens WHERE user_id = $1 AND purpose = $2;
+
+-- name: GetAuthBlock :one
+SELECT ip, identifier, blocked_at, failures, reason
+FROM auth_blocks
+WHERE ip = $1 AND identifier = $2;
+
+-- name: CreateAuthBlock :exec
+-- ON CONFLICT DO NOTHING keeps the original blocked_at, so a blocked pair that
+-- keeps trying does not roll its own timestamp forward and hide when the abuse
+-- actually started.
+INSERT INTO auth_blocks (ip, identifier, blocked_at, failures, reason)
+VALUES ($1, $2, $3, $4, $5)
+ON CONFLICT (ip, identifier) DO NOTHING;
+
+-- name: DeleteAuthBlock :exec
+-- Operator-only. Nothing in the request path calls this; it exists for the
+-- future admin portal and for manual intervention.
+DELETE FROM auth_blocks WHERE ip = $1 AND identifier = $2;
