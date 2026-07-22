@@ -48,6 +48,224 @@ paths:
       responses:
         "200":
           description: Success
+  /api/v1/auth/password/forgot:
+    post:
+      tags:
+        - aurify
+      summary: Send a password reset link
+      operationId: forgotPassword
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ForgotPasswordRequest'
+            example:
+              email: ""
+        required: true
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+              example:
+                message: ""
+  /api/v1/auth/password/reset:
+    post:
+      tags:
+        - aurify
+      summary: Set a new password using a reset token
+      operationId: resetPassword
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ResetPasswordRequest'
+            example:
+              token: ""
+              newpassword: ""
+        required: true
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+              example:
+                message: ""
+  /api/v1/auth/refresh:
+    post:
+      tags:
+        - aurify
+      summary: Rotate the refresh token and reissue the session
+      operationId: refreshSession
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionResponse'
+              example:
+                userid: ""
+                email: ""
+                displayname: ""
+                emailverified: false
+                csrftoken: ""
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+              example:
+                type: ""
+                title: ""
+                status: 0
+                detail: ""
+                instance: null
+  /api/v1/auth/session:
+    get:
+      tags:
+        - aurify
+      summary: Describe the signed-in user
+      operationId: getSession
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionResponse'
+              example:
+                userid: ""
+                email: ""
+                displayname: ""
+                emailverified: false
+                csrftoken: ""
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+              example:
+                type: ""
+                title: ""
+                status: 0
+                detail: ""
+                instance: null
+  /api/v1/auth/signin:
+    post:
+      tags:
+        - aurify
+      summary: Authenticate and start a session
+      operationId: signIn
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SignInRequest'
+            example:
+              email: ""
+              password: ""
+        required: true
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionResponse'
+              example:
+                userid: ""
+                email: ""
+                displayname: ""
+                emailverified: false
+                csrftoken: ""
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+              example:
+                type: ""
+                title: ""
+                status: 0
+                detail: ""
+                instance: null
+  /api/v1/auth/signout:
+    post:
+      tags:
+        - aurify
+      summary: Revoke the current session
+      operationId: signOut
+      responses:
+        "204":
+          description: No Content
+  /api/v1/auth/signup:
+    post:
+      tags:
+        - aurify
+      summary: Register an email/password account
+      operationId: signUp
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SignUpRequest'
+            example:
+              email: ""
+              password: ""
+              displayname: ""
+        required: true
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+              example:
+                message: ""
+        "409":
+          description: Response 409
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+              example:
+                type: ""
+                title: ""
+                status: 0
+                detail: ""
+                instance: null
+  /api/v1/auth/verify-email:
+    post:
+      tags:
+        - aurify
+      summary: Confirm an email address using an emailed token
+      operationId: verifyEmail
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TokenRequest'
+            example:
+              token: ""
+        required: true
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+              example:
+                message: ""
   /api/v1/covers:
     get:
       tags:
@@ -292,6 +510,11 @@ components:
         - playlistId
         - playlistName
         - createdAt
+    ForgotPasswordRequest:
+      type: object
+      properties:
+        email:
+          type: string
     GenerateCoverRequest:
       type: object
       properties:
@@ -306,6 +529,11 @@ components:
       required:
         - platform
         - playlistId
+    MessageResponse:
+      type: object
+      properties:
+        message:
+          type: string
     PlaylistResponse:
       type: object
       properties:
@@ -343,4 +571,45 @@ components:
         title:
           type: string
         type:
+          type: string
+    ResetPasswordRequest:
+      type: object
+      properties:
+        newPassword:
+          type: string
+        token:
+          type: string
+    SessionResponse:
+      type: object
+      properties:
+        csrfToken:
+          type: string
+        displayName:
+          type: string
+        email:
+          type: string
+        emailVerified:
+          type: boolean
+        userId:
+          type: string
+    SignInRequest:
+      type: object
+      properties:
+        email:
+          type: string
+        password:
+          type: string
+    SignUpRequest:
+      type: object
+      properties:
+        displayName:
+          type: string
+        email:
+          type: string
+        password:
+          type: string
+    TokenRequest:
+      type: object
+      properties:
+        token:
           type: string
