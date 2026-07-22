@@ -39,14 +39,18 @@ type ColorWeightResponse struct {
 
 // CoverResponse is the API representation of a generated cover.
 type CoverResponse struct {
-	ID         string                `json:"id"                 binding:"required"`
-	Status     domain.CoverStatus    `json:"status"             binding:"required" enum:"pending,analyzing,generating,ready,failed"`
-	Platform   domain.DSPPlatform    `json:"platform"           binding:"required" enum:"spotify,apple_music,youtube_music"`
-	PlaylistID string                `json:"playlistId"         binding:"required"`
-	ImageURL   string                `json:"imageUrl,omitempty"`
-	Prompt     string                `json:"prompt,omitempty"`
-	Palette    []ColorWeightResponse `json:"palette,omitempty"`
-	CreatedAt  string                `json:"createdAt"          binding:"required"`
+	ID           string                `json:"id"                 binding:"required"`
+	Status       domain.CoverStatus    `json:"status"             binding:"required" enum:"pending,analyzing,generating,ready,failed"`
+	Platform     domain.DSPPlatform    `json:"platform"           binding:"required" enum:"spotify,apple_music,youtube_music"`
+	PlaylistID   string                `json:"playlistId"         binding:"required"`
+	PlaylistName string                `json:"playlistName"       binding:"required"`
+	ImageURL     string                `json:"imageUrl,omitempty"`
+	Prompt       string                `json:"prompt,omitempty"`
+	Palette      []ColorWeightResponse `json:"palette,omitempty"`
+	// Error carries the failure reason for status="failed" so the client can
+	// explain what went wrong instead of showing a dead tile.
+	Error     string `json:"error,omitempty"`
+	CreatedAt string `json:"createdAt"       binding:"required"`
 }
 
 // NewPlaylistList maps domain playlists to their API representation.
@@ -76,14 +80,16 @@ func NewCoverResponse(c *domain.Cover) CoverResponse {
 		})
 	}
 	return CoverResponse{
-		ID:         c.ID,
-		Status:     c.Status,
-		Platform:   c.Platform,
-		PlaylistID: c.PlaylistID,
-		ImageURL:   c.ImageURL,
-		Prompt:     c.Prompt,
-		Palette:    palette,
-		CreatedAt:  c.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
+		ID:           c.ID,
+		Status:       c.Status,
+		Platform:     c.Platform,
+		PlaylistID:   c.PlaylistID,
+		PlaylistName: c.PlaylistName,
+		ImageURL:     c.ImageURL,
+		Prompt:       c.Prompt,
+		Palette:      palette,
+		Error:        c.Error,
+		CreatedAt:    c.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
 	}
 }
 

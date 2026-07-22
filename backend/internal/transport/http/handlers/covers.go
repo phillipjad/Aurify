@@ -4,9 +4,11 @@ import (
 	"github.com/fgrzl/mux"
 
 	"github.com/phillipjad/aurify/backend/internal/app"
+	"github.com/phillipjad/aurify/backend/internal/app/command/deletecover"
 	"github.com/phillipjad/aurify/backend/internal/app/command/generatecover"
 	"github.com/phillipjad/aurify/backend/internal/app/query/getcover"
 	"github.com/phillipjad/aurify/backend/internal/app/query/listcovers"
+	"github.com/phillipjad/aurify/backend/internal/domain"
 	"github.com/phillipjad/aurify/backend/internal/transport/http/dto"
 )
 
@@ -72,6 +74,31 @@ func (h *Covers) Get(c mux.RouteContext) {
 	c.OK(dto.NewCoverResponse(cover))
 }
 
+// Delete removes one of the current user's covers (command).
+// DELETE /api/v1/covers/{id}
+func (h *Covers) Delete(c mux.RouteContext) {
+	userID := currentUser(c)
+	if userID == "" {
+		c.Unauthorized()
+		return
+	}
+
+	id, ok := c.Params().String("id")
+	if !ok {
+		c.BadRequest("missing id", "path parameter 'id' is required")
+		return
+	}
+
+	if err := h.app.Commands.DeleteCover.Handle(c, deletecover.Command{
+		CoverID: id,
+		UserID:  userID,
+	}); err != nil {
+		respondError(c, err)
+		return
+	}
+	c.NoContent()
+}
+
 // List returns the current user's covers (query).
 // GET /api/v1/covers?limit=&offset=
 func (h *Covers) List(c mux.RouteContext) {
@@ -83,9 +110,11 @@ func (h *Covers) List(c mux.RouteContext) {
 
 	limit, _ := c.Query().Int("limit")
 	offset, _ := c.Query().Int("offset")
+	status, _ := c.Query().String("status")
 
 	covers, err := h.app.Queries.ListCovers.Handle(c, listcovers.Query{
 		UserID: userID,
+		Status: domain.CoverStatus(status),
 		Limit:  limit,
 		Offset: offset,
 	})

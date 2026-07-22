@@ -67,7 +67,8 @@ export interface paths {
         get: operations["getCover"];
         put?: never;
         post?: never;
-        delete?: never;
+        /** Delete a generated cover */
+        delete: operations["deleteCover"];
         options?: never;
         head?: never;
         patch?: never;
@@ -101,12 +102,14 @@ export interface components {
         };
         CoverResponse: {
             createdAt: string;
+            error?: string;
             id: string;
             imageUrl?: string;
             palette?: components["schemas"]["ColorWeightResponse"][];
             /** @enum {string} */
             platform: "spotify" | "apple_music" | "youtube_music";
             playlistId: string;
+            playlistName: string;
             prompt?: string;
             /** @enum {string} */
             status: "pending" | "analyzing" | "generating" | "ready" | "failed";
@@ -197,7 +200,23 @@ export interface operations {
     };
     listCovers: {
         parameters: {
-            query?: never;
+            query?: {
+                /**
+                 * @description Filter to one lifecycle status (empty = all)
+                 * @example ready
+                 */
+                status?: string;
+                /**
+                 * @description Page size (default 20, max 100)
+                 * @example 20
+                 */
+                limit?: string;
+                /**
+                 * @description Rows to skip
+                 * @example 0
+                 */
+                offset?: string;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -247,9 +266,11 @@ export interface operations {
                      *       "status": "",
                      *       "platform": "",
                      *       "playlistid": "",
+                     *       "playlistname": "",
                      *       "imageurl": "",
                      *       "prompt": "",
                      *       "palette": [],
+                     *       "error": "",
                      *       "createdat": ""
                      *     }
                      */
@@ -285,14 +306,58 @@ export interface operations {
                      *       "status": "",
                      *       "platform": "",
                      *       "playlistid": "",
+                     *       "playlistname": "",
                      *       "imageurl": "",
                      *       "prompt": "",
                      *       "palette": [],
+                     *       "error": "",
                      *       "createdat": ""
                      *     }
                      */
                     "application/json": components["schemas"]["CoverResponse"];
                 };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "type": "",
+                     *       "title": "",
+                     *       "status": 0,
+                     *       "detail": "",
+                     *       "instance": null
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    deleteCover: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description Cover id
+                 * @example 000000000000000000000000
+                 */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Not Found */
             404: {
@@ -322,6 +387,26 @@ export interface operations {
                  * @example spotify
                  */
                 platform: string;
+                /**
+                 * @description Case-insensitive search over name and description
+                 * @example coffee
+                 */
+                q?: string;
+                /**
+                 * @description Ordering: name or tracks
+                 * @example name
+                 */
+                sort?: string;
+                /**
+                 * @description Page size (default 20, max 100)
+                 * @example 20
+                 */
+                limit?: string;
+                /**
+                 * @description Rows to skip
+                 * @example 0
+                 */
+                offset?: string;
             };
             header?: never;
             path?: never;

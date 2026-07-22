@@ -3,7 +3,11 @@ import { createRoot } from 'react-dom/client'
 import { QueryClientProvider } from '@tanstack/react-query'
 import { RouterProvider, createRouter } from '@tanstack/react-router'
 
+import '@fontsource-variable/ibm-plex-sans'
+import '@fontsource-variable/familjen-grotesk'
+
 import { ThemeProvider } from './components/theme-provider'
+import { NotFound, RouteError } from './components/route-fallbacks'
 import { routeTree } from './routeTree.gen'
 import { queryClient } from './lib/query-client'
 import './styles.css'
@@ -13,6 +17,10 @@ const router = createRouter({
   routeTree,
   context: { queryClient },
   defaultPreload: 'intent',
+  // Branded fallbacks for unknown URLs and render-time errors, rendered inside
+  // the root layout so the header and navigation stay put.
+  defaultNotFoundComponent: NotFound,
+  defaultErrorComponent: RouteError,
 })
 
 declare module '@tanstack/react-router' {

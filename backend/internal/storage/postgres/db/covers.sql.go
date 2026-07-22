@@ -11,6 +11,26 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const deleteCover = `-- name: DeleteCover :execrows
+DELETE FROM covers
+WHERE id = $1 AND user_id = $2
+`
+
+type DeleteCoverParams struct {
+	ID     string
+	UserID string
+}
+
+// Scoped to the owner so a user can never delete another user's cover; the
+// rows-affected count lets the caller distinguish "deleted" from "not found".
+func (q *Queries) DeleteCover(ctx context.Context, arg DeleteCoverParams) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteCover, arg.ID, arg.UserID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const getCoverByID = `-- name: GetCoverByID :one
 SELECT id, user_id, platform, playlist_id, playlist_name, status,
        prompt, image_url, analysis, error, created_at, updated_at
@@ -43,18 +63,26 @@ SELECT id, user_id, platform, playlist_id, playlist_name, status,
        prompt, image_url, analysis, error, created_at, updated_at
 FROM covers
 WHERE user_id = $1
+  AND ($2::text = '' OR status = $2::text)
 ORDER BY created_at DESC
-LIMIT $2 OFFSET $3
+LIMIT $4 OFFSET $3
 `
 
 type ListCoversByUserParams struct {
-	UserID string
-	Limit  int32
-	Offset int32
+	UserID    string
+	Status    string
+	RowOffset int32
+	RowLimit  int32
 }
 
+// An empty @status returns every lifecycle state; otherwise it filters to one.
 func (q *Queries) ListCoversByUser(ctx context.Context, arg ListCoversByUserParams) ([]Cover, error) {
-	rows, err := q.db.Query(ctx, listCoversByUser, arg.UserID, arg.Limit, arg.Offset)
+	rows, err := q.db.Query(ctx, listCoversByUser,
+		arg.UserID,
+		arg.Status,
+		arg.RowOffset,
+		arg.RowLimit,
+	)
 	if err != nil {
 		return nil, err
 	}

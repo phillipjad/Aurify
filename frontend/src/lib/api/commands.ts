@@ -30,3 +30,16 @@ export function useGenerateCover() {
     },
   })
 }
+
+/** Delete a cover, then refresh the covers list. Returns 204 (no body). */
+export function useDeleteCover() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => apiFetch<void>(`/covers/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+    onSuccess: (_data, id) => {
+      // Drop the detail cache for the gone cover and refetch the list.
+      qc.removeQueries({ queryKey: queryKeys.cover(id) })
+      void qc.invalidateQueries({ queryKey: queryKeys.covers() })
+    },
+  })
+}

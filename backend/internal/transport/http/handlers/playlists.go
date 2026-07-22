@@ -32,9 +32,18 @@ func (h *Playlists) List(c mux.RouteContext) {
 		return
 	}
 
+	search, _ := c.Query().String("q")
+	sortKey, _ := c.Query().String("sort")
+	limit, _ := c.Query().Int("limit")
+	offset, _ := c.Query().Int("offset")
+
 	playlists, err := h.app.Queries.ListPlaylists.Handle(c, listplaylists.Query{
 		UserID:   userID,
 		Platform: domain.DSPPlatform(platform),
+		Search:   search,
+		Sort:     listplaylists.SortKey(sortKey),
+		Limit:    limit,
+		Offset:   offset,
 	})
 	if err != nil {
 		respondError(c, err)

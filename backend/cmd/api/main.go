@@ -16,6 +16,7 @@ import (
 	"github.com/phillipjad/aurify/backend/internal/app"
 	"github.com/phillipjad/aurify/backend/internal/app/command"
 	"github.com/phillipjad/aurify/backend/internal/app/command/connectdsp"
+	"github.com/phillipjad/aurify/backend/internal/app/command/deletecover"
 	"github.com/phillipjad/aurify/backend/internal/app/command/generatecover"
 	"github.com/phillipjad/aurify/backend/internal/app/query"
 	"github.com/phillipjad/aurify/backend/internal/app/query/getcover"
@@ -84,6 +85,7 @@ func run() error {
 				store.Users(), store.Covers(), providers,
 				lyricsClient, sentiment, engine, prompts, images,
 			),
+			DeleteCover: deletecover.NewHandler(store.Covers()),
 		},
 		Queries: &query.Bus{
 			ListPlaylists: listplaylists.NewHandler(store.Users(), providers),

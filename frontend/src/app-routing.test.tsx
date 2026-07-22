@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { RouterProvider, createMemoryHistory, createRouter } from '@tanstack/react-router'
 
 import { ThemeProvider } from '@/components/theme-provider'
+import { NotFound, RouteError } from '@/components/route-fallbacks'
 import { routeTree } from '@/routeTree.gen'
 import { apiFetch } from '@/lib/api/client'
 
@@ -25,6 +26,8 @@ function renderApp(initialEntries: string[]) {
     routeTree,
     context: { queryClient },
     history: createMemoryHistory({ initialEntries }),
+    defaultNotFoundComponent: NotFound,
+    defaultErrorComponent: RouteError,
   })
   render(
     <ThemeProvider>
@@ -59,7 +62,18 @@ describe('app routing', () => {
     await userEvent.click(playlistsNav)
 
     expect(await screen.findByRole('heading', { name: 'Your playlists' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Spotify' })).toBeInTheDocument()
+    expect(screen.getByRole('radio', { name: 'Spotify' })).toBeInTheDocument()
+  })
+
+  it('announces the new page and moves focus to main on navigation', async () => {
+    renderApp(['/'])
+    await userEvent.click(await screen.findByRole('link', { name: 'Playlists' }))
+    await screen.findByRole('heading', { name: 'Your playlists' })
+
+    // Screen-reader users get told the page changed, and focus lands in the
+    // new content instead of staying on the (now-stale) nav link.
+    expect(screen.getByRole('status')).toHaveTextContent(/playlists/i)
+    expect(document.getElementById('main')).toHaveFocus()
   })
 
   it('renders the covers page with its empty state and CTA link', async () => {
@@ -68,5 +82,12 @@ describe('app routing', () => {
     expect(await screen.findByText('No covers yet')).toBeInTheDocument()
     // The empty-state action is a real router <Link> to /playlists.
     expect(screen.getByRole('link', { name: 'Browse playlists' })).toBeInTheDocument()
+  })
+
+  it('shows the not-found page for an unknown URL', async () => {
+    renderApp(['/no-such-page'])
+
+    expect(await screen.findByText('Page not found')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /back home/i })).toBeInTheDocument()
   })
 })

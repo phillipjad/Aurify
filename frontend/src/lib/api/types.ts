@@ -14,6 +14,9 @@ export type Playlist = Schemas['PlaylistResponse']
 export type Cover = Schemas['CoverResponse']
 export type GenerateCoverRequest = Schemas['GenerateCoverRequest']
 
+/** RFC 7807 error body returned by every failing endpoint. */
+export type ProblemDetails = Schemas['ProblemDetails']
+
 /** DSP platforms — the union comes from the `enum` on the spec's platform field. */
 export type Platform = GenerateCoverRequest['platform']
 

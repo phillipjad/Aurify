@@ -24,3 +24,9 @@ Thumbs.db
 .idea/
 .vscode/*
 !.vscode/extensions.json
+
+# Agentic data
+impeccable.json
+.impeccable
+.claude/
+.playwright-mcp/
