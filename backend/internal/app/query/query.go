@@ -4,6 +4,7 @@ package query
 
 import (
 	"github.com/phillipjad/aurify/backend/internal/app/query/getcover"
+	"github.com/phillipjad/aurify/backend/internal/app/query/getuser"
 	"github.com/phillipjad/aurify/backend/internal/app/query/listcovers"
 	"github.com/phillipjad/aurify/backend/internal/app/query/listplaylists"
 )
@@ -13,4 +14,5 @@ type Bus struct {
 	ListPlaylists *listplaylists.Handler
 	GetCover      *getcover.Handler
 	ListCovers    *listcovers.Handler
+	GetUser       *getuser.Handler
 }
