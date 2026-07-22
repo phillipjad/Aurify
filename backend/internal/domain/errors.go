@@ -16,9 +16,13 @@ var (
 	ErrInvalidCredentials = errors.New("invalid email or password")
 
 	// ErrEmailTaken is returned when a signup targets an address that already
-	// exists. It never reaches the client: the signup handler answers
-	// identically whether or not the address was free, and the owner is told by
-	// email instead.
+	// exists, and is surfaced to the client so it can point the user at sign-in
+	// rather than silently doing nothing.
+	//
+	// This deliberately makes signup an account-existence oracle. The trade is
+	// accepted for usability, and is compensated for by rate limiting the signup
+	// route per IP; password reset keeps its non-committal response so it does
+	// not become a second, cheaper oracle.
 	ErrEmailTaken = errors.New("email already registered")
 
 	// ErrEmailNotVerified gates actions that require a proven address, notably
