@@ -1,4 +1,5 @@
-import { AlertTriangle, ImageOff, RefreshCw, Sparkles } from 'lucide-react'
+import { useEffect, useRef } from 'react'
+import { AlertTriangle, ImageOff, Loader2, RefreshCw, Sparkles } from 'lucide-react'
 import { Link } from '@tanstack/react-router'
 
 import { EmptyState } from '@/components/empty-state'
@@ -38,7 +39,11 @@ export function CoverGallery() {
     )
   }
 
-  if (!covers.data || covers.data.length === 0) {
+  // Pages partition by offset, but dedupe by id anyway so a cover created or
+  // deleted between page refetches can never surface a duplicate React key.
+  const items = dedupeById(covers.data?.pages.flat() ?? [])
+
+  if (items.length === 0) {
     return (
       <EmptyState
         icon={Sparkles}
@@ -54,14 +59,83 @@ export function CoverGallery() {
   }
 
   return (
-    <ul className={GRID}>
-      {covers.data.map((cover) => (
-        <li key={cover.id}>
-          <CoverTile cover={cover} />
-        </li>
-      ))}
-    </ul>
+    <div className="space-y-4">
+      <ul className={GRID}>
+        {items.map((cover) => (
+          <li key={cover.id}>
+            <CoverTile cover={cover} />
+          </li>
+        ))}
+      </ul>
+      <LoadMore
+        hasNextPage={covers.hasNextPage}
+        isFetchingNextPage={covers.isFetchingNextPage}
+        fetchNextPage={() => void covers.fetchNextPage()}
+      />
+    </div>
   )
+}
+
+/**
+ * Infinite-scroll trigger: an off-screen sentinel loads the next page as it
+ * nears the viewport, and a real "Load more" button is the keyboard / no-observer
+ * fallback (and the visible affordance that more exists).
+ */
+function LoadMore({
+  hasNextPage,
+  isFetchingNextPage,
+  fetchNextPage,
+}: {
+  hasNextPage: boolean
+  isFetchingNextPage: boolean
+  fetchNextPage: () => void
+}) {
+  const sentinel = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const el = sentinel.current
+    // No observer (SSR, jsdom, ancient browsers) → the "Load more" button below
+    // is the fallback, so auto-loading is a progressive enhancement, not a
+    // requirement.
+    if (!el || !hasNextPage || typeof IntersectionObserver === 'undefined') return
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting && !isFetchingNextPage) fetchNextPage()
+      },
+      { rootMargin: '400px' },
+    )
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [hasNextPage, isFetchingNextPage, fetchNextPage])
+
+  if (!hasNextPage && !isFetchingNextPage) return null
+
+  return (
+    <div ref={sentinel} className="flex justify-center pt-2">
+      {isFetchingNextPage ? (
+        <span className="flex items-center gap-2 text-sm text-muted-foreground">
+          <Loader2 aria-hidden="true" className="size-4 animate-spin" />
+          Loading more…
+        </span>
+      ) : (
+        <Button variant="outline" size="sm" onClick={fetchNextPage}>
+          Load more covers
+        </Button>
+      )}
+    </div>
+  )
+}
+
+function dedupeById(covers: Cover[]): Cover[] {
+  const seen = new Set<string>()
+  const out: Cover[] = []
+  for (const cover of covers) {
+    if (!seen.has(cover.id)) {
+      seen.add(cover.id)
+      out.push(cover)
+    }
+  }
+  return out
 }
 
 // A gallery tile is a pure navigation target: the whole card links to the cover

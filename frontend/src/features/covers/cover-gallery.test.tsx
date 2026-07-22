@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest'
 import { screen, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 
 import { CoverGallery } from '@/features/covers/cover-gallery'
 import { ApiError, apiFetch } from '@/lib/api/client'
@@ -51,6 +52,31 @@ describe('CoverGallery', () => {
     mockFetch.mockResolvedValue([READY_COVER])
     renderWithProviders(<CoverGallery />)
     expect(await screen.findByText('Ready')).toBeInTheDocument()
+  })
+
+  it('pages through covers: a full first page reveals Load more, which fetches the next offset', async () => {
+    const page = (start: number, count: number) =>
+      Array.from({ length: count }, (_, i) => ({
+        ...READY_COVER,
+        id: `c${start + i}`,
+        playlistName: `Playlist ${start + i}`,
+      }))
+    mockFetch.mockImplementation((path: string) => {
+      const offset = Number(new URL(`http://x${path}`).searchParams.get('offset') ?? '0')
+      // First page is full (20) so more exist; the second page is short (ends it).
+      return Promise.resolve(offset === 0 ? page(0, 20) : page(20, 3))
+    })
+    renderWithProviders(<CoverGallery />)
+
+    await screen.findByRole('heading', { name: 'Playlist 0' })
+    expect(mockFetch).toHaveBeenCalledWith('/covers?limit=20&offset=0')
+
+    await userEvent.click(await screen.findByRole('button', { name: /load more/i }))
+
+    expect(await screen.findByRole('heading', { name: 'Playlist 22' })).toBeInTheDocument()
+    expect(mockFetch).toHaveBeenCalledWith('/covers?limit=20&offset=20')
+    // Short second page → no further Load more.
+    expect(screen.queryByRole('button', { name: /load more/i })).not.toBeInTheDocument()
   })
 
   it('renders the palette as readable text, not a hover-only tooltip', async () => {
