@@ -20,9 +20,13 @@ import (
 
 // Store holds the pgx pool and the repositories built on top of it.
 type Store struct {
-	pool   *pgxpool.Pool
-	users  *UserRepository
-	covers *CoverRepository
+	pool        *pgxpool.Pool
+	users       *UserRepository
+	covers      *CoverRepository
+	credentials *CredentialRepository
+	identities  *IdentityRepository
+	sessions    *SessionRepository
+	emailTokens *EmailTokenRepository
 }
 
 // Connect dials PostgreSQL, verifies the connection, brings the schema up to
@@ -47,9 +51,13 @@ func Connect(ctx context.Context, dsn string) (*Store, error) {
 
 	queries := db.New(pool)
 	return &Store{
-		pool:   pool,
-		users:  &UserRepository{pool: pool, q: queries},
-		covers: &CoverRepository{q: queries},
+		pool:        pool,
+		users:       &UserRepository{pool: pool, q: queries},
+		covers:      &CoverRepository{q: queries},
+		credentials: &CredentialRepository{q: queries},
+		identities:  &IdentityRepository{q: queries},
+		sessions:    &SessionRepository{pool: pool, q: queries},
+		emailTokens: &EmailTokenRepository{q: queries},
 	}, nil
 }
 
@@ -78,6 +86,18 @@ func (s *Store) Users() *UserRepository { return s.users }
 
 // Covers returns the cover repository.
 func (s *Store) Covers() *CoverRepository { return s.covers }
+
+// Credentials returns the password-credential repository.
+func (s *Store) Credentials() *CredentialRepository { return s.credentials }
+
+// Identities returns the federated-identity repository.
+func (s *Store) Identities() *IdentityRepository { return s.identities }
+
+// Sessions returns the session and refresh-token repository.
+func (s *Store) Sessions() *SessionRepository { return s.sessions }
+
+// EmailTokens returns the email-token repository.
+func (s *Store) EmailTokens() *EmailTokenRepository { return s.emailTokens }
 
 // Ping checks connectivity; used by the readiness probe.
 func (s *Store) Ping(ctx context.Context) error { return s.pool.Ping(ctx) }

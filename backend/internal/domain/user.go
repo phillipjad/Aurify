@@ -17,9 +17,17 @@ type User struct {
 	ID          string
 	Email       string
 	DisplayName string
-	Connections map[DSPPlatform]DSPConnection
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
+	// EmailVerified reports whether the address on Email has been proven. It
+	// gates federated account linking: linking Google to an unverified local
+	// account would let an attacker pre-register a victim's address and inherit
+	// the account when the victim first signs in with Google.
+	//
+	// It is read-only through UserRepository.Save; only the verify-email command
+	// changes it (see the UpsertUser query).
+	EmailVerified bool
+	Connections   map[DSPPlatform]DSPConnection
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
 }
 
 // DSPConnection holds the OAuth credentials and state for one linked DSP
