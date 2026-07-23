@@ -71,6 +71,32 @@ func (r *UserRepository) Save(ctx context.Context, user *domain.User) error {
 	return tx.Commit(ctx)
 }
 
+// Create inserts a new user row, carrying EmailVerified through, which Save
+// deliberately will not do.
+//
+// It writes no DSP connections: a user being created has none, and a federated
+// sign-in is the only caller. Save remains the path for an existing user whose
+// connection set has to be reconciled.
+func (r *UserRepository) Create(ctx context.Context, user *domain.User) error {
+	now := time.Now().UTC()
+	if user.ID == "" {
+		user.ID = uuid.NewString()
+	}
+	if user.CreatedAt.IsZero() {
+		user.CreatedAt = now
+	}
+	user.UpdatedAt = now
+
+	return r.q.CreateUser(ctx, db.CreateUserParams{
+		ID:            user.ID,
+		Email:         user.Email,
+		DisplayName:   user.DisplayName,
+		CreatedAt:     tsFromTime(user.CreatedAt),
+		UpdatedAt:     tsFromTime(user.UpdatedAt),
+		EmailVerified: user.EmailVerified,
+	})
+}
+
 // FindByID looks up a user by id, mapping a miss to domain.ErrNotFound.
 func (r *UserRepository) FindByID(ctx context.Context, id string) (*domain.User, error) {
 	row, err := r.q.GetUserByID(ctx, id)

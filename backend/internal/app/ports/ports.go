@@ -14,7 +14,16 @@ import (
 
 // UserRepository persists Aurify users and their DSP connections.
 type UserRepository interface {
+	// Save updates an existing user. It deliberately does not carry
+	// EmailVerified: that state is owned by the verification flows, and letting
+	// a general-purpose save write it means any stale in-memory User could
+	// un-verify an account. Use Create to set it when the row is born.
 	Save(ctx context.Context, user *domain.User) error
+	// Create inserts a new user, including EmailVerified. A federated sign-in
+	// needs this: the provider has already vouched for the address, and a new
+	// federated account has no password, so leaving it unverified strands it
+	// behind a verification flow it can never complete.
+	Create(ctx context.Context, user *domain.User) error
 	FindByID(ctx context.Context, id string) (*domain.User, error)
 	FindByEmail(ctx context.Context, email string) (*domain.User, error)
 }

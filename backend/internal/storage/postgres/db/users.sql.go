@@ -11,6 +11,37 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const createUser = `-- name: CreateUser :exec
+INSERT INTO users (id, email, display_name, created_at, updated_at, email_verified)
+VALUES ($1, $2, $3, $4, $5, $6)
+`
+
+type CreateUserParams struct {
+	ID            string
+	Email         string
+	DisplayName   string
+	CreatedAt     pgtype.Timestamptz
+	UpdatedAt     pgtype.Timestamptz
+	EmailVerified bool
+}
+
+// Unlike UpsertUser this does write email_verified. Creation is the one moment
+// the value is being asserted rather than saved back, so there is no earlier
+// read to go stale: the caller is stating what the row is born as. UpsertUser
+// still refuses to carry the column, which is what stops a stale in-memory User
+// from silently un-verifying an account later.
+func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) error {
+	_, err := q.db.Exec(ctx, createUser,
+		arg.ID,
+		arg.Email,
+		arg.DisplayName,
+		arg.CreatedAt,
+		arg.UpdatedAt,
+		arg.EmailVerified,
+	)
+	return err
+}
+
 const getUserByEmail = `-- name: GetUserByEmail :one
 SELECT id, email, display_name, created_at, updated_at, email_verified
 FROM users
