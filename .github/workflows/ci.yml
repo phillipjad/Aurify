@@ -34,13 +34,13 @@ jobs:
       postgres:
         image: postgres:17
         env:
-          POSTGRES_DB: aurify
+          POSTGRES_DB: aurify_test
           POSTGRES_USER: aurify
           POSTGRES_PASSWORD: aurify
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U aurify -d aurify"
+          --health-cmd "pg_isready -U aurify -d aurify_test"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
@@ -57,7 +57,7 @@ jobs:
 
       - name: Test
         env:
-          AURIFY_TEST_DATABASE_URL: postgres://aurify:aurify@localhost:5432/aurify?sslmode=disable
+          AURIFY_TEST_DATABASE_URL: postgres://aurify:aurify@localhost:5432/aurify_test?sslmode=disable
         run: cd backend && go test ./...
 
       - name: Build
