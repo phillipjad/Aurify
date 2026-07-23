@@ -28,7 +28,6 @@ import (
 	"github.com/phillipjad/aurify/backend/internal/app/command/signup"
 	"github.com/phillipjad/aurify/backend/internal/app/command/verifyemail"
 	"github.com/phillipjad/aurify/backend/internal/app/lockout"
-	"github.com/phillipjad/aurify/backend/internal/app/ports"
 	"github.com/phillipjad/aurify/backend/internal/app/query"
 	"github.com/phillipjad/aurify/backend/internal/app/query/getcover"
 	"github.com/phillipjad/aurify/backend/internal/app/query/getuser"
@@ -69,6 +68,11 @@ func main() {
 
 func run() error {
 	cfg := config.Load()
+	// Fail fast, before anything is constructed. A deployment missing a mail
+	// relay used to start happily and then write live reset tokens into the log.
+	if err := cfg.Validate(); err != nil {
+		return err
+	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -116,7 +120,17 @@ func run() error {
 		Refresh: cfg.Auth.RefreshTTL,
 		Session: cfg.Auth.SessionTTL,
 	})
-	mailer := resolveMailer(cfg.SMTP)
+	mailer, err := email.Resolve(email.SMTPConfig{
+		Host:     cfg.SMTP.Host,
+		Port:     cfg.SMTP.Port,
+		Username: cfg.SMTP.Username,
+		Password: cfg.SMTP.Password,
+		From:     cfg.SMTP.From,
+		TLS:      cfg.SMTP.TLS,
+	})
+	if err != nil {
+		return err
+	}
 
 	// Sign in with Google. Empty credentials are not an error: the provider then
 	// reports itself disabled and its routes answer 501, so a deployment that
@@ -196,44 +210,12 @@ func run() error {
 	return server.Listen(ctx)
 }
 
-// resolveSigningKey loads the configured Ed25519 seed, or generates an
-// ephemeral key when none is set.
+// resolveSigningKey loads the configured Ed25519 seed.
 //
-// The ephemeral path is a development convenience and is logged loudly: keys
-// that change on restart invalidate every outstanding access token, and a
-// second instance would sign with a key the first cannot verify. Production
-// must set AURIFY_AUTH_SIGNING_KEY.
+// There is no generated fallback. A key that changes on restart silently signs
+// every user out, and two instances holding different keys reject each other's
+// tokens, which surfaces as intermittent 401s that are painful to trace back to
+// a missing variable. Config.Validate rejects an empty seed before we get here.
 func resolveSigningKey(seed string) (ed25519.PrivateKey, error) {
-	if seed != "" {
-		return auth.ParsePrivateKeySeed(seed)
-	}
-
-	generated, err := auth.GenerateKeySeed()
-	if err != nil {
-		return nil, err
-	}
-	slog.Warn("AURIFY_AUTH_SIGNING_KEY is not set, generating an ephemeral signing key; " +
-		"sessions will not survive a restart and multiple instances will reject each other's tokens")
-	return auth.ParsePrivateKeySeed(generated)
-}
-
-// resolveMailer picks the SMTP relay when one is configured, and otherwise the
-// development sender that logs messages instead of delivering them.
-func resolveMailer(cfg config.SMTPConfig) ports.EmailSender {
-	if cfg.Host == "" {
-		slog.Warn("AURIFY_SMTP_HOST is not set, verification and reset emails will be written to the log")
-		return email.LogSender{}
-	}
-	sender, err := email.NewSMTPSender(email.SMTPConfig{
-		Host:     cfg.Host,
-		Port:     cfg.Port,
-		Username: cfg.Username,
-		Password: cfg.Password,
-		From:     cfg.From,
-	})
-	if err != nil {
-		slog.Error("smtp configuration is invalid, falling back to the log sender", "error", err)
-		return email.LogSender{}
-	}
-	return sender
+	return auth.ParsePrivateKeySeed(seed)
 }

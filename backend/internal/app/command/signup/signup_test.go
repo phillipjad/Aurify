@@ -39,7 +39,10 @@ func (f *fakeUsers) FindByEmail(_ context.Context, email string) (*domain.User, 
 	return nil, domain.ErrNotFound
 }
 
-type fakeCredentials struct{ upserts []domain.Credential }
+type fakeCredentials struct {
+	upserts  []domain.Credential
+	verified map[string]bool
+}
 
 func (f *fakeCredentials) Upsert(_ context.Context, c domain.Credential) error {
 	f.upserts = append(f.upserts, c)
@@ -48,7 +51,13 @@ func (f *fakeCredentials) Upsert(_ context.Context, c domain.Credential) error {
 func (f *fakeCredentials) FindByUser(context.Context, string) (domain.Credential, error) {
 	return domain.Credential{}, domain.ErrNotFound
 }
-func (f *fakeCredentials) SetEmailVerified(context.Context, string, bool) error { return nil }
+func (f *fakeCredentials) SetEmailVerified(_ context.Context, userID string, v bool) error {
+	if f.verified == nil {
+		f.verified = map[string]bool{}
+	}
+	f.verified[userID] = v
+	return nil
+}
 
 type fakeTokens struct{ created []domain.EmailToken }
 
