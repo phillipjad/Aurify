@@ -67,6 +67,14 @@ services:
       MP_SMTP_AUTH_ACCEPT_ANY: 1
       MP_SMTP_AUTH_ALLOW_INSECURE: 1
 
+  # The integration tests need their own database and refuse to run against this
+  # one, because they truncate every table. Create it once:
+  #
+  #   docker compose exec postgres createdb -U aurify aurify_test
+  #   export AURIFY_TEST_DATABASE_URL=postgres://aurify:aurify@localhost:5432/aurify_test?sslmode=disable
+  #
+  # Without that variable the integration tests skip, so `go test ./...` still
+  # passes on a machine with no database.
   postgres:
     image: postgres:17
     container_name: aurify-postgres
