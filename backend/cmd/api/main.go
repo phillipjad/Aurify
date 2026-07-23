@@ -18,6 +18,7 @@ import (
 	"github.com/phillipjad/aurify/backend/internal/app/command"
 	"github.com/phillipjad/aurify/backend/internal/app/command/connectdsp"
 	"github.com/phillipjad/aurify/backend/internal/app/command/deletecover"
+	"github.com/phillipjad/aurify/backend/internal/app/command/federatedsignin"
 	"github.com/phillipjad/aurify/backend/internal/app/command/generatecover"
 	"github.com/phillipjad/aurify/backend/internal/app/command/refreshsession"
 	"github.com/phillipjad/aurify/backend/internal/app/command/requestpasswordreset"
@@ -41,6 +42,7 @@ import (
 	"github.com/phillipjad/aurify/backend/internal/platform/dsp/spotify"
 	"github.com/phillipjad/aurify/backend/internal/platform/dsp/youtubemusic"
 	"github.com/phillipjad/aurify/backend/internal/platform/email"
+	"github.com/phillipjad/aurify/backend/internal/platform/identity/google"
 	"github.com/phillipjad/aurify/backend/internal/platform/llm/imagegen"
 	"github.com/phillipjad/aurify/backend/internal/platform/llm/promptgen"
 	"github.com/phillipjad/aurify/backend/internal/platform/lyrics/lrclib"
@@ -116,6 +118,21 @@ func run() error {
 	})
 	mailer := resolveMailer(cfg.SMTP)
 
+	// Sign in with Google. Empty credentials are not an error: the provider then
+	// reports itself disabled and its routes answer 501, so a deployment that
+	// does not want federated sign-in simply leaves the variables unset.
+	googleProvider, err := google.NewProvider(google.Config{
+		ClientID:     cfg.Google.ClientID,
+		ClientSecret: cfg.Google.ClientSecret,
+		RedirectURL:  cfg.Google.RedirectURL,
+	})
+	if err != nil {
+		return err
+	}
+	if !googleProvider.Enabled() {
+		slog.Warn("AURIFY_GOOGLE_CLIENT_ID/SECRET are not set, Sign in with Google is disabled")
+	}
+
 	// --- application layer (lightweight CQRS) ---
 	application := &app.App{
 		Commands: &command.Bus{
@@ -129,7 +146,10 @@ func run() error {
 			SignUp: signup.NewHandler(
 				store.Users(), store.Credentials(), store.EmailTokens(), mailer, cfg.AppBaseURL,
 			),
-			SignIn:         signin.NewHandler(store.Users(), store.Credentials(), issuer),
+			SignIn: signin.NewHandler(store.Users(), store.Credentials(), issuer),
+			FederatedSignIn: federatedsignin.NewHandler(
+				store.Users(), store.Identities(), issuer,
+			),
 			RefreshSession: refreshsession.NewHandler(issuer),
 			SignOut:        signout.NewHandler(issuer),
 			VerifyEmail:    verifyemail.NewHandler(store.EmailTokens(), store.Credentials()),
@@ -164,6 +184,8 @@ func run() error {
 		// Makes sign-out and refresh-reuse revocation take effect at once
 		// instead of lagging by the access-token lifetime.
 		SessionCheck: issuer.Verify,
+		Google:       googleProvider,
+		AppBaseURL:   cfg.AppBaseURL,
 	})
 	if err != nil {
 		return err

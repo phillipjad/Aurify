@@ -30,6 +30,13 @@ type Config struct {
 	SupportEmail string
 	Auth         AuthConfig
 	SMTP         SMTPConfig
+	// Google is the OAuth client for Sign in with Google. It is deliberately not
+	// part of DSPConfig: a DSP connection grants access to a music library, this
+	// establishes who the user is, and sharing one client between the two would
+	// let a data connection imply a login
+	// (see docs/adr/0011-authentication-and-sessions.md). Empty credentials mean
+	// the feature is simply off.
+	Google OAuthConfig
 }
 
 // AuthConfig holds the session and token settings.
@@ -107,6 +114,14 @@ func Load() Config {
 			Username: env("AURIFY_SMTP_USERNAME", ""),
 			Password: env("AURIFY_SMTP_PASSWORD", ""),
 			From:     env("AURIFY_SMTP_FROM", "no-reply@aurify.local"),
+		},
+		Google: OAuthConfig{
+			ClientID:     env("AURIFY_GOOGLE_CLIENT_ID", ""),
+			ClientSecret: env("AURIFY_GOOGLE_CLIENT_SECRET", ""),
+			RedirectURL: env(
+				"AURIFY_GOOGLE_REDIRECT_URL",
+				"http://localhost:8080/api/v1/auth/federated/google/callback",
+			),
 		},
 		DSP: DSPConfig{
 			Spotify: OAuthConfig{

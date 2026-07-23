@@ -48,6 +48,60 @@ paths:
       responses:
         "200":
           description: Success
+  /api/v1/auth/federated/google/callback:
+    get:
+      tags:
+        - aurify
+      summary: Complete federated sign-in and start a session
+      operationId: googleSignInCallback
+      parameters:
+        - name: code
+          in: query
+          description: Authorization code from Google
+          schema:
+            type: string
+          example: 4/0A...
+        - name: state
+          in: query
+          description: Opaque value echoed back by Google
+          schema:
+            type: string
+          example: xY...
+      responses:
+        "302":
+          description: Response 302
+        "501":
+          description: Response 501
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+              example:
+                message: ""
+  /api/v1/auth/federated/google/start:
+    get:
+      tags:
+        - aurify
+      summary: Redirect to Google to begin federated sign-in
+      operationId: googleSignInStart
+      parameters:
+        - name: return
+          in: query
+          description: Path within the app to return to afterwards
+          schema:
+            type: string
+          example: /covers
+      responses:
+        "302":
+          description: Response 302
+        "501":
+          description: Response 501
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+              example:
+                message: ""
   /api/v1/auth/password/forgot:
     post:
       tags:

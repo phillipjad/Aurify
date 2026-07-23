@@ -29,6 +29,15 @@ var (
 	// linking a federated identity to a local account.
 	ErrEmailNotVerified = errors.New("email address is not verified")
 
+	// ErrLinkRequiresVerification is returned when a federated sign-in matches a
+	// local account by address, but that account has never verified it.
+	//
+	// Auto-linking there would hand the account over: an attacker could
+	// pre-register a victim's address, never verify it, and inherit the account
+	// the first time the victim signs in with the provider. The user must prove
+	// control of the local account first, by completing its own verification.
+	ErrLinkRequiresVerification = errors.New("verify the existing account before linking")
+
 	// ErrSessionInvalid covers an expired, revoked or unknown session.
 	ErrSessionInvalid = errors.New("session is no longer valid")
 

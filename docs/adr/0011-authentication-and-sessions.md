@@ -114,6 +114,37 @@ The `used_at IS NULL` guard lives in the SQL `UPDATE`, so when two refreshes
 race, exactly one wins and the loser is deterministically treated as reuse,
 rather than the outcome depending on read-then-write ordering in Go.
 
+### Google sign-in is an authorization-code flow with PKCE
+
+Started at `GET /api/v1/auth/federated/google/start`, which redirects, and
+completed at `.../callback`. The path is deliberately *not* under the DSP routes'
+`/auth/{platform}/` space: they must not collide, and the separation mirrors the
+one the schema makes between `user_identities` and `dsp_connections`.
+
+The three per-attempt secrets — `state`, `nonce` and the PKCE verifier — live in
+a single short-lived `__Host-` cookie for the ten minutes the flow may take.
+`__Host-` is what makes that safe: it pins the cookie to this exact origin, so a
+subdomain cannot plant its own `state` and complete a flow the user never
+started, which would log the victim into an account the attacker controls. Each
+secret is checked against something Google supplies: `state` against the echoed
+parameter, `nonce` against the ID token claim, the verifier against the token
+endpoint.
+
+**The ID token's signature is deliberately not verified**, and this is the one
+place in Aurify where a JWT is trusted without one. The token arrives in the body
+of a direct, client-authenticated TLS POST to Google's token endpoint — never via
+the browser — so TLS server identity already establishes that Google produced it.
+OIDC Core §3.1.3.7 permits substituting that for a signature check in exactly
+this flow. The alternative is a JWKS fetch, cache and rotation path plus a
+*second* hand-written JWT verifier, whose key material would be trusted on the
+strength of the same TLS connection: more code, more to get wrong, no more
+assurance. The claims are still all checked (`iss`, `aud`, `exp`, `nonce`,
+`sub`), because TLS says who sent the token, not who it was minted for.
+
+If the flow ever moves to an implicit or hybrid response type, where the token
+reaches us through the browser, this reasoning collapses and signature
+verification becomes mandatory.
+
 ### Federated identity is separate from DSP connections
 
 `user_identities` is a different table from `dsp_connections`. The latter grants
@@ -169,6 +200,9 @@ second and cheaper oracle.
   instances reject each other's tokens.
 - `AURIFY_SMTP_HOST` must be set, or verification and reset links are written to
   the log instead of sent.
+- `AURIFY_GOOGLE_CLIENT_ID` / `_SECRET` enable Sign in with Google. Left unset
+  the routes answer 501 and the feature is simply off. This must be a *separate*
+  OAuth client from `AURIFY_YOUTUBE_*`, per the table separation above.
 
 ## Deferred
 
