@@ -101,7 +101,13 @@ func (i *Issuer) Issue(ctx context.Context, userID string, client Context) (Toke
 // Rotation is unconditional: every refresh retires the presented token. That is
 // what makes theft detectable, because the victim and the attacker cannot both
 // use the same token without one of them presenting a spent one.
-func (i *Issuer) Rotate(ctx context.Context, presented string, client Context) (Tokens, error) {
+//
+// It takes no client Context, unlike Issue. The session's user agent and address
+// are recorded once, at sign-in, and describe where the session was established;
+// overwriting them on every refresh would erase exactly the detail a
+// post-incident review wants. The repository records that the session was used
+// in the same transaction as the rotation.
+func (i *Issuer) Rotate(ctx context.Context, presented string) (Tokens, error) {
 	now := i.now().UTC()
 	hash := auth.HashToken(presented)
 

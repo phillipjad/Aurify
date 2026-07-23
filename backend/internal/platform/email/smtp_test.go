@@ -36,10 +36,26 @@ func TestSendRejectsHeaderInjection(t *testing.T) {
 		t.Fatalf("new sender: %v", err)
 	}
 
-	if err := sender.Send(t.Context(), "victim@example.com\r\nBcc: attacker@evil.test", "hi", "body"); !errors.Is(err, ErrHeaderInjection) {
+	if err := sender.Send(
+		t.Context(),
+		"victim@example.com\r\nBcc: attacker@evil.test",
+		"hi",
+		"body",
+	); !errors.Is(
+		err,
+		ErrHeaderInjection,
+	) {
 		t.Fatalf("injected recipient: err = %v, want ErrHeaderInjection", err)
 	}
-	if err := sender.Send(t.Context(), "victim@example.com", "Subject\nX-Injected: yes", "body"); !errors.Is(err, ErrHeaderInjection) {
+	if err := sender.Send(
+		t.Context(),
+		"victim@example.com",
+		"Subject\nX-Injected: yes",
+		"body",
+	); !errors.Is(
+		err,
+		ErrHeaderInjection,
+	) {
 		t.Fatalf("injected subject: err = %v, want ErrHeaderInjection", err)
 	}
 }

@@ -145,7 +145,13 @@ func TestSignupRejectsWeakPasswordAndBadEmail(t *testing.T) {
 	if err := h.Handle(t.Context(), Command{Email: "a@b.test", Password: "short"}); !errors.Is(err, ErrWeakPassword) {
 		t.Fatalf("short password: err = %v, want ErrWeakPassword", err)
 	}
-	if err := h.Handle(t.Context(), Command{Email: "not-an-email", Password: "a-good-password"}); !errors.Is(err, ErrInvalidEmail) {
+	if err := h.Handle(
+		t.Context(),
+		Command{Email: "not-an-email", Password: "a-good-password"},
+	); !errors.Is(
+		err,
+		ErrInvalidEmail,
+	) {
 		t.Fatalf("bad email: err = %v, want ErrInvalidEmail", err)
 	}
 }

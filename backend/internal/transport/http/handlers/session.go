@@ -180,8 +180,6 @@ func (h *Sessions) Refresh(c mux.RouteContext) {
 
 	tokens, err := h.app.Commands.RefreshSession.Handle(c, refreshsession.Command{
 		RefreshToken: presented,
-		UserAgent:    c.Request().UserAgent(),
-		IP:           clientIP(c.Request()),
 	})
 	if err != nil {
 		// The session is gone (expired, revoked, or just killed for token

@@ -110,7 +110,8 @@ func (w *CookieWriter) Issue(c mux.RouteContext, tokens sessions.Tokens) (string
 // or the browser keeps the original cookie alongside the deletion.
 func (w *CookieWriter) Clear(c mux.RouteContext) {
 	c.Cookies().Set(cookieName(accessCookie, w.secure), "", -1, "/", "", w.secure, true, http.SameSiteLaxMode)
-	c.Cookies().Set(cookieName(refreshCookie, w.secure), "", -1, refreshCookiePath, "", w.secure, true, http.SameSiteLaxMode)
+	c.Cookies().
+		Set(cookieName(refreshCookie, w.secure), "", -1, refreshCookiePath, "", w.secure, true, http.SameSiteLaxMode)
 	c.Cookies().Set(csrfCookie, "", -1, "/", "", w.secure, false, http.SameSiteLaxMode)
 }
 
