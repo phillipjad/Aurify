@@ -6,6 +6,7 @@ package command
 import (
 	"github.com/phillipjad/aurify/backend/internal/app/command/connectdsp"
 	"github.com/phillipjad/aurify/backend/internal/app/command/deletecover"
+	"github.com/phillipjad/aurify/backend/internal/app/command/federatedsignin"
 	"github.com/phillipjad/aurify/backend/internal/app/command/generatecover"
 	"github.com/phillipjad/aurify/backend/internal/app/command/refreshsession"
 	"github.com/phillipjad/aurify/backend/internal/app/command/requestpasswordreset"
@@ -25,6 +26,7 @@ type Bus struct {
 	// Authentication.
 	SignUp               *signup.Handler
 	SignIn               *signin.Handler
+	FederatedSignIn      *federatedsignin.Handler
 	RefreshSession       *refreshsession.Handler
 	SignOut              *signout.Handler
 	VerifyEmail          *verifyemail.Handler

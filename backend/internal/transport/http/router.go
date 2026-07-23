@@ -16,6 +16,7 @@ import (
 	"github.com/phillipjad/aurify/backend/internal/app/lockout"
 	"github.com/phillipjad/aurify/backend/internal/app/ports"
 	"github.com/phillipjad/aurify/backend/internal/platform/auth"
+	"github.com/phillipjad/aurify/backend/internal/platform/identity/google"
 	"github.com/phillipjad/aurify/backend/internal/transport/http/dto"
 	"github.com/phillipjad/aurify/backend/internal/transport/http/handlers"
 )
@@ -48,6 +49,13 @@ type Deps struct {
 	// SupportEmail is shown to users who are close to, or already under, a
 	// permanent lockout, since an operator is the only way back.
 	SupportEmail string
+	// Google performs the Sign in with Google handshake. It is always non-nil;
+	// when no credentials are configured it reports itself disabled and the
+	// routes answer 501.
+	Google *google.Provider
+	// AppBaseURL is the origin the federated callback redirects back to, and the
+	// only origin it will redirect to.
+	AppBaseURL string
 }
 
 // NewRouter builds the fully configured API router. Version is reported in the
@@ -137,6 +145,9 @@ func NewRouter(deps Deps) (*mux.Router, error) {
 
 	dspAuth := handlers.NewAuth(application, providers)
 	sessions := handlers.NewSessions(application, deps.Cookies, deps.Guard, deps.Verifier, deps.SupportEmail)
+	federated := handlers.NewFederated(
+		application, deps.Google, deps.Cookies, deps.Guard, deps.AppBaseURL, deps.SupportEmail,
+	)
 	playlists := handlers.NewPlaylists(application)
 	covers := handlers.NewCovers(application)
 
@@ -203,6 +214,30 @@ func NewRouter(deps Deps) (*mux.Router, error) {
 			WithSummary("Set a new password using a reset token").
 			WithJSONBody(dto.ResetPasswordRequest{}).
 			WithOKResponse(dto.MessageResponse{})
+
+		// ---- federated sign-in (Sign in with Google) ----
+		//
+		// Deliberately under /auth/federated/ rather than sharing the
+		// /auth/{platform}/ space with the DSP routes below. The paths must not
+		// collide, and the separation is the same one the schema makes between
+		// user_identities and dsp_connections: a music-library connection is not
+		// a login.
+		api.GET("/auth/federated/google/start", federated.GoogleStart).
+			AllowAnonymous().
+			WithOperationID("googleSignInStart").
+			WithSummary("Redirect to Google to begin federated sign-in").
+			WithQueryParam("return", "Path within the app to return to afterwards", "/covers").
+			WithResponse(302, nil).
+			WithResponse(501, dto.MessageResponse{})
+
+		api.GET("/auth/federated/google/callback", federated.GoogleCallback).
+			AllowAnonymous().
+			WithOperationID("googleSignInCallback").
+			WithSummary("Complete federated sign-in and start a session").
+			WithQueryParam("code", "Authorization code from Google", "4/0A...").
+			WithQueryParam("state", "Opaque value echoed back by Google", "xY...").
+			WithResponse(302, nil).
+			WithResponse(501, dto.MessageResponse{})
 
 		api.GET("/auth/session", sessions.Session).
 			WithOperationID("getSession").
