@@ -1,6 +1,6 @@
 # 0011 — Hand-built authentication: Ed25519 access tokens + opaque refresh tokens
 
-- Status: Accepted
+- Status: Accepted (amended 2026-07-23, see [Amendment](#amendment-2026-07-23-revocation-is-now-immediate))
 - Date: 2026-07-22
 
 ## Context
@@ -114,6 +114,37 @@ The `used_at IS NULL` guard lives in the SQL `UPDATE`, so when two refreshes
 race, exactly one wins and the loser is deterministically treated as reuse,
 rather than the outcome depending on read-then-write ordering in Go.
 
+### Google sign-in is an authorization-code flow with PKCE
+
+Started at `GET /api/v1/auth/federated/google/start`, which redirects, and
+completed at `.../callback`. The path is deliberately *not* under the DSP routes'
+`/auth/{platform}/` space: they must not collide, and the separation mirrors the
+one the schema makes between `user_identities` and `dsp_connections`.
+
+The three per-attempt secrets — `state`, `nonce` and the PKCE verifier — live in
+a single short-lived `__Host-` cookie for the ten minutes the flow may take.
+`__Host-` is what makes that safe: it pins the cookie to this exact origin, so a
+subdomain cannot plant its own `state` and complete a flow the user never
+started, which would log the victim into an account the attacker controls. Each
+secret is checked against something Google supplies: `state` against the echoed
+parameter, `nonce` against the ID token claim, the verifier against the token
+endpoint.
+
+**The ID token's signature is deliberately not verified**, and this is the one
+place in Aurify where a JWT is trusted without one. The token arrives in the body
+of a direct, client-authenticated TLS POST to Google's token endpoint — never via
+the browser — so TLS server identity already establishes that Google produced it.
+OIDC Core §3.1.3.7 permits substituting that for a signature check in exactly
+this flow. The alternative is a JWKS fetch, cache and rotation path plus a
+*second* hand-written JWT verifier, whose key material would be trusted on the
+strength of the same TLS connection: more code, more to get wrong, no more
+assurance. The claims are still all checked (`iss`, `aud`, `exp`, `nonce`,
+`sub`), because TLS says who sent the token, not who it was minted for.
+
+If the flow ever moves to an implicit or hybrid response type, where the token
+reaches us through the browser, this reasoning collapses and signature
+verification becomes mandatory.
+
 ### Federated identity is separate from DSP connections
 
 `user_identities` is a different table from `dsp_connections`. The latter grants
@@ -169,6 +200,9 @@ second and cheaper oracle.
   instances reject each other's tokens.
 - `AURIFY_SMTP_HOST` must be set, or verification and reset links are written to
   the log instead of sent.
+- `AURIFY_GOOGLE_CLIENT_ID` / `_SECRET` enable Sign in with Google. Left unset
+  the routes answer 501 and the feature is simply off. This must be a *separate*
+  OAuth client from `AURIFY_YOUTUBE_*`, per the table separation above.
 
 ## Deferred
 
@@ -182,3 +216,28 @@ second and cheaper oracle.
 
 - [ADR 0007](0007-fgrzl-mux-web-framework.md) — the framework whose auth hook we mount into.
 - [ADR 0012](0012-account-lockout-policy.md) — the failed-authentication lockout.
+
+## Amendment (2026-07-23): revocation is now immediate
+
+This ADR originally accepted that "a revoked session keeps working until its
+access token expires", with the 15-minute TTL as the exposure window. That has
+been reversed: every authenticated request now checks the session against the
+database, so sign-out and refresh-reuse revocation take effect at once.
+
+The original reasoning was weaker than it looked. It traded immediate revocation
+for avoiding a database round trip, but **every protected endpoint in this API
+already queries PostgreSQL** (covers list/get/delete, session, playlists). The
+check adds one indexed primary-key lookup to requests that were already
+database-bound, so the statelessness was buying far less than the argument
+assumed.
+
+What settled it was the user-facing behaviour rather than the architecture:
+sign-out that does not sign the user out for up to fifteen minutes is a real
+problem on a shared machine, and the same window let a stolen access token
+outlive the reuse detection that was supposed to have killed it.
+
+The access token remains a signed JWT and is still verified cryptographically
+before the session lookup happens, so a forged or expired token is rejected
+without touching the database. If the lookup ever becomes measurable, a
+short-TTL cache in front of it bounds staleness to seconds without returning to
+a fifteen-minute window.

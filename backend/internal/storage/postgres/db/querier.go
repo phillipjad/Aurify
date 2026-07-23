@@ -9,18 +9,55 @@ import (
 )
 
 type Querier interface {
+	// Single-use: the consumed_at IS NULL guard means a replayed link affects zero
+	// rows, so the caller can reject it without a separate read.
+	ConsumeEmailToken(ctx context.Context, arg ConsumeEmailTokenParams) (int64, error)
+	// ON CONFLICT DO NOTHING keeps the original blocked_at, so a blocked pair that
+	// keeps trying does not roll its own timestamp forward and hide when the abuse
+	// actually started.
+	CreateAuthBlock(ctx context.Context, arg CreateAuthBlockParams) error
+	CreateEmailToken(ctx context.Context, arg CreateEmailTokenParams) error
+	CreateRefreshToken(ctx context.Context, arg CreateRefreshTokenParams) error
+	CreateSession(ctx context.Context, arg CreateSessionParams) error
+	// Operator-only. Nothing in the request path calls this; it exists for the
+	// future admin portal and for manual intervention.
+	DeleteAuthBlock(ctx context.Context, arg DeleteAuthBlockParams) error
 	DeleteConnectionsByUser(ctx context.Context, userID string) error
 	// Scoped to the owner so a user can never delete another user's cover; the
 	// rows-affected count lets the caller distinguish "deleted" from "not found".
 	DeleteCover(ctx context.Context, arg DeleteCoverParams) (int64, error)
+	DeleteCredentialByUser(ctx context.Context, userID string) error
+	DeleteEmailTokensByUserPurpose(ctx context.Context, arg DeleteEmailTokensByUserPurposeParams) error
+	DeleteRefreshTokensBySession(ctx context.Context, sessionID string) error
+	GetAuthBlock(ctx context.Context, arg GetAuthBlockParams) (AuthBlock, error)
 	GetCoverByID(ctx context.Context, id string) (Cover, error)
+	GetCredentialByUser(ctx context.Context, userID string) (UserCredential, error)
+	GetEmailToken(ctx context.Context, tokenHash []byte) (EmailToken, error)
+	GetIdentity(ctx context.Context, arg GetIdentityParams) (UserIdentity, error)
+	// Joined to sessions so a single round trip yields both the token's state and
+	// whether the session behind it is still alive.
+	GetRefreshToken(ctx context.Context, tokenHash []byte) (GetRefreshTokenRow, error)
+	GetSession(ctx context.Context, id string) (Session, error)
 	GetUserByEmail(ctx context.Context, email string) (User, error)
 	GetUserByID(ctx context.Context, id string) (User, error)
 	ListConnectionsByUser(ctx context.Context, userID string) ([]DspConnection, error)
 	// An empty @status returns every lifecycle state; otherwise it filters to one.
 	ListCoversByUser(ctx context.Context, arg ListCoversByUserParams) ([]Cover, error)
+	ListIdentitiesByUser(ctx context.Context, userID string) ([]UserIdentity, error)
+	// Guarded by used_at IS NULL so two concurrent refreshes cannot both succeed:
+	// the loser affects zero rows and is treated as reuse.
+	MarkRefreshTokenUsed(ctx context.Context, arg MarkRefreshTokenUsedParams) (int64, error)
+	RevokeSession(ctx context.Context, arg RevokeSessionParams) error
+	RevokeSessionsByUser(ctx context.Context, arg RevokeSessionsByUserParams) error
+	SetUserEmailVerified(ctx context.Context, arg SetUserEmailVerifiedParams) error
+	TouchSession(ctx context.Context, arg TouchSessionParams) error
 	UpsertCover(ctx context.Context, arg UpsertCoverParams) error
+	UpsertCredential(ctx context.Context, arg UpsertCredentialParams) error
 	UpsertDSPConnection(ctx context.Context, arg UpsertDSPConnectionParams) error
+	UpsertIdentity(ctx context.Context, arg UpsertIdentityParams) error
+	// Deliberately does not write email_verified. Verification state is owned by
+	// SetUserEmailVerified (see auth.sql); if a general-purpose user save could
+	// carry it, a stale in-memory User would silently un-verify an account.
 	UpsertUser(ctx context.Context, arg UpsertUserParams) error
 }
 

@@ -53,7 +53,7 @@ concrete adapters.
 ## Quick start
 
 ```bash
-cp .env.example .env        # optional; sane defaults are built in
+../scripts/dev-setup.sh      # generates backend/.env.dev (Mailpit + a signing key)
 go mod tidy                 # resolve dependencies
 go run build.go             # compile -> bin/aurify (version stamped; defaults to "dev")
 ./bin/aurify                # starts on :8080
@@ -78,13 +78,29 @@ Probes: `GET /livez`, `GET /readyz` (readiness pings PostgreSQL).
 
 `{platform}` is one of `spotify`, `apple_music`, `youtube_music`.
 
-## Authentication (scaffold note)
+## Authentication
 
-Session/JWT auth is **not** wired yet. `fgrzl/mux` ships
-`mux.UseAuthentication(...)` which populates `c.User()`; until that is
-configured, handlers read the caller's id from the `X-User-ID` request header.
-Replace `currentUser` in `internal/transport/http/handlers/common.go` when real
-auth lands.
+Email/password and Sign in with Google, delivered by cookie. See
+[ADR 0011](../docs/adr/0011-authentication-and-sessions.md) for the design and
+[ADR 0012](../docs/adr/0012-account-lockout-policy.md) for the lockout policy.
+
+- A **15-minute Ed25519 access token** is verified statelessly on every request,
+  so an authenticated call costs no database round trip. The price is that a
+  revoked session keeps working until its access token expires.
+- A **256-bit opaque refresh token** (30-day idle, 90-day absolute) is stored as
+  a SHA-256 digest and rotated on every use. Presenting an already-rotated token
+  means the value leaked, so the whole session is revoked.
+- `mux.UseAuthentication` supplies only the mounting point and the
+  `AllowAnonymous()` bookkeeping; the validator, session store, rotation, CSRF
+  and lockout are all in this repo.
+- `currentUser` in `internal/transport/http/handlers/common.go` reads the
+  verified principal. The `X-User-ID` header it replaced was a complete
+  authentication bypass and must not come back.
+
+Set `AURIFY_AUTH_SIGNING_KEY` in production — unset, the API generates an
+ephemeral key, so sessions die on restart and two instances reject each other's
+tokens. Google sign-in is off unless `AURIFY_GOOGLE_CLIENT_ID`/`_SECRET` are
+set. See `.env.default`.
 
 ## Common tasks
 

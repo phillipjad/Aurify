@@ -4,12 +4,19 @@
 package http
 
 import (
+	"github.com/fgrzl/claims"
+
 	"context"
+	"errors"
+	"net/http"
 
 	"github.com/fgrzl/mux"
 
 	"github.com/phillipjad/aurify/backend/internal/app"
+	"github.com/phillipjad/aurify/backend/internal/app/lockout"
 	"github.com/phillipjad/aurify/backend/internal/app/ports"
+	"github.com/phillipjad/aurify/backend/internal/platform/auth"
+	"github.com/phillipjad/aurify/backend/internal/platform/identity/google"
 	"github.com/phillipjad/aurify/backend/internal/transport/http/dto"
 	"github.com/phillipjad/aurify/backend/internal/transport/http/handlers"
 )
@@ -21,18 +28,45 @@ const (
 	apiDescription = "Generate abstract covers from a playlist's audio features and lyric sentiment."
 )
 
-// NewRouter builds the fully configured API router. version is reported in the
+// Deps are the collaborators the router needs beyond the application layer.
+type Deps struct {
+	Application *app.App
+	Providers   ports.DSPRegistry
+	Version     string
+	CORSOrigins []string
+	// Ready is the readiness check behind GET /readyz; nil always reports ready.
+	Ready func(context.Context) error
+	// Verifier validates access tokens cryptographically, without touching the
+	// database, so a forged or expired token is rejected cheaply.
+	Verifier *auth.Verifier
+	Cookies  *handlers.CookieWriter
+	// SessionCheck confirms the verified token's session is still live. Signature
+	// verification alone cannot see a revocation, so without this a signed-out
+	// user keeps access until their access token expires.
+	SessionCheck handlers.SessionCheck
+	// Guard enforces the failed-authentication lockout policy.
+	Guard *lockout.Guard
+	// SupportEmail is shown to users who are close to, or already under, a
+	// permanent lockout, since an operator is the only way back.
+	SupportEmail string
+	// Google performs the Sign in with Google handshake. It is always non-nil;
+	// when no credentials are configured it reports itself disabled and the
+	// routes answer 501.
+	Google *google.Provider
+	// AppBaseURL is the origin the federated callback redirects back to, and the
+	// only origin it will redirect to.
+	AppBaseURL string
+}
+
+// NewRouter builds the fully configured API router. Version is reported in the
 // OpenAPI info object (defaults to "dev" when empty).
-//
-// ready is the readiness check used by GET /readyz (e.g. a PostgreSQL ping); pass
-// nil to always report ready.
-func NewRouter(
-	application *app.App,
-	providers ports.DSPRegistry,
-	version string,
-	corsOrigins []string,
-	ready func(context.Context) error,
-) (*mux.Router, error) {
+func NewRouter(deps Deps) (*mux.Router, error) {
+	application := deps.Application
+	providers := deps.Providers
+	corsOrigins := deps.CORSOrigins
+	ready := deps.Ready
+
+	version := deps.Version
 	if version == "" {
 		version = "dev"
 	}
@@ -45,15 +79,75 @@ func NewRouter(
 	mux.UseLogging(router)
 	mux.UseCompression(router)
 	if len(corsOrigins) > 0 {
+		// X-User-ID is deliberately gone from the allowlist: it used to carry
+		// the caller's identity and was a complete authentication bypass.
 		mux.UseCORS(router,
 			mux.WithCORSAllowedOrigins(corsOrigins...),
 			mux.WithCORSAllowedMethods("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"),
-			mux.WithCORSAllowedHeaders("Content-Type", "Authorization", "X-User-ID"),
+			mux.WithCORSAllowedHeaders("Content-Type", "Authorization", "X-CSRF-Token"),
 			mux.WithCORSCredentials(true),
 		)
 	}
 
-	auth := handlers.NewAuth(application, providers)
+	// Authentication. mux supplies only the mounting point and the AllowAnonymous
+	// bookkeeping; the validator below is ours, and it verifies the token rather
+	// than trusting anything the client asserts.
+	mux.UseAuthentication(router,
+		mux.WithAuthValidator(func(token string) (claims.Principal, error) {
+			verified, err := deps.Verifier.Verify(token)
+			if err != nil {
+				return nil, err
+			}
+			set := claims.NewClaimsSet(verified.Subject)
+			set.Set(handlers.SessionClaim, verified.SessionID)
+			return claims.NewPrincipal(set), nil
+		}),
+		// The middleware must be told which cookie carries the token. Its
+		// default is "app_token", so without this it looks for a cookie we never
+		// write and every cookie-authenticated request quietly 401s.
+		mux.WithAuthAppSessionCookieName(deps.Cookies.AccessCookieName()),
+		// These have to mirror how the cookie was written. On a successful
+		// cookie authentication the middleware may re-issue the cookie to extend
+		// it, and it applies these options when it does. Left unset it would
+		// fall back to its own defaults, whose SameSite is Strict, silently
+		// undoing the Lax setting that the federated sign-in callback depends on
+		// (see docs/adr/0011-authentication-and-sessions.md).
+		mux.WithAuthCookieOptions(
+			mux.WithCookiePath("/"),
+			mux.WithCookieSecure(deps.Cookies.Secure()),
+			mux.WithCookieHTTPOnly(true),
+			mux.WithCookieSameSite(http.SameSiteLaxMode),
+		),
+	)
+
+	// Revocation, immediately after authentication so the principal is populated.
+	// The token is trusted cryptographically by this point but has not been
+	// checked against the session it names, which is what makes sign-out and
+	// refresh-reuse revocation take effect at once instead of lagging by the
+	// access-token lifetime.
+	//
+	// A missing check is a startup failure rather than a silently skipped
+	// middleware. Every authenticated route would still answer 200 with a token
+	// belonging to a revoked session, which is precisely the kind of hole nobody
+	// notices until it is exploited.
+	if deps.SessionCheck == nil {
+		return nil, errors.New("router: SessionCheck is required, revocation cannot be optional")
+	}
+	router.Use(handlers.SessionRevocationMiddleware(deps.SessionCheck))
+
+	// CSRF for cookie-authenticated mutations. Refresh is exempt: the refresh
+	// cookie is itself the credential, a cross-site caller cannot read the
+	// response, and requiring the header would break silent refresh on a cold
+	// page load when the client holds no token yet.
+	router.Use(handlers.CSRFMiddleware(deps.Cookies, map[string]bool{
+		"/api/v1/auth/refresh": true,
+	}))
+
+	dspAuth := handlers.NewAuth(application, providers)
+	sessions := handlers.NewSessions(application, deps.Cookies, deps.Guard, deps.Verifier, deps.SupportEmail)
+	federated := handlers.NewFederated(
+		application, deps.Google, deps.Cookies, deps.Guard, deps.AppBaseURL, deps.SupportEmail,
+	)
 	playlists := handlers.NewPlaylists(application)
 	covers := handlers.NewCovers(application)
 
@@ -70,14 +164,95 @@ func NewRouter(
 		api := r.Group("/api/v1")
 		api.WithTags("aurify")
 
+		// ---- account authentication ----
+		api.POST("/auth/signup", sessions.SignUp).
+			AllowAnonymous().
+			WithOperationID("signUp").
+			WithSummary("Register an email/password account").
+			WithJSONBody(dto.SignUpRequest{}).
+			WithCreatedResponse(dto.MessageResponse{}).
+			WithResponse(409, mux.ProblemDetails{})
+
+		api.POST("/auth/signin", sessions.SignIn).
+			AllowAnonymous().
+			WithOperationID("signIn").
+			WithSummary("Authenticate and start a session").
+			WithJSONBody(dto.SignInRequest{}).
+			WithOKResponse(dto.SessionResponse{}).
+			WithResponse(401, mux.ProblemDetails{})
+
+		api.POST("/auth/refresh", sessions.Refresh).
+			AllowAnonymous().
+			WithOperationID("refreshSession").
+			WithSummary("Rotate the refresh token and reissue the session").
+			WithOKResponse(dto.SessionResponse{}).
+			WithResponse(401, mux.ProblemDetails{})
+
+		api.POST("/auth/signout", sessions.SignOut).
+			AllowAnonymous().
+			WithOperationID("signOut").
+			WithSummary("Revoke the current session").
+			WithNoContentResponse()
+
+		api.POST("/auth/verify-email", sessions.VerifyEmail).
+			AllowAnonymous().
+			WithOperationID("verifyEmail").
+			WithSummary("Confirm an email address using an emailed token").
+			WithJSONBody(dto.TokenRequest{}).
+			WithOKResponse(dto.MessageResponse{})
+
+		api.POST("/auth/password/forgot", sessions.ForgotPassword).
+			AllowAnonymous().
+			WithOperationID("forgotPassword").
+			WithSummary("Send a password reset link").
+			WithJSONBody(dto.ForgotPasswordRequest{}).
+			WithOKResponse(dto.MessageResponse{})
+
+		api.POST("/auth/password/reset", sessions.ResetPassword).
+			AllowAnonymous().
+			WithOperationID("resetPassword").
+			WithSummary("Set a new password using a reset token").
+			WithJSONBody(dto.ResetPasswordRequest{}).
+			WithOKResponse(dto.MessageResponse{})
+
+		// ---- federated sign-in (Sign in with Google) ----
+		//
+		// Deliberately under /auth/federated/ rather than sharing the
+		// /auth/{platform}/ space with the DSP routes below. The paths must not
+		// collide, and the separation is the same one the schema makes between
+		// user_identities and dsp_connections: a music-library connection is not
+		// a login.
+		api.GET("/auth/federated/google/start", federated.GoogleStart).
+			AllowAnonymous().
+			WithOperationID("googleSignInStart").
+			WithSummary("Redirect to Google to begin federated sign-in").
+			WithQueryParam("return", "Path within the app to return to afterwards", "/covers").
+			WithResponse(302, nil).
+			WithResponse(501, dto.MessageResponse{})
+
+		api.GET("/auth/federated/google/callback", federated.GoogleCallback).
+			AllowAnonymous().
+			WithOperationID("googleSignInCallback").
+			WithSummary("Complete federated sign-in and start a session").
+			WithQueryParam("code", "Authorization code from Google", "4/0A...").
+			WithQueryParam("state", "Opaque value echoed back by Google", "xY...").
+			WithResponse(302, nil).
+			WithResponse(501, dto.MessageResponse{})
+
+		api.GET("/auth/session", sessions.Session).
+			WithOperationID("getSession").
+			WithSummary("Describe the signed-in user").
+			WithOKResponse(dto.SessionResponse{}).
+			WithResponse(401, mux.ProblemDetails{})
+
 		// ---- write side (commands) ----
-		api.GET("/auth/{platform}/login", auth.Login).
+		api.GET("/auth/{platform}/login", dspAuth.Login).
 			AllowAnonymous().
 			WithOperationID("dspLogin").
 			WithSummary("Get the OAuth authorization URL for a DSP").
 			WithPathParam("platform", "DSP platform: spotify, apple_music, youtube_music", "spotify")
 
-		api.GET("/auth/{platform}/callback", auth.Callback).
+		api.GET("/auth/{platform}/callback", dspAuth.Callback).
 			AllowAnonymous().
 			WithOperationID("dspCallback").
 			WithSummary("OAuth callback that links a DSP account to the user").

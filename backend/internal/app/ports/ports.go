@@ -7,6 +7,7 @@ package ports
 
 import (
 	"context"
+	"time"
 
 	"github.com/phillipjad/aurify/backend/internal/domain"
 )
@@ -16,6 +17,69 @@ type UserRepository interface {
 	Save(ctx context.Context, user *domain.User) error
 	FindByID(ctx context.Context, id string) (*domain.User, error)
 	FindByEmail(ctx context.Context, email string) (*domain.User, error)
+}
+
+// CredentialRepository persists local password credentials. A user with no
+// stored credential can only sign in through a federated identity.
+type CredentialRepository interface {
+	Upsert(ctx context.Context, cred domain.Credential) error
+	FindByUser(ctx context.Context, userID string) (domain.Credential, error)
+	// SetEmailVerified is the only path that changes verification state; the
+	// general user save deliberately cannot (see the UpsertUser query).
+	SetEmailVerified(ctx context.Context, userID string, verified bool) error
+}
+
+// IdentityRepository persists federated sign-in identities.
+type IdentityRepository interface {
+	Find(ctx context.Context, provider domain.IdentityProvider, subject string) (domain.Identity, error)
+	Upsert(ctx context.Context, identity domain.Identity) error
+	ListByUser(ctx context.Context, userID string) ([]domain.Identity, error)
+}
+
+// SessionRepository persists sessions and their refresh tokens.
+type SessionRepository interface {
+	Create(ctx context.Context, session domain.Session, refresh domain.RefreshToken) error
+	FindSession(ctx context.Context, id string) (domain.Session, error)
+	// FindRefreshToken looks a token up by digest, returning ErrNotFound when it
+	// is unknown. A returned token may still be expired or already used; the
+	// caller decides, because "already used" is a security event rather than a
+	// plain miss.
+	FindRefreshToken(ctx context.Context, hash []byte) (domain.RefreshToken, error)
+	// Rotate atomically marks the presented token used and stores its
+	// replacement. It returns domain.ErrTokenReused when the token had already
+	// been consumed, which is the signal to revoke the session.
+	Rotate(ctx context.Context, presented []byte, next domain.RefreshToken) error
+	Touch(ctx context.Context, sessionID string, at time.Time) error
+	Revoke(ctx context.Context, sessionID string, at time.Time) error
+	RevokeAllForUser(ctx context.Context, userID string, at time.Time) error
+}
+
+// EmailTokenRepository persists single-use, expiring email tokens for address
+// verification and password reset.
+type EmailTokenRepository interface {
+	Create(ctx context.Context, token domain.EmailToken) error
+	Find(ctx context.Context, hash []byte) (domain.EmailToken, error)
+	// Consume marks a token used, returning domain.ErrTokenInvalid if it was
+	// already consumed. The guard lives in SQL so a replayed link cannot win a
+	// race against a concurrent request.
+	Consume(ctx context.Context, hash []byte, at time.Time) error
+	DeleteForUser(ctx context.Context, userID string, purpose domain.EmailTokenPurpose) error
+}
+
+// AuthBlockRepository persists permanent authentication lockouts, keyed by the
+// (ip, identifier) pair. Entries are never removed by the application; clearing
+// one is an operator action (see docs/adr/0012-account-lockout-policy.md).
+type AuthBlockRepository interface {
+	// IsBlocked reports whether the pair is permanently locked out.
+	IsBlocked(ctx context.Context, ip, identifier string) (bool, error)
+	Block(ctx context.Context, ip, identifier string, failures int, reason string) error
+}
+
+// EmailSender delivers transactional mail. Implementations must not block the
+// caller on a slow remote server for long; callers treat a send failure as
+// non-fatal where the user can retry (for example, resending a verification).
+type EmailSender interface {
+	Send(ctx context.Context, to, subject, body string) error
 }
 
 // CoverRepository persists generated covers.

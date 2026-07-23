@@ -1,7 +1,7 @@
 import { createFileRoute } from '@tanstack/react-router'
 
-import { AuthStub } from '@/features/auth/auth-stub'
+import { SignUpForm } from '@/features/auth/sign-up-form'
 
 export const Route = createFileRoute('/sign-up')({
-  component: () => <AuthStub mode="sign-up" />,
+  component: () => <SignUpForm />,
 })

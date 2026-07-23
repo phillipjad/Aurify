@@ -5,6 +5,7 @@ package main
 
 import (
 	"context"
+	"crypto/ed25519"
 	"log/slog"
 	"os"
 	"os/signal"
@@ -17,22 +18,37 @@ import (
 	"github.com/phillipjad/aurify/backend/internal/app/command"
 	"github.com/phillipjad/aurify/backend/internal/app/command/connectdsp"
 	"github.com/phillipjad/aurify/backend/internal/app/command/deletecover"
+	"github.com/phillipjad/aurify/backend/internal/app/command/federatedsignin"
 	"github.com/phillipjad/aurify/backend/internal/app/command/generatecover"
+	"github.com/phillipjad/aurify/backend/internal/app/command/refreshsession"
+	"github.com/phillipjad/aurify/backend/internal/app/command/requestpasswordreset"
+	"github.com/phillipjad/aurify/backend/internal/app/command/resetpassword"
+	"github.com/phillipjad/aurify/backend/internal/app/command/signin"
+	"github.com/phillipjad/aurify/backend/internal/app/command/signout"
+	"github.com/phillipjad/aurify/backend/internal/app/command/signup"
+	"github.com/phillipjad/aurify/backend/internal/app/command/verifyemail"
+	"github.com/phillipjad/aurify/backend/internal/app/lockout"
 	"github.com/phillipjad/aurify/backend/internal/app/query"
 	"github.com/phillipjad/aurify/backend/internal/app/query/getcover"
+	"github.com/phillipjad/aurify/backend/internal/app/query/getuser"
 	"github.com/phillipjad/aurify/backend/internal/app/query/listcovers"
 	"github.com/phillipjad/aurify/backend/internal/app/query/listplaylists"
+	"github.com/phillipjad/aurify/backend/internal/app/sessions"
 	"github.com/phillipjad/aurify/backend/internal/config"
+	"github.com/phillipjad/aurify/backend/internal/platform/auth"
 	"github.com/phillipjad/aurify/backend/internal/platform/dsp"
 	"github.com/phillipjad/aurify/backend/internal/platform/dsp/applemusic"
 	"github.com/phillipjad/aurify/backend/internal/platform/dsp/spotify"
 	"github.com/phillipjad/aurify/backend/internal/platform/dsp/youtubemusic"
+	"github.com/phillipjad/aurify/backend/internal/platform/email"
+	"github.com/phillipjad/aurify/backend/internal/platform/identity/google"
 	"github.com/phillipjad/aurify/backend/internal/platform/llm/imagegen"
 	"github.com/phillipjad/aurify/backend/internal/platform/llm/promptgen"
 	"github.com/phillipjad/aurify/backend/internal/platform/lyrics/lrclib"
 	"github.com/phillipjad/aurify/backend/internal/platform/nlp"
 	"github.com/phillipjad/aurify/backend/internal/storage/postgres"
 	httptransport "github.com/phillipjad/aurify/backend/internal/transport/http"
+	"github.com/phillipjad/aurify/backend/internal/transport/http/handlers"
 )
 
 // version is stamped at compile time via -ldflags="-X main.version=<semver>".
@@ -52,6 +68,11 @@ func main() {
 
 func run() error {
 	cfg := config.Load()
+	// Fail fast, before anything is constructed. A deployment missing a mail
+	// relay used to start happily and then write live reset tokens into the log.
+	if err := cfg.Validate(); err != nil {
+		return err
+	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -77,6 +98,55 @@ func run() error {
 	prompts := promptgen.New(cfg.PromptGenURL)
 	images := imagegen.New(cfg.ImageGenURL)
 
+	// --- authentication ---
+	signingKey, err := resolveSigningKey(cfg.Auth.SigningKeySeed)
+	if err != nil {
+		return err
+	}
+	signer, err := auth.NewSigner(signingKey, cfg.Auth.Issuer, cfg.Auth.Audience)
+	if err != nil {
+		return err
+	}
+	verifier, err := auth.NewVerifier(
+		signingKey.Public().(ed25519.PublicKey),
+		cfg.Auth.Issuer,
+		cfg.Auth.Audience,
+	)
+	if err != nil {
+		return err
+	}
+	issuer := sessions.NewIssuer(store.Sessions(), signer, sessions.TTL{
+		Access:  cfg.Auth.AccessTTL,
+		Refresh: cfg.Auth.RefreshTTL,
+		Session: cfg.Auth.SessionTTL,
+	})
+	mailer, err := email.Resolve(email.SMTPConfig{
+		Host:     cfg.SMTP.Host,
+		Port:     cfg.SMTP.Port,
+		Username: cfg.SMTP.Username,
+		Password: cfg.SMTP.Password,
+		From:     cfg.SMTP.From,
+		TLS:      cfg.SMTP.TLS,
+	})
+	if err != nil {
+		return err
+	}
+
+	// Sign in with Google. Empty credentials are not an error: the provider then
+	// reports itself disabled and its routes answer 501, so a deployment that
+	// does not want federated sign-in simply leaves the variables unset.
+	googleProvider, err := google.NewProvider(google.Config{
+		ClientID:     cfg.Google.ClientID,
+		ClientSecret: cfg.Google.ClientSecret,
+		RedirectURL:  cfg.Google.RedirectURL,
+	})
+	if err != nil {
+		return err
+	}
+	if !googleProvider.Enabled() {
+		slog.Warn("AURIFY_GOOGLE_CLIENT_ID/SECRET are not set, Sign in with Google is disabled")
+	}
+
 	// --- application layer (lightweight CQRS) ---
 	application := &app.App{
 		Commands: &command.Bus{
@@ -86,16 +156,51 @@ func run() error {
 				lyricsClient, sentiment, engine, prompts, images,
 			),
 			DeleteCover: deletecover.NewHandler(store.Covers()),
+
+			SignUp: signup.NewHandler(
+				store.Users(), store.Credentials(), store.EmailTokens(), mailer, cfg.AppBaseURL,
+			),
+			SignIn: signin.NewHandler(store.Users(), store.Credentials(), issuer),
+			FederatedSignIn: federatedsignin.NewHandler(
+				store.Users(), store.Identities(), issuer,
+			),
+			RefreshSession: refreshsession.NewHandler(issuer),
+			SignOut:        signout.NewHandler(issuer),
+			VerifyEmail:    verifyemail.NewHandler(store.EmailTokens(), store.Credentials()),
+			RequestPasswordReset: requestpasswordreset.NewHandler(
+				store.Users(), store.EmailTokens(), mailer, cfg.AppBaseURL,
+			),
+			ResetPassword: resetpassword.NewHandler(store.EmailTokens(), store.Credentials(), issuer),
 		},
 		Queries: &query.Bus{
 			ListPlaylists: listplaylists.NewHandler(store.Users(), providers),
 			GetCover:      getcover.NewHandler(store.Covers()),
 			ListCovers:    listcovers.NewHandler(store.Covers()),
+			GetUser:       getuser.NewHandler(store.Users()),
 		},
 	}
 
 	// --- transport ---
-	router, err := httptransport.NewRouter(application, providers, version, cfg.CORSOrigins, store.Ping)
+	router, err := httptransport.NewRouter(httptransport.Deps{
+		Application: application,
+		Providers:   providers,
+		Version:     version,
+		CORSOrigins: cfg.CORSOrigins,
+		Ready:       store.Ping,
+		Verifier:    verifier,
+		Cookies:     handlers.NewCookieWriter(cfg.Auth.CookieSecure),
+		// Warn at five failures, permanently block the (IP, address) pair at
+		// ten within fifteen minutes. This is the control that keeps signup's
+		// "already registered" answer from scaling into bulk enumeration, and
+		// that makes credential stuffing against sign-in expensive.
+		Guard:        lockout.NewGuard(store.AuthBlocks()),
+		SupportEmail: cfg.SupportEmail,
+		// Makes sign-out and refresh-reuse revocation take effect at once
+		// instead of lagging by the access-token lifetime.
+		SessionCheck: issuer.Verify,
+		Google:       googleProvider,
+		AppBaseURL:   cfg.AppBaseURL,
+	})
 	if err != nil {
 		return err
 	}
@@ -103,4 +208,14 @@ func run() error {
 	slog.Info("starting aurify api", "addr", cfg.HTTPAddr)
 	server := mux.NewServer(cfg.HTTPAddr, router)
 	return server.Listen(ctx)
+}
+
+// resolveSigningKey loads the configured Ed25519 seed.
+//
+// There is no generated fallback. A key that changes on restart silently signs
+// every user out, and two instances holding different keys reject each other's
+// tokens, which surfaces as intermittent 401s that are painful to trace back to
+// a missing variable. Config.Validate rejects an empty seed before we get here.
+func resolveSigningKey(seed string) (ed25519.PrivateKey, error) {
+	return auth.ParsePrivateKeySeed(seed)
 }
