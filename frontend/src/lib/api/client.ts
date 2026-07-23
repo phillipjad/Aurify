@@ -80,7 +80,7 @@ function notifySessionExpired() {
 export async function apiFetch<T>(path: string, init?: FetchInit): Promise<T> {
   const res = await send(path, init)
 
-  if (res.status === 401 && canRetry(path)) {
+  if (res.status === 401 && canRetry(path) && hasSessionHint()) {
     // The access token lasts 15 minutes, so this is the ordinary state of any
     // tab left open. Rotate the pair and replay once before surfacing anything.
     const refreshed = await refreshSession()
@@ -90,7 +90,10 @@ export async function apiFetch<T>(path: string, init?: FetchInit): Promise<T> {
     }
     const retried = await send(path, init)
     if (!retried.ok) {
-      if (retried.status === 401) notifySessionExpired()
+      // Deliberately not reporting expiry here. The refresh just succeeded, so
+      // the session is known good; a still-401 reply is about this endpoint, not
+      // the session. /playlists answers 401 when the user has not linked that
+      // DSP yet — treating that as expiry signed a perfectly valid user out.
       throw await toApiError(retried)
     }
     return readBody<T>(retried)
@@ -135,14 +138,49 @@ function isStateChanging(method: string): boolean {
 }
 
 /**
- * Whether a 401 from this path should trigger a refresh.
+ * Endpoints where a 401 is the final answer, so a refresh must not be attempted.
  *
- * Auth endpoints are excluded: a 401 from sign-in means the password was wrong,
- * not that a session expired, and refreshing there would swallow the real error.
- * Refreshing the refresh call would also recurse.
+ * These either verify a credential themselves — a 401 from sign-in means the
+ * password was wrong, and refreshing would swallow the real error — or would
+ * recurse, in the case of refresh itself.
+ *
+ * This is an explicit list rather than a blanket `/auth/` prefix on purpose.
+ * `/auth/session` lives under the same prefix and is the single endpoint that
+ * most needs to refresh: a 401 there means the access token expired, which is
+ * the ordinary state of any tab left open longer than the token's 15 minutes.
+ * Excluding it sent users with a perfectly good 30-day refresh token back to
+ * the sign-in page.
  */
+const TERMINAL_401_PATHS: readonly string[] = [
+  '/auth/refresh',
+  '/auth/signin',
+  '/auth/signup',
+  '/auth/signout',
+  '/auth/verify-email',
+  '/auth/password/forgot',
+  '/auth/password/reset',
+]
+
+/** Whether a 401 from this path should trigger a refresh and one replay. */
 function canRetry(path: string): boolean {
-  return !path.startsWith('/auth/')
+  const [pathname] = path.split('?')
+  return !TERMINAL_401_PATHS.includes(pathname ?? path)
+}
+
+/**
+ * Whether this browser looks like it holds a session worth refreshing.
+ *
+ * The access and refresh cookies are HttpOnly, so script cannot see them. The
+ * CSRF cookie is the readable proxy: the API issues it with the session and
+ * clears it with the session, so its presence means "we were signed in".
+ *
+ * Without this check, a signed-out page load turns its 401 into a refresh that
+ * also 401s. That is not merely wasteful — paired with the cache reset that a
+ * failed refresh triggers, it re-runs the session query and the two endpoints
+ * loop against each other as fast as the network allows.
+ */
+function hasSessionHint(): boolean {
+  return readCookie(CSRF_COOKIE) !== undefined
 }
 
 /**

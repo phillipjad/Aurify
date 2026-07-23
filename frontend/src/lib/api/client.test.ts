@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest'
 
-import { ApiError, apiFetch } from '@/lib/api/client'
+import { ApiError, apiFetch, onSessionExpired } from '@/lib/api/client'
 
 function jsonResponse(body: unknown, init?: ResponseInit): Response {
   return new Response(JSON.stringify(body), {
@@ -178,7 +178,20 @@ describe('apiFetch silent refresh', () => {
     clearCookies()
   })
 
+  // A browser that never signed in has no refresh token, and the client cannot
+  // see the HttpOnly cookie to know that. The CSRF cookie is the readable proxy:
+  // it is issued with the session and cleared with it. Without this check a
+  // signed-out page load turns every 401 into a refresh attempt that 401s too,
+  // and the pair loops.
+  it('does not attempt a refresh when no session cookie is present', async () => {
+    fetchMock.mockResolvedValue(unauthorized())
+
+    await expect(apiFetch('/auth/session')).rejects.toMatchObject({ status: 401 })
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
   it('refreshes once on a 401 and replays the original request', async () => {
+    setCsrfCookie('csrf-token-value')
     fetchMock
       .mockResolvedValueOnce(unauthorized())
       .mockResolvedValueOnce(jsonResponse({ userId: 'u1' }))
@@ -193,6 +206,7 @@ describe('apiFetch silent refresh', () => {
   })
 
   it('gives up and throws the original 401 when the refresh fails', async () => {
+    setCsrfCookie('csrf-token-value')
     fetchMock.mockResolvedValueOnce(unauthorized()).mockResolvedValueOnce(unauthorized())
 
     await expect(apiFetch('/playlists')).rejects.toMatchObject({ status: 401 })
@@ -201,6 +215,7 @@ describe('apiFetch silent refresh', () => {
   })
 
   it('does not retry more than once', async () => {
+    setCsrfCookie('csrf-token-value')
     fetchMock
       .mockResolvedValueOnce(unauthorized())
       .mockResolvedValueOnce(jsonResponse({ userId: 'u1' }))
@@ -210,16 +225,70 @@ describe('apiFetch silent refresh', () => {
     expect(fetchMock).toHaveBeenCalledTimes(3)
   })
 
+  // Not every 401 is about the session. The playlists endpoint answers 401 when
+  // the user has not linked that DSP yet — they are perfectly well signed in.
+  // Once a refresh has *succeeded* the session is known good, so a still-401
+  // reply is the endpoint's own business and must not sign the user out.
+  it('does not report expiry when the refresh worked but the endpoint still 401s', async () => {
+    setCsrfCookie('csrf-token-value')
+    const expired = vi.fn()
+    const unsubscribe = onSessionExpired(expired)
+
+    fetchMock
+      .mockResolvedValueOnce(unauthorized())
+      .mockResolvedValueOnce(jsonResponse({ userId: 'u1' }))
+      .mockResolvedValueOnce(unauthorized())
+
+    await expect(apiFetch('/playlists?platform=spotify')).rejects.toMatchObject({ status: 401 })
+    expect(expired).not.toHaveBeenCalled()
+    unsubscribe()
+  })
+
+  // The genuine case still has to fire, or nothing ever drops to signed-out.
+  it('reports expiry when the refresh itself fails', async () => {
+    setCsrfCookie('csrf-token-value')
+    const expired = vi.fn()
+    const unsubscribe = onSessionExpired(expired)
+
+    fetchMock.mockResolvedValueOnce(unauthorized()).mockResolvedValueOnce(unauthorized())
+
+    await expect(apiFetch('/playlists')).rejects.toMatchObject({ status: 401 })
+    expect(expired).toHaveBeenCalledTimes(1)
+    unsubscribe()
+  })
+
   // A 401 from sign-in means "wrong password", not "expired session". Refreshing
   // there would swallow the real error and confuse the form.
-  it('does not refresh on a 401 from an auth endpoint', async () => {
-    fetchMock.mockResolvedValue(unauthorized())
+  it.each(['/auth/signin', '/auth/signup', '/auth/verify-email', '/auth/password/forgot', '/auth/password/reset'])(
+    'does not refresh on a 401 from %s',
+    async (path) => {
+      fetchMock.mockResolvedValue(unauthorized())
 
-    await expect(apiFetch('/auth/signin', { method: 'POST', body: '{}' })).rejects.toMatchObject({ status: 401 })
-    expect(fetchMock).toHaveBeenCalledTimes(1)
+      await expect(apiFetch(path, { method: 'POST', body: '{}' })).rejects.toMatchObject({ status: 401 })
+      expect(fetchMock).toHaveBeenCalledTimes(1)
+    },
+  )
+
+  // The session probe is the opposite case, and the one that matters most: a 401
+  // here is precisely "the access token expired", which is the ordinary state of
+  // any tab older than the token TTL. Excluding it would bounce a user with a
+  // perfectly good 30-day refresh token back to the sign-in page.
+  it('DOES refresh on a 401 from /auth/session', async () => {
+    setCsrfCookie('csrf-token-value')
+    fetchMock
+      .mockResolvedValueOnce(unauthorized())
+      .mockResolvedValueOnce(jsonResponse({ userId: 'u1' }))
+      .mockResolvedValueOnce(jsonResponse({ userId: 'u1', email: 'a@b.test' }))
+
+    const session = await apiFetch<{ email: string }>('/auth/session')
+
+    expect(session.email).toBe('a@b.test')
+    expect(fetchMock).toHaveBeenCalledTimes(3)
+    expect(fetchMock.mock.calls[1]?.[0]).toBe('/api/v1/auth/refresh')
   })
 
   it('shares one refresh between requests that 401 together', async () => {
+    setCsrfCookie('csrf-token-value')
     let refreshCalls = 0
     fetchMock.mockImplementation((url: string) => {
       if (url.endsWith('/auth/refresh')) {
