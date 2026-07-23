@@ -16,6 +16,21 @@ export default defineConfig({
     tailwindcss(),
     VitePWA({
       registerType: 'autoUpdate',
+      workbox: {
+        // The API is served from this same origin: the Docker build embeds this
+        // SPA into the Go binary (backend/internal/transport/http/ui.go), so
+        // /api/... and the app share a host. Without this denylist the
+        // navigation fallback answers every top-level navigation with
+        // index.html, including ones meant for the backend.
+        //
+        // Sign in with Google is the case that breaks. Both its legs are
+        // top-level navigations to /api/v1/auth/federated/google/... : the
+        // redirect out to Google, and Google's redirect back with the code. The
+        // service worker would serve cached HTML for the callback, the backend
+        // would never exchange the code, and the user would end up silently not
+        // signed in. curl never sees this because it does not run the worker.
+        navigateFallbackDenylist: [/^\/api\//],
+      },
       includeAssets: ['favicon.svg', 'favicon.ico', 'icons/apple-touch-icon-180x180.png'],
       manifest: {
         name: 'Aurify',
