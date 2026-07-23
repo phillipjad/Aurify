@@ -33,10 +33,53 @@ type DspConnection struct {
 	Scopes         []string
 }
 
+type EmailToken struct {
+	TokenHash  []byte
+	UserID     string
+	Purpose    string
+	ExpiresAt  pgtype.Timestamptz
+	ConsumedAt pgtype.Timestamptz
+	CreatedAt  pgtype.Timestamptz
+}
+
+type RefreshToken struct {
+	TokenHash []byte
+	SessionID string
+	IssuedAt  pgtype.Timestamptz
+	ExpiresAt pgtype.Timestamptz
+	UsedAt    pgtype.Timestamptz
+}
+
+type Session struct {
+	ID         string
+	UserID     string
+	IssuedAt   pgtype.Timestamptz
+	LastUsedAt pgtype.Timestamptz
+	ExpiresAt  pgtype.Timestamptz
+	RevokedAt  pgtype.Timestamptz
+	UserAgent  string
+	Ip         string
+}
+
 type User struct {
-	ID          string
-	Email       string
-	DisplayName string
-	CreatedAt   pgtype.Timestamptz
-	UpdatedAt   pgtype.Timestamptz
+	ID            string
+	Email         string
+	DisplayName   string
+	CreatedAt     pgtype.Timestamptz
+	UpdatedAt     pgtype.Timestamptz
+	EmailVerified bool
+}
+
+type UserCredential struct {
+	UserID       string
+	PasswordHash string
+	UpdatedAt    pgtype.Timestamptz
+}
+
+type UserIdentity struct {
+	Provider  string
+	Subject   string
+	UserID    string
+	Email     string
+	CreatedAt pgtype.Timestamptz
 }

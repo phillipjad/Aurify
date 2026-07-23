@@ -12,7 +12,7 @@ import (
 )
 
 const getUserByEmail = `-- name: GetUserByEmail :one
-SELECT id, email, display_name, created_at, updated_at
+SELECT id, email, display_name, created_at, updated_at, email_verified
 FROM users
 WHERE email = $1
 `
@@ -26,12 +26,13 @@ func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error
 		&i.DisplayName,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.EmailVerified,
 	)
 	return i, err
 }
 
 const getUserByID = `-- name: GetUserByID :one
-SELECT id, email, display_name, created_at, updated_at
+SELECT id, email, display_name, created_at, updated_at, email_verified
 FROM users
 WHERE id = $1
 `
@@ -45,6 +46,7 @@ func (q *Queries) GetUserByID(ctx context.Context, id string) (User, error) {
 		&i.DisplayName,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.EmailVerified,
 	)
 	return i, err
 }
@@ -66,6 +68,9 @@ type UpsertUserParams struct {
 	UpdatedAt   pgtype.Timestamptz
 }
 
+// Deliberately does not write email_verified. Verification state is owned by
+// SetUserEmailVerified (see auth.sql); if a general-purpose user save could
+// carry it, a stale in-memory User would silently un-verify an account.
 func (q *Queries) UpsertUser(ctx context.Context, arg UpsertUserParams) error {
 	_, err := q.db.Exec(ctx, upsertUser,
 		arg.ID,

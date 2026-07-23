@@ -104,12 +104,13 @@ func (r *UserRepository) hydrate(ctx context.Context, row db.User) (*domain.User
 	}
 
 	user := &domain.User{
-		ID:          row.ID,
-		Email:       row.Email,
-		DisplayName: row.DisplayName,
-		Connections: make(map[domain.DSPPlatform]domain.DSPConnection, len(conns)),
-		CreatedAt:   timeFromTS(row.CreatedAt),
-		UpdatedAt:   timeFromTS(row.UpdatedAt),
+		ID:            row.ID,
+		Email:         row.Email,
+		DisplayName:   row.DisplayName,
+		EmailVerified: row.EmailVerified,
+		Connections:   make(map[domain.DSPPlatform]domain.DSPConnection, len(conns)),
+		CreatedAt:     timeFromTS(row.CreatedAt),
+		UpdatedAt:     timeFromTS(row.UpdatedAt),
 	}
 	for _, c := range conns {
 		platform := domain.DSPPlatform(c.Platform)
