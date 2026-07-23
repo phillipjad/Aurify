@@ -7,6 +7,7 @@ import (
 	"github.com/fgrzl/claims"
 
 	"context"
+	"errors"
 
 	"github.com/fgrzl/mux"
 
@@ -32,12 +33,15 @@ type Deps struct {
 	CORSOrigins []string
 	// Ready is the readiness check behind GET /readyz; nil always reports ready.
 	Ready func(context.Context) error
-	// Verifier validates access tokens. Verification is stateless by design, so
-	// an authenticated request costs no database round trip; the price is that a
-	// revoked session keeps working until its access token expires.
+	// Verifier validates access tokens cryptographically, without touching the
+	// database, so a forged or expired token is rejected cheaply.
 	Verifier *auth.Verifier
 	Cookies  *handlers.CookieWriter
 	Throttle *handlers.Throttle
+	// SessionCheck confirms the verified token's session is still live. Signature
+	// verification alone cannot see a revocation, so without this a signed-out
+	// user keeps access until their access token expires.
+	SessionCheck handlers.SessionCheck
 }
 
 // NewRouter builds the fully configured API router. Version is reported in the
@@ -80,9 +84,24 @@ func NewRouter(deps Deps) (*mux.Router, error) {
 			return nil, err
 		}
 		set := claims.NewClaimsSet(verified.Subject)
-		set.Set("sid", verified.SessionID)
+		set.Set(handlers.SessionClaim, verified.SessionID)
 		return claims.NewPrincipal(set), nil
 	}))
+
+	// Revocation, immediately after authentication so the principal is populated.
+	// The token is trusted cryptographically by this point but has not been
+	// checked against the session it names, which is what makes sign-out and
+	// refresh-reuse revocation take effect at once instead of lagging by the
+	// access-token lifetime.
+	//
+	// A missing check is a startup failure rather than a silently skipped
+	// middleware. Every authenticated route would still answer 200 with a token
+	// belonging to a revoked session, which is precisely the kind of hole nobody
+	// notices until it is exploited.
+	if deps.SessionCheck == nil {
+		return nil, errors.New("router: SessionCheck is required, revocation cannot be optional")
+	}
+	router.Use(handlers.SessionRevocationMiddleware(deps.SessionCheck))
 
 	// CSRF for cookie-authenticated mutations. Refresh is exempt: the refresh
 	// cookie is itself the credential, a cross-site caller cannot read the

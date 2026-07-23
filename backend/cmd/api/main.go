@@ -160,6 +160,9 @@ func run() error {
 		// scaling into bulk enumeration, and that makes credential stuffing
 		// against sign-in expensive.
 		Throttle: handlers.NewThrottle(10, 15*time.Minute),
+		// Makes sign-out and refresh-reuse revocation take effect at once
+		// instead of lagging by the access-token lifetime.
+		SessionCheck: issuer.Verify,
 	})
 	if err != nil {
 		return err

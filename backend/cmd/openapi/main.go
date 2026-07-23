@@ -12,6 +12,7 @@ package main
 //go:generate go run . -out ../../api/openapi.yaml
 
 import (
+	"context"
 	"crypto/ed25519"
 	"flag"
 	"log/slog"
@@ -67,6 +68,10 @@ func generate(out, version string) error {
 		Verifier:    verifier,
 		Cookies:     handlers.NewCookieWriter(true),
 		Throttle:    handlers.NewThrottle(10, 15*time.Minute),
+		// This router only describes itself; it never serves a request, so there
+		// is no session to check. The router still requires the field, which is
+		// what stops the real server from being wired without one.
+		SessionCheck: func(context.Context, string) error { return nil },
 	})
 	if err != nil {
 		return err
