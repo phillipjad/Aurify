@@ -17,6 +17,19 @@ export type GenerateCoverRequest = Schemas['GenerateCoverRequest']
 /** RFC 7807 error body returned by every failing endpoint. */
 export type ProblemDetails = Schemas['ProblemDetails']
 
+// ---- authentication ----
+
+/** The signed-in user, as returned by sign-in, refresh and GET /auth/session. */
+export type Session = Schemas['SessionResponse']
+export type SignUpRequest = Schemas['SignUpRequest']
+export type SignInRequest = Schemas['SignInRequest']
+export type ForgotPasswordRequest = Schemas['ForgotPasswordRequest']
+export type ResetPasswordRequest = Schemas['ResetPasswordRequest']
+export type TokenRequest = Schemas['TokenRequest']
+
+/** Plain acknowledgement from flows that deliberately reveal nothing. */
+export type MessageResponse = Schemas['MessageResponse']
+
 /** DSP platforms — the union comes from the `enum` on the spec's platform field. */
 export type Platform = GenerateCoverRequest['platform']
 

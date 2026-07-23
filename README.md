@@ -85,6 +85,10 @@ Toolchain versions: Go 1.26.3 · Node 24.16.0 · pnpm 11.5.0 · PostgreSQL 17.
   "not implemented" ([`backend/internal/platform/dsp`](backend/internal/platform/dsp), [ADR 0005](docs/adr/0005-dsp-provider-abstraction.md)).
 - **LLM sidecars** — HTTP clients with deterministic local fallbacks; the
   services aren't built ([`backend/internal/platform/llm`](backend/internal/platform/llm), [ADR 0006](docs/adr/0006-llm-sidecars.md)).
-- **Auth** — handlers read an `X-User-ID` header until real sessions/JWT land.
+- **Admin tooling for lockouts** — a permanently blocked `(IP, address)` pair
+  can currently only be cleared by an operator deleting the row
+  ([ADR 0012](docs/adr/0012-account-lockout-policy.md)). Authentication itself
+  is built: email/password and Sign in with Google, with rotating refresh
+  tokens ([ADR 0011](docs/adr/0011-authentication-and-sessions.md)).
 - **Lyrics + sentiment** — the lrclib client is real; sentiment uses a naive
   lexicon placeholder.

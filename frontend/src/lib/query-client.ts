@@ -1,5 +1,8 @@
 import { QueryClient } from '@tanstack/react-query'
 
+import { onSessionExpired } from './api/client'
+import { authKeys } from './api/auth'
+
 // Single shared QueryClient. Tuned conservatively for a PWA: data is considered
 // fresh for a short window and refetched on focus so covers/playlists stay live.
 export const queryClient = new QueryClient({
@@ -10,4 +13,17 @@ export const queryClient = new QueryClient({
       refetchOnWindowFocus: true,
     },
   },
+})
+
+// When a 401 survives a token refresh the session is genuinely over, and it can
+// surface from anywhere — including a background refetch with no component
+// waiting on it. Reacting centrally is what makes the UI fall back to signed-out
+// consistently instead of only when the user happens to click something.
+//
+// The cache is cleared as well as the session reset: whatever it holds was
+// fetched for a user who is no longer signed in, and on a shared machine it
+// would otherwise still be on screen for whoever signs in next.
+onSessionExpired(() => {
+  queryClient.setQueryData(authKeys.session(), null)
+  queryClient.clear()
 })

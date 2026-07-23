@@ -13,11 +13,14 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as AboutRouteImport } from './routes/about'
 import { Route as ContactRouteImport } from './routes/contact'
 import { Route as CoversRouteImport } from './routes/covers'
+import { Route as ForgotPasswordRouteImport } from './routes/forgot-password'
 import { Route as PlaylistsRouteImport } from './routes/playlists'
 import { Route as PrivacyRouteImport } from './routes/privacy'
+import { Route as ResetPasswordRouteImport } from './routes/reset-password'
 import { Route as SecurityRouteImport } from './routes/security'
 import { Route as SignInRouteImport } from './routes/sign-in'
 import { Route as SignUpRouteImport } from './routes/sign-up'
+import { Route as VerifyEmailRouteImport } from './routes/verify-email'
 import { Route as CoversIndexRouteImport } from './routes/covers.index'
 import { Route as CoversCoverIdRouteImport } from './routes/covers.$coverId'
 
@@ -41,6 +44,11 @@ const CoversRoute = CoversRouteImport.update({
   path: '/covers',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ForgotPasswordRoute = ForgotPasswordRouteImport.update({
+  id: '/forgot-password',
+  path: '/forgot-password',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const PlaylistsRoute = PlaylistsRouteImport.update({
   id: '/playlists',
   path: '/playlists',
@@ -49,6 +57,11 @@ const PlaylistsRoute = PlaylistsRouteImport.update({
 const PrivacyRoute = PrivacyRouteImport.update({
   id: '/privacy',
   path: '/privacy',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ResetPasswordRoute = ResetPasswordRouteImport.update({
+  id: '/reset-password',
+  path: '/reset-password',
   getParentRoute: () => rootRouteImport,
 } as any)
 const SecurityRoute = SecurityRouteImport.update({
@@ -64,6 +77,11 @@ const SignInRoute = SignInRouteImport.update({
 const SignUpRoute = SignUpRouteImport.update({
   id: '/sign-up',
   path: '/sign-up',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const VerifyEmailRoute = VerifyEmailRouteImport.update({
+  id: '/verify-email',
+  path: '/verify-email',
   getParentRoute: () => rootRouteImport,
 } as any)
 const CoversIndexRoute = CoversIndexRouteImport.update({
@@ -82,11 +100,14 @@ export interface FileRoutesByFullPath {
   '/about': typeof AboutRoute
   '/contact': typeof ContactRoute
   '/covers': typeof CoversRouteWithChildren
+  '/forgot-password': typeof ForgotPasswordRoute
   '/playlists': typeof PlaylistsRoute
   '/privacy': typeof PrivacyRoute
+  '/reset-password': typeof ResetPasswordRoute
   '/security': typeof SecurityRoute
   '/sign-in': typeof SignInRoute
   '/sign-up': typeof SignUpRoute
+  '/verify-email': typeof VerifyEmailRoute
   '/covers/$coverId': typeof CoversCoverIdRoute
   '/covers/': typeof CoversIndexRoute
 }
@@ -94,11 +115,14 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/about': typeof AboutRoute
   '/contact': typeof ContactRoute
+  '/forgot-password': typeof ForgotPasswordRoute
   '/playlists': typeof PlaylistsRoute
   '/privacy': typeof PrivacyRoute
+  '/reset-password': typeof ResetPasswordRoute
   '/security': typeof SecurityRoute
   '/sign-in': typeof SignInRoute
   '/sign-up': typeof SignUpRoute
+  '/verify-email': typeof VerifyEmailRoute
   '/covers/$coverId': typeof CoversCoverIdRoute
   '/covers': typeof CoversIndexRoute
 }
@@ -108,11 +132,14 @@ export interface FileRoutesById {
   '/about': typeof AboutRoute
   '/contact': typeof ContactRoute
   '/covers': typeof CoversRouteWithChildren
+  '/forgot-password': typeof ForgotPasswordRoute
   '/playlists': typeof PlaylistsRoute
   '/privacy': typeof PrivacyRoute
+  '/reset-password': typeof ResetPasswordRoute
   '/security': typeof SecurityRoute
   '/sign-in': typeof SignInRoute
   '/sign-up': typeof SignUpRoute
+  '/verify-email': typeof VerifyEmailRoute
   '/covers/$coverId': typeof CoversCoverIdRoute
   '/covers/': typeof CoversIndexRoute
 }
@@ -123,11 +150,14 @@ export interface FileRouteTypes {
     | '/about'
     | '/contact'
     | '/covers'
+    | '/forgot-password'
     | '/playlists'
     | '/privacy'
+    | '/reset-password'
     | '/security'
     | '/sign-in'
     | '/sign-up'
+    | '/verify-email'
     | '/covers/$coverId'
     | '/covers/'
   fileRoutesByTo: FileRoutesByTo
@@ -135,11 +165,14 @@ export interface FileRouteTypes {
     | '/'
     | '/about'
     | '/contact'
+    | '/forgot-password'
     | '/playlists'
     | '/privacy'
+    | '/reset-password'
     | '/security'
     | '/sign-in'
     | '/sign-up'
+    | '/verify-email'
     | '/covers/$coverId'
     | '/covers'
   id:
@@ -148,11 +181,14 @@ export interface FileRouteTypes {
     | '/about'
     | '/contact'
     | '/covers'
+    | '/forgot-password'
     | '/playlists'
     | '/privacy'
+    | '/reset-password'
     | '/security'
     | '/sign-in'
     | '/sign-up'
+    | '/verify-email'
     | '/covers/$coverId'
     | '/covers/'
   fileRoutesById: FileRoutesById
@@ -162,11 +198,14 @@ export interface RootRouteChildren {
   AboutRoute: typeof AboutRoute
   ContactRoute: typeof ContactRoute
   CoversRoute: typeof CoversRouteWithChildren
+  ForgotPasswordRoute: typeof ForgotPasswordRoute
   PlaylistsRoute: typeof PlaylistsRoute
   PrivacyRoute: typeof PrivacyRoute
+  ResetPasswordRoute: typeof ResetPasswordRoute
   SecurityRoute: typeof SecurityRoute
   SignInRoute: typeof SignInRoute
   SignUpRoute: typeof SignUpRoute
+  VerifyEmailRoute: typeof VerifyEmailRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -199,6 +238,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof CoversRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/forgot-password': {
+      id: '/forgot-password'
+      path: '/forgot-password'
+      fullPath: '/forgot-password'
+      preLoaderRoute: typeof ForgotPasswordRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/playlists': {
       id: '/playlists'
       path: '/playlists'
@@ -211,6 +257,13 @@ declare module '@tanstack/react-router' {
       path: '/privacy'
       fullPath: '/privacy'
       preLoaderRoute: typeof PrivacyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/reset-password': {
+      id: '/reset-password'
+      path: '/reset-password'
+      fullPath: '/reset-password'
+      preLoaderRoute: typeof ResetPasswordRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/security': {
@@ -232,6 +285,13 @@ declare module '@tanstack/react-router' {
       path: '/sign-up'
       fullPath: '/sign-up'
       preLoaderRoute: typeof SignUpRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/verify-email': {
+      id: '/verify-email'
+      path: '/verify-email'
+      fullPath: '/verify-email'
+      preLoaderRoute: typeof VerifyEmailRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/covers/': {
@@ -269,11 +329,14 @@ const rootRouteChildren: RootRouteChildren = {
   AboutRoute: AboutRoute,
   ContactRoute: ContactRoute,
   CoversRoute: CoversRouteWithChildren,
+  ForgotPasswordRoute: ForgotPasswordRoute,
   PlaylistsRoute: PlaylistsRoute,
   PrivacyRoute: PrivacyRoute,
+  ResetPasswordRoute: ResetPasswordRoute,
   SecurityRoute: SecurityRoute,
   SignInRoute: SignInRoute,
   SignUpRoute: SignUpRoute,
+  VerifyEmailRoute: VerifyEmailRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
