@@ -14,7 +14,8 @@ import (
 
 type fakeUsers struct{ user *domain.User }
 
-func (f *fakeUsers) Save(context.Context, *domain.User) error { return nil }
+func (f *fakeUsers) Save(context.Context, *domain.User) error   { return nil }
+func (f *fakeUsers) Create(context.Context, *domain.User) error { return nil }
 func (f *fakeUsers) FindByID(context.Context, string) (*domain.User, error) {
 	return f.user, nil
 }

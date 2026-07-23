@@ -109,8 +109,11 @@ func (h *Handler) Handle(ctx context.Context, cmd Command) (sessions.Tokens, err
 			Connections:   map[domain.DSPPlatform]domain.DSPConnection{},
 			CreatedAt:     time.Now().UTC(),
 		}
-		// Save assigns the id when it is empty.
-		if err := h.users.Save(ctx, user); err != nil {
+		// Create, not Save: Save does not write EmailVerified, so going through
+		// it left provider-verified accounts sitting at false in the database
+		// and tripping the linking rule above on a later visit.
+		// Create assigns the id when it is empty.
+		if err := h.users.Create(ctx, user); err != nil {
 			return sessions.Tokens{}, err
 		}
 	default:

@@ -23,6 +23,10 @@ func (f *fakeUsers) Save(_ context.Context, u *domain.User) error {
 	return nil
 }
 
+func (f *fakeUsers) Create(ctx context.Context, u *domain.User) error {
+	return f.Save(ctx, u)
+}
+
 func (f *fakeUsers) FindByID(_ context.Context, id string) (*domain.User, error) {
 	for _, u := range f.byEmail {
 		if u.ID == id {

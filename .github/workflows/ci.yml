@@ -27,6 +27,23 @@ jobs:
   build-backend:
     runs-on: ubuntu-latest
     needs: version
+    # The integration tests skip themselves when AURIFY_TEST_DATABASE_URL is
+    # unset, so without this service they would quietly never run anywhere.
+    # Migrations are applied by the code under test, via postgres.Connect.
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_DB: aurify
+          POSTGRES_USER: aurify
+          POSTGRES_PASSWORD: aurify
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U aurify -d aurify"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     steps:
       - uses: actions/checkout@v6
 
@@ -39,6 +56,8 @@ jobs:
         run: cd backend && go vet ./...
 
       - name: Test
+        env:
+          AURIFY_TEST_DATABASE_URL: postgres://aurify:aurify@localhost:5432/aurify?sslmode=disable
         run: cd backend && go test ./...
 
       - name: Build

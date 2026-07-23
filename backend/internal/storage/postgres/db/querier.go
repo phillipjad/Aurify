@@ -19,6 +19,12 @@ type Querier interface {
 	CreateEmailToken(ctx context.Context, arg CreateEmailTokenParams) error
 	CreateRefreshToken(ctx context.Context, arg CreateRefreshTokenParams) error
 	CreateSession(ctx context.Context, arg CreateSessionParams) error
+	// Unlike UpsertUser this does write email_verified. Creation is the one moment
+	// the value is being asserted rather than saved back, so there is no earlier
+	// read to go stale: the caller is stating what the row is born as. UpsertUser
+	// still refuses to carry the column, which is what stops a stale in-memory User
+	// from silently un-verifying an account later.
+	CreateUser(ctx context.Context, arg CreateUserParams) error
 	// Operator-only. Nothing in the request path calls this; it exists for the
 	// future admin portal and for manual intervention.
 	DeleteAuthBlock(ctx context.Context, arg DeleteAuthBlockParams) error
