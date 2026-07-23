@@ -54,10 +54,11 @@ AURIFY_SUPPORT_EMAIL=support@aurify.local
 # and the rest of auth works normally.
 # AURIFY_GOOGLE_CLIENT_ID=
 # AURIFY_GOOGLE_CLIENT_SECRET=
-# Points at the Vite dev server, not the API's own port. Vite proxies /api to
-# localhost:8080, so the callback lands on the same origin the app runs on,
-# which is what production does. Register this exact string in Google Cloud.
-AURIFY_GOOGLE_REDIRECT_URL=http://localhost:5173/api/v1/auth/federated/google/callback
+# Points at the API's own port, matching the DSP callbacks, so the container
+# stack can complete a sign-in with no frontend dev server running. Cookies are
+# scoped by host and ignore the port, so this still reaches the app on :5173.
+# Register this exact string in Google Cloud; it is matched exactly.
+AURIFY_GOOGLE_REDIRECT_URL=http://localhost:8080/api/v1/auth/federated/google/callback
 CONFIG
 
 echo "✓ wrote $TARGET"
