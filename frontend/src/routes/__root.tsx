@@ -5,7 +5,7 @@ import { createRootRouteWithContext, Link, Outlet, useRouterState } from '@tanst
 
 import { AurifyLogo } from '@/components/aurify-logo'
 import { ThemeToggle } from '@/components/theme-toggle'
-import { buttonVariants } from '@/components/ui/button-variants'
+import { UserMenu } from '@/features/auth/user-menu'
 
 // Context made available to every route (loaders, components).
 export interface RouterContext {
@@ -61,12 +61,7 @@ function RootLayout() {
               Covers
             </Link>
             <span className="mx-1 h-5 w-px bg-border" aria-hidden="true" />
-            <Link to="/sign-in" className={navLinkClass}>
-              Sign in
-            </Link>
-            <Link to="/sign-up" className={buttonVariants({ variant: 'outline', size: 'sm' })}>
-              Sign up
-            </Link>
+            <UserMenu />
             <ThemeToggle />
           </nav>
         </div>
@@ -177,6 +172,9 @@ function pageName(pathname: string): string {
   if (pathname.startsWith('/covers')) return 'Your covers'
   if (pathname === '/sign-in') return 'Sign in'
   if (pathname === '/sign-up') return 'Sign up'
+  if (pathname === '/verify-email') return 'Verify your email'
+  if (pathname === '/forgot-password') return 'Reset your password'
+  if (pathname === '/reset-password') return 'Choose a new password'
   if (pathname === '/about') return 'About'
   if (pathname === '/privacy') return 'Privacy Policy'
   if (pathname === '/contact') return 'Contact'

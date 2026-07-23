@@ -18,7 +18,8 @@ src/
   lib/
     query-client.ts        # shared TanStack QueryClient
     api/
-      client.ts            # fetch wrapper (sets X-User-ID dev header)
+      client.ts            # fetch wrapper (cookie auth, CSRF, silent refresh)
+      auth.ts              # session query + sign-in/up/reset mutations
       schema.ts            # GENERATED from the backend OpenAPI spec (vp run gen:api)
       types.ts             # wire types, derived from schema.ts (no hand shapes)
       queries.ts           # READ side  — useQuery hooks (CQRS queries)
@@ -66,8 +67,12 @@ states — and real navigation through the generated route tree.
 
 ## Notes / TODO
 
-- **Auth is stubbed.** `lib/api/client.ts` sends an `X-User-ID` header
-  (`VITE_DEV_USER_ID`) the backend reads until real auth exists.
+- **Auth is cookie-based.** `lib/api/client.ts` sends credentials on every
+  request, echoes the CSRF cookie in `X-CSRF-Token` on mutations, and silently
+  refreshes once on a 401 before giving up. No token is ever read or stored by
+  script — the access and refresh cookies are HttpOnly. Guarded routes go
+  through `requireSession` in `lib/auth-guard.ts`, which is a UX redirect and
+  not a security boundary; the API authenticates every request itself.
 - Only the `button` shadcn component is included; add more with
   `vp dlx shadcn@latest add <component>`.
 - Add the PWA icons listed in `public/icons/README.md`.
