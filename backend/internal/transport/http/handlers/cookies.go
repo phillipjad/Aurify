@@ -35,6 +35,11 @@ const (
 	refreshCookiePath = "/api/v1/auth"
 
 	csrfHeader = "X-CSRF-Token"
+
+	// SessionClaim is the access token's session id claim. The router copies it
+	// onto the principal so middleware can look the session up without reparsing
+	// the token.
+	SessionClaim = "sid"
 )
 
 // devCookiePrefixNote: when CookieSecure is false (local HTTP development) the

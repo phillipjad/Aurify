@@ -1,6 +1,6 @@
 # 0011 — Hand-built authentication: Ed25519 access tokens + opaque refresh tokens
 
-- Status: Accepted
+- Status: Accepted (amended 2026-07-23, see [Amendment](#amendment-2026-07-23-revocation-is-now-immediate))
 - Date: 2026-07-22
 
 ## Context
@@ -182,3 +182,28 @@ second and cheaper oracle.
 
 - [ADR 0007](0007-fgrzl-mux-web-framework.md) — the framework whose auth hook we mount into.
 - [ADR 0012](0012-account-lockout-policy.md) — the failed-authentication lockout.
+
+## Amendment (2026-07-23): revocation is now immediate
+
+This ADR originally accepted that "a revoked session keeps working until its
+access token expires", with the 15-minute TTL as the exposure window. That has
+been reversed: every authenticated request now checks the session against the
+database, so sign-out and refresh-reuse revocation take effect at once.
+
+The original reasoning was weaker than it looked. It traded immediate revocation
+for avoiding a database round trip, but **every protected endpoint in this API
+already queries PostgreSQL** (covers list/get/delete, session, playlists). The
+check adds one indexed primary-key lookup to requests that were already
+database-bound, so the statelessness was buying far less than the argument
+assumed.
+
+What settled it was the user-facing behaviour rather than the architecture:
+sign-out that does not sign the user out for up to fifteen minutes is a real
+problem on a shared machine, and the same window let a stolen access token
+outlive the reuse detection that was supposed to have killed it.
+
+The access token remains a signed JWT and is still verified cryptographically
+before the session lookup happens, so a forged or expired token is rejected
+without touching the database. If the lookup ever becomes measurable, a
+short-TTL cache in front of it bounds staleness to seconds without returning to
+a fifteen-minute window.
