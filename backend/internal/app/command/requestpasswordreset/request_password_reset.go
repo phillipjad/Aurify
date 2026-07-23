@@ -4,6 +4,7 @@ package requestpasswordreset
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -42,9 +43,10 @@ func NewHandler(
 
 // Handle sends a reset link when the address exists.
 //
-// It returns nil for an unknown address as well as a known one. The endpoint is
-// unauthenticated and enumerable by design otherwise: a distinguishable
-// response would turn it into a free "is this address registered here" oracle.
+// It returns nil for an unknown address as well as a known one, so the response
+// cannot be used to tell whether an address is registered. The endpoint is
+// unauthenticated, so a distinguishable answer would be a free
+// "is this address registered here" oracle.
 func (h *Handler) Handle(ctx context.Context, cmd Command) error {
 	email, err := signup.NormalizeEmail(cmd.Email)
 	if err != nil {
@@ -83,5 +85,14 @@ func (h *Handler) Handle(ctx context.Context, cmd Command) error {
 	link := strings.TrimRight(h.baseURL, "/") + "/reset-password?token=" + token
 	body := "Reset your Aurify password:\n\n" + link +
 		"\n\nThe link expires in one hour and can be used once. If you did not ask for this, ignore this message and your password will stay as it is."
-	return h.mailer.Send(ctx, email, "Reset your Aurify password", body)
+
+	// A send failure is logged but not returned. Surfacing it made this
+	// endpoint an account-existence oracle: a broken relay produced a 500 for a
+	// registered address while an unknown one still got the generic 200. The
+	// error log is now the only place a delivery problem shows up, so it is
+	// worth alerting on.
+	if err := h.mailer.Send(ctx, email, "Reset your Aurify password", body); err != nil {
+		slog.ErrorContext(ctx, "failed to send password reset email", "error", err, "to", email)
+	}
+	return nil
 }
