@@ -38,6 +38,9 @@ jobs:
       - name: Vet
         run: cd backend && go vet ./...
 
+      - name: Test
+        run: cd backend && go test ./...
+
       - name: Build
         working-directory: backend
         env:
@@ -64,3 +67,9 @@ jobs:
 
       - name: Check (format, lint, types)
         run: cd frontend && pnpm run check
+
+      # --run is explicit rather than relying on Vitest inferring CI and
+      # disabling watch mode. If that inference ever fails the job hangs until
+      # the runner times out, which is a slow and confusing way to learn it.
+      - name: Test
+        run: cd frontend && pnpm run test --run
