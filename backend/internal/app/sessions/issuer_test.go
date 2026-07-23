@@ -123,7 +123,7 @@ func TestRotateIssuesNewPairAndRetiresOldToken(t *testing.T) {
 	if err != nil {
 		t.Fatalf("issue: %v", err)
 	}
-	second, err := issuer.Rotate(t.Context(), first.RefreshToken, Context{})
+	second, err := issuer.Rotate(t.Context(), first.RefreshToken)
 	if err != nil {
 		t.Fatalf("rotate: %v", err)
 	}
@@ -146,12 +146,12 @@ func TestRotateDetectsReuseAndRevokesSession(t *testing.T) {
 	if err != nil {
 		t.Fatalf("issue: %v", err)
 	}
-	if _, err := issuer.Rotate(t.Context(), first.RefreshToken, Context{}); err != nil {
+	if _, err := issuer.Rotate(t.Context(), first.RefreshToken); err != nil {
 		t.Fatalf("first rotate: %v", err)
 	}
 
 	// Replay the now-spent token, as a thief holding a captured copy would.
-	_, err = issuer.Rotate(t.Context(), first.RefreshToken, Context{})
+	_, err = issuer.Rotate(t.Context(), first.RefreshToken)
 	if !errors.Is(err, domain.ErrTokenReused) {
 		t.Fatalf("replay: err = %v, want ErrTokenReused", err)
 	}
@@ -172,15 +172,15 @@ func TestRotateRefusesAfterSessionRevoked(t *testing.T) {
 	if err != nil {
 		t.Fatalf("issue: %v", err)
 	}
-	second, err := issuer.Rotate(t.Context(), first.RefreshToken, Context{})
+	second, err := issuer.Rotate(t.Context(), first.RefreshToken)
 	if err != nil {
 		t.Fatalf("rotate: %v", err)
 	}
-	if _, err := issuer.Rotate(t.Context(), first.RefreshToken, Context{}); !errors.Is(err, domain.ErrTokenReused) {
+	if _, err := issuer.Rotate(t.Context(), first.RefreshToken); !errors.Is(err, domain.ErrTokenReused) {
 		t.Fatalf("replay: err = %v, want ErrTokenReused", err)
 	}
 
-	if _, err := issuer.Rotate(t.Context(), second.RefreshToken, Context{}); !errors.Is(err, domain.ErrSessionInvalid) {
+	if _, err := issuer.Rotate(t.Context(), second.RefreshToken); !errors.Is(err, domain.ErrSessionInvalid) {
 		t.Fatalf("live token after revocation: err = %v, want ErrSessionInvalid", err)
 	}
 }
@@ -188,7 +188,7 @@ func TestRotateRefusesAfterSessionRevoked(t *testing.T) {
 func TestRotateRejectsUnknownToken(t *testing.T) {
 	issuer, _ := newTestIssuer(t)
 
-	if _, err := issuer.Rotate(t.Context(), "not-a-real-token", Context{}); !errors.Is(err, domain.ErrSessionInvalid) {
+	if _, err := issuer.Rotate(t.Context(), "not-a-real-token"); !errors.Is(err, domain.ErrSessionInvalid) {
 		t.Fatalf("unknown token: err = %v, want ErrSessionInvalid", err)
 	}
 }
@@ -202,7 +202,7 @@ func TestRefreshExpiryNeverOutlivesSessionCap(t *testing.T) {
 	if err != nil {
 		t.Fatalf("issue: %v", err)
 	}
-	next, err := issuer.Rotate(t.Context(), first.RefreshToken, Context{})
+	next, err := issuer.Rotate(t.Context(), first.RefreshToken)
 	if err != nil {
 		t.Fatalf("rotate: %v", err)
 	}

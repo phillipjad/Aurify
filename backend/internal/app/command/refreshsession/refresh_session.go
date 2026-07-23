@@ -10,8 +10,6 @@ import (
 // Command presents a refresh token.
 type Command struct {
 	RefreshToken string
-	UserAgent    string
-	IP           string
 }
 
 // Handler executes the RefreshSession command.
@@ -28,5 +26,5 @@ func NewHandler(issuer *sessions.Issuer) *Handler {
 // issuer so refresh, sign-in and federated sign-in cannot drift apart on the
 // rule that matters most here.
 func (h *Handler) Handle(ctx context.Context, cmd Command) (sessions.Tokens, error) {
-	return h.issuer.Rotate(ctx, cmd.RefreshToken, sessions.Context{UserAgent: cmd.UserAgent, IP: cmd.IP})
+	return h.issuer.Rotate(ctx, cmd.RefreshToken)
 }

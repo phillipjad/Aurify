@@ -14,6 +14,15 @@ services:
       dockerfile: backend/Dockerfile
       args:
         VERSION: ${VERSION:-dev}
+    # Optional local overrides. Copy backend/.env.example to backend/.env and
+    # edit; the file is gitignored, so credentials stay out of the repo.
+    #
+    # `environment:` below wins over anything in the file, which is deliberate:
+    # the database URL must use the compose service hostname, not the localhost
+    # value a developer needs when running the API outside Docker.
+    env_file:
+      - path: backend/.env
+        required: false
     environment:
       AURIFY_DATABASE_URL: postgres://aurify:aurify@postgres:5432/aurify?sslmode=disable
       AURIFY_HTTP_ADDR: :8080

@@ -8,10 +8,12 @@ import (
 
 	"context"
 	"errors"
+	"net/http"
 
 	"github.com/fgrzl/mux"
 
 	"github.com/phillipjad/aurify/backend/internal/app"
+	"github.com/phillipjad/aurify/backend/internal/app/lockout"
 	"github.com/phillipjad/aurify/backend/internal/app/ports"
 	"github.com/phillipjad/aurify/backend/internal/platform/auth"
 	"github.com/phillipjad/aurify/backend/internal/transport/http/dto"
@@ -37,11 +39,15 @@ type Deps struct {
 	// database, so a forged or expired token is rejected cheaply.
 	Verifier *auth.Verifier
 	Cookies  *handlers.CookieWriter
-	Throttle *handlers.Throttle
 	// SessionCheck confirms the verified token's session is still live. Signature
 	// verification alone cannot see a revocation, so without this a signed-out
 	// user keeps access until their access token expires.
 	SessionCheck handlers.SessionCheck
+	// Guard enforces the failed-authentication lockout policy.
+	Guard *lockout.Guard
+	// SupportEmail is shown to users who are close to, or already under, a
+	// permanent lockout, since an operator is the only way back.
+	SupportEmail string
 }
 
 // NewRouter builds the fully configured API router. Version is reported in the
@@ -78,15 +84,33 @@ func NewRouter(deps Deps) (*mux.Router, error) {
 	// Authentication. mux supplies only the mounting point and the AllowAnonymous
 	// bookkeeping; the validator below is ours, and it verifies the token rather
 	// than trusting anything the client asserts.
-	mux.UseAuthentication(router, mux.WithAuthValidator(func(token string) (claims.Principal, error) {
-		verified, err := deps.Verifier.Verify(token)
-		if err != nil {
-			return nil, err
-		}
-		set := claims.NewClaimsSet(verified.Subject)
-		set.Set(handlers.SessionClaim, verified.SessionID)
-		return claims.NewPrincipal(set), nil
-	}))
+	mux.UseAuthentication(router,
+		mux.WithAuthValidator(func(token string) (claims.Principal, error) {
+			verified, err := deps.Verifier.Verify(token)
+			if err != nil {
+				return nil, err
+			}
+			set := claims.NewClaimsSet(verified.Subject)
+			set.Set(handlers.SessionClaim, verified.SessionID)
+			return claims.NewPrincipal(set), nil
+		}),
+		// The middleware must be told which cookie carries the token. Its
+		// default is "app_token", so without this it looks for a cookie we never
+		// write and every cookie-authenticated request quietly 401s.
+		mux.WithAuthAppSessionCookieName(deps.Cookies.AccessCookieName()),
+		// These have to mirror how the cookie was written. On a successful
+		// cookie authentication the middleware may re-issue the cookie to extend
+		// it, and it applies these options when it does. Left unset it would
+		// fall back to its own defaults, whose SameSite is Strict, silently
+		// undoing the Lax setting that the federated sign-in callback depends on
+		// (see docs/adr/0011-authentication-and-sessions.md).
+		mux.WithAuthCookieOptions(
+			mux.WithCookiePath("/"),
+			mux.WithCookieSecure(deps.Cookies.Secure()),
+			mux.WithCookieHTTPOnly(true),
+			mux.WithCookieSameSite(http.SameSiteLaxMode),
+		),
+	)
 
 	// Revocation, immediately after authentication so the principal is populated.
 	// The token is trusted cryptographically by this point but has not been
@@ -112,7 +136,7 @@ func NewRouter(deps Deps) (*mux.Router, error) {
 	}))
 
 	dspAuth := handlers.NewAuth(application, providers)
-	sessions := handlers.NewSessions(application, deps.Cookies, deps.Throttle, deps.Verifier)
+	sessions := handlers.NewSessions(application, deps.Cookies, deps.Guard, deps.Verifier, deps.SupportEmail)
 	playlists := handlers.NewPlaylists(application)
 	covers := handlers.NewCovers(application)
 

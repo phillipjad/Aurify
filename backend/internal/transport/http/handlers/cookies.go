@@ -110,13 +110,27 @@ func (w *CookieWriter) Issue(c mux.RouteContext, tokens sessions.Tokens) (string
 // or the browser keeps the original cookie alongside the deletion.
 func (w *CookieWriter) Clear(c mux.RouteContext) {
 	c.Cookies().Set(cookieName(accessCookie, w.secure), "", -1, "/", "", w.secure, true, http.SameSiteLaxMode)
-	c.Cookies().Set(cookieName(refreshCookie, w.secure), "", -1, refreshCookiePath, "", w.secure, true, http.SameSiteLaxMode)
+	c.Cookies().
+		Set(cookieName(refreshCookie, w.secure), "", -1, refreshCookiePath, "", w.secure, true, http.SameSiteLaxMode)
 	c.Cookies().Set(csrfCookie, "", -1, "/", "", w.secure, false, http.SameSiteLaxMode)
 }
 
+// AccessCookieName is the resolved name of the access-token cookie.
+//
+// The authentication middleware has to be told this name explicitly. Its
+// default is "app_token", so leaving it unset means the middleware looks for a
+// cookie we never write, silently fails to authenticate every cookie-bearing
+// request, and falls through to a 401.
+func (w *CookieWriter) AccessCookieName() string {
+	return cookieName(accessCookie, w.secure)
+}
+
+// Secure reports whether cookies are marked Secure.
+func (w *CookieWriter) Secure() bool { return w.secure }
+
 // AccessToken reads the access token cookie.
 func (w *CookieWriter) AccessToken(c mux.RouteContext) string {
-	v, _ := c.Cookies().Get(cookieName(accessCookie, w.secure))
+	v, _ := c.Cookies().Get(w.AccessCookieName())
 	return v
 }
 

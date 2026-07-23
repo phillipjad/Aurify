@@ -27,6 +27,7 @@ type Store struct {
 	identities  *IdentityRepository
 	sessions    *SessionRepository
 	emailTokens *EmailTokenRepository
+	authBlocks  *AuthBlockRepository
 }
 
 // Connect dials PostgreSQL, verifies the connection, brings the schema up to
@@ -58,6 +59,7 @@ func Connect(ctx context.Context, dsn string) (*Store, error) {
 		identities:  &IdentityRepository{q: queries},
 		sessions:    &SessionRepository{pool: pool, q: queries},
 		emailTokens: &EmailTokenRepository{q: queries},
+		authBlocks:  &AuthBlockRepository{q: queries},
 	}, nil
 }
 
@@ -112,3 +114,6 @@ func tsFromTime(t time.Time) pgtype.Timestamptz {
 
 // timeFromTS converts a stored timestamp back into a Go time (zero if NULL).
 func timeFromTS(ts pgtype.Timestamptz) time.Time { return ts.Time }
+
+// AuthBlocks returns the permanent authentication lockout repository.
+func (s *Store) AuthBlocks() *AuthBlockRepository { return s.authBlocks }

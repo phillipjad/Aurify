@@ -89,7 +89,8 @@ func TestVerifyPasswordRejectsMalformedHashes(t *testing.T) {
 		"wrong algorithm":  strings.Replace(valid, "argon2id", "argon2i", 1),
 		"wrong version":    strings.Replace(valid, fmt.Sprintf("v=%d", argonVersion), "v=16", 1),
 		"missing segments": "$argon2id$v=19$m=19456,t=2,p=1",
-		"bad salt base64":  strings.Replace(valid, "$argon2id$", "$argon2id$", 1)[:strings.LastIndex(valid, "$")] + "$!!!",
+		// Truncate at the final separator and put non-base64 in the salt's place.
+		"bad salt base64": valid[:strings.LastIndex(valid, "$")] + "$!!!",
 	}
 	for name, encoded := range cases {
 		if err := VerifyPassword(encoded, "pw"); err == nil {
@@ -101,7 +102,7 @@ func TestVerifyPasswordRejectsMalformedHashes(t *testing.T) {
 // VerifyDecoy exists so an unknown email costs the same as a known one. It only
 // has to run without panicking; the timing property itself is not unit-testable
 // in a way that would be stable on CI.
-func TestVerifyDecoyRuns(t *testing.T) {
+func TestVerifyDecoyRuns(*testing.T) {
 	VerifyDecoy("anything")
 }
 

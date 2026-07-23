@@ -347,3 +347,40 @@ func (r *EmailTokenRepository) DeleteForUser(
 		Purpose: string(purpose),
 	})
 }
+
+// AuthBlockRepository is the PostgreSQL-backed ports.AuthBlockRepository.
+//
+// Blocks live in the database rather than in process memory because they are
+// permanent: an in-memory set would silently forget every lockout on the next
+// deploy, which would make "permanent" untrue in exactly the situation it
+// matters.
+type AuthBlockRepository struct {
+	q *db.Queries
+}
+
+var _ ports.AuthBlockRepository = (*AuthBlockRepository)(nil)
+
+// IsBlocked reports whether an (ip, identifier) pair is locked out.
+func (r *AuthBlockRepository) IsBlocked(ctx context.Context, ip, identifier string) (bool, error) {
+	_, err := r.q.GetAuthBlock(ctx, db.GetAuthBlockParams{Ip: ip, Identifier: identifier})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return false, nil
+		}
+		return false, err
+	}
+	return true, nil
+}
+
+// Block records a permanent lockout. Re-blocking an already-blocked pair is a
+// no-op, so the original timestamp survives as the record of when the abuse
+// began.
+func (r *AuthBlockRepository) Block(ctx context.Context, ip, identifier string, failures int, reason string) error {
+	return r.q.CreateAuthBlock(ctx, db.CreateAuthBlockParams{
+		Ip:         ip,
+		Identifier: identifier,
+		BlockedAt:  tsFromTime(time.Now().UTC()),
+		Failures:   int32(failures),
+		Reason:     reason,
+	})
+}

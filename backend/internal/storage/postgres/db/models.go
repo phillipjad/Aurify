@@ -8,6 +8,14 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type AuthBlock struct {
+	Ip         string
+	Identifier string
+	BlockedAt  pgtype.Timestamptz
+	Failures   int32
+	Reason     string
+}
+
 type Cover struct {
 	ID           string
 	UserID       string

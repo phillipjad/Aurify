@@ -18,10 +18,10 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
-	"time"
 
 	"github.com/fgrzl/mux"
 
+	"github.com/phillipjad/aurify/backend/internal/app/lockout"
 	"github.com/phillipjad/aurify/backend/internal/platform/auth"
 	"github.com/phillipjad/aurify/backend/internal/transport/http/handlers"
 
@@ -67,7 +67,7 @@ func generate(out, version string) error {
 		Version:     version,
 		Verifier:    verifier,
 		Cookies:     handlers.NewCookieWriter(true),
-		Throttle:    handlers.NewThrottle(10, 15*time.Minute),
+		Guard:       lockout.NewGuard(nil),
 		// This router only describes itself; it never serves a request, so there
 		// is no session to check. The router still requires the field, which is
 		// what stops the real server from being wired without one.

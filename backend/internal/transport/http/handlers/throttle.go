@@ -4,101 +4,18 @@ import (
 	"net"
 	"net/http"
 	"strings"
-	"sync"
-	"time"
 
 	"github.com/fgrzl/mux"
+
+	"github.com/phillipjad/aurify/backend/internal/app/lockout"
 )
-
-// Throttle is a fixed-window rate limiter for the unauthenticated auth routes.
-//
-// It exists for three jobs, all of which are load-bearing rather than hygiene:
-//   - Signup reports whether an address is already registered, which makes it an
-//     account-existence oracle. Rate limiting is what stops that disclosure
-//     scaling into a bulk enumeration of the user table.
-//   - Sign-in is the target for credential stuffing and password spraying.
-//   - Password reset sends mail, so an open one is a spam relay pointed at
-//     whichever addresses an attacker supplies.
-//
-// ponytail: in-memory and per-process. Behind more than one instance the
-// effective limit multiplies by the instance count. Move the counter to Redis or
-// a Postgres table if Aurify is ever scaled out, or put the limit at the edge.
-type Throttle struct {
-	mu      sync.Mutex
-	windows map[string]*throttleWindow
-	limit   int
-	period  time.Duration
-	now     func() time.Time
-}
-
-type throttleWindow struct {
-	count   int
-	resetAt time.Time
-}
-
-// NewThrottle builds a limiter allowing limit attempts per key per period.
-func NewThrottle(limit int, period time.Duration) *Throttle {
-	return &Throttle{
-		windows: make(map[string]*throttleWindow),
-		limit:   limit,
-		period:  period,
-		now:     time.Now,
-	}
-}
-
-// Allow records an attempt and reports whether it is within the limit.
-func (t *Throttle) Allow(key string) bool {
-	now := t.now()
-
-	t.mu.Lock()
-	defer t.mu.Unlock()
-
-	// Opportunistic sweep. Without it the map grows once per distinct client
-	// forever, which is a slow memory leak an attacker could drive deliberately
-	// by rotating source addresses.
-	if len(t.windows) > 10_000 {
-		for k, w := range t.windows {
-			if now.After(w.resetAt) {
-				delete(t.windows, k)
-			}
-		}
-	}
-
-	w, ok := t.windows[key]
-	if !ok || now.After(w.resetAt) {
-		t.windows[key] = &throttleWindow{count: 1, resetAt: now.Add(t.period)}
-		return true
-	}
-	if w.count >= t.limit {
-		return false
-	}
-	w.count++
-	return true
-}
-
-// allowRequest throttles by client address and, when supplied, by a secondary
-// key such as the submitted email.
-//
-// Limiting on both matters: per-IP alone lets a botnet spray one account from
-// many addresses, and per-account alone lets one host walk the whole user table
-// one address at a time.
-func (t *Throttle) allowRequest(c mux.RouteContext, secondary string) bool {
-	ip := clientIP(c.Request())
-	if !t.Allow("ip:" + ip) {
-		return false
-	}
-	if secondary != "" {
-		return t.Allow("id:" + strings.ToLower(secondary))
-	}
-	return true
-}
 
 // clientIP resolves the caller's address.
 //
 // X-Forwarded-For is only consulted because mux's forwarded-headers middleware
-// is expected to have normalised it upstream. Read straight from the client it
-// is trivially spoofed, which would let an attacker mint a fresh rate-limit
-// bucket per request and defeat the limiter entirely.
+// is expected to have normalised it upstream. Read straight from an untrusted
+// client it is trivially spoofed, which would let an attacker mint a fresh
+// lockout bucket per request and defeat the policy entirely.
 func clientIP(r *http.Request) string {
 	if r == nil {
 		return "unknown"
@@ -116,10 +33,40 @@ func clientIP(r *http.Request) string {
 	return host
 }
 
-// tooManyRequests answers a throttled caller.
-func tooManyRequests(c mux.RouteContext) {
-	c.JSON(http.StatusTooManyRequests, map[string]string{
-		"title":  "Too many attempts",
-		"detail": "Too many attempts. Wait a few minutes and try again.",
+// respondBlocked answers a permanently locked-out caller.
+//
+// It is a 403 rather than a 429: 429 invites the client to retry later, and
+// there is no later. The support address is the only route back.
+func respondBlocked(c mux.RouteContext, supportEmail string) {
+	c.JSON(http.StatusForbidden, map[string]string{
+		"title": "Access blocked",
+		"detail": "Too many failed attempts from this location for this account. " +
+			"This block is permanent and must be lifted by us. Contact " + supportEmail + " to restore access.",
 	})
+}
+
+// warning is appended to a failure response once the user is close to being
+// locked out, so the block is never a surprise.
+func warning(decision lockout.Decision, supportEmail string) string {
+	if !decision.Warn {
+		return ""
+	}
+	remaining := lockout.BlockAfter - decision.Failures
+	if remaining < 1 {
+		remaining = 1
+	}
+	return " After " + itoa(remaining) + " more failed attempt(s) this account will be blocked from this location " +
+		"and only we can unblock it. If you are stuck, contact " + supportEmail + "."
+}
+
+func itoa(n int) string {
+	if n == 0 {
+		return "0"
+	}
+	digits := ""
+	for n > 0 {
+		digits = string(rune('0'+n%10)) + digits
+		n /= 10
+	}
+	return digits
 }

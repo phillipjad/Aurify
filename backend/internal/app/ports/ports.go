@@ -66,6 +66,15 @@ type EmailTokenRepository interface {
 	DeleteForUser(ctx context.Context, userID string, purpose domain.EmailTokenPurpose) error
 }
 
+// AuthBlockRepository persists permanent authentication lockouts, keyed by the
+// (ip, identifier) pair. Entries are never removed by the application; clearing
+// one is an operator action (see docs/adr/0012-account-lockout-policy.md).
+type AuthBlockRepository interface {
+	// IsBlocked reports whether the pair is permanently locked out.
+	IsBlocked(ctx context.Context, ip, identifier string) (bool, error)
+	Block(ctx context.Context, ip, identifier string, failures int, reason string) error
+}
+
 // EmailSender delivers transactional mail. Implementations must not block the
 // caller on a slow remote server for long; callers treat a send failure as
 // non-fatal where the user can retry (for example, resending a verification).

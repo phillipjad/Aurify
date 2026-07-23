@@ -206,13 +206,23 @@ func TestVerifyRejectsWrongIssuerOrAudience(t *testing.T) {
 
 	wrongIssuer := validPayload()
 	wrongIssuer.Iss = "evil"
-	if _, err := verifier.Verify(mintRaw(t, priv, jwtHeader{Alg: algEdDSA, Typ: "JWT"}, wrongIssuer)); !errors.Is(err, ErrTokenClaims) {
+	if _, err := verifier.Verify(
+		mintRaw(t, priv, jwtHeader{Alg: algEdDSA, Typ: "JWT"}, wrongIssuer),
+	); !errors.Is(
+		err,
+		ErrTokenClaims,
+	) {
 		t.Fatalf("wrong iss: err = %v, want ErrTokenClaims", err)
 	}
 
 	wrongAudience := validPayload()
 	wrongAudience.Aud = "another-service"
-	if _, err := verifier.Verify(mintRaw(t, priv, jwtHeader{Alg: algEdDSA, Typ: "JWT"}, wrongAudience)); !errors.Is(err, ErrTokenClaims) {
+	if _, err := verifier.Verify(
+		mintRaw(t, priv, jwtHeader{Alg: algEdDSA, Typ: "JWT"}, wrongAudience),
+	); !errors.Is(
+		err,
+		ErrTokenClaims,
+	) {
 		t.Fatalf("wrong aud: err = %v, want ErrTokenClaims", err)
 	}
 }
@@ -238,11 +248,13 @@ func TestVerifyRejectsMalformedTokens(t *testing.T) {
 	parts := strings.Split(good, ".")
 
 	cases := map[string]string{
-		"empty":           "",
-		"two segments":    parts[0] + "." + parts[1],
-		"four segments":   good + ".extra",
-		"not base64":      "!!!.???.***",
-		"padded base64":   base64.URLEncoding.EncodeToString([]byte(`{"alg":"EdDSA"}`)) + "." + parts[1] + "." + parts[2],
+		"empty":         "",
+		"two segments":  parts[0] + "." + parts[1],
+		"four segments": good + ".extra",
+		"not base64":    "!!!.???.***",
+		"padded base64": base64.URLEncoding.EncodeToString(
+			[]byte(`{"alg":"EdDSA"}`),
+		) + "." + parts[1] + "." + parts[2],
 		"header not json": base64.RawURLEncoding.EncodeToString([]byte("not json")) + "." + parts[1] + "." + parts[2],
 	}
 	for name, token := range cases {
