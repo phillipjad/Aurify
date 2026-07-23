@@ -53,7 +53,7 @@ concrete adapters.
 ## Quick start
 
 ```bash
-cp .env.example .env        # optional; sane defaults are built in
+../scripts/dev-setup.sh      # generates backend/.env.dev (Mailpit + a signing key)
 go mod tidy                 # resolve dependencies
 go run build.go             # compile -> bin/aurify (version stamped; defaults to "dev")
 ./bin/aurify                # starts on :8080
@@ -100,7 +100,7 @@ Email/password and Sign in with Google, delivered by cookie. See
 Set `AURIFY_AUTH_SIGNING_KEY` in production — unset, the API generates an
 ephemeral key, so sessions die on restart and two instances reject each other's
 tokens. Google sign-in is off unless `AURIFY_GOOGLE_CLIENT_ID`/`_SECRET` are
-set. See `.env.example`.
+set. See `.env.default`.
 
 ## Common tasks
 

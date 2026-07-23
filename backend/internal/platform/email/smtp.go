@@ -11,7 +11,6 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
-	"log/slog"
 	"net"
 	"net/smtp"
 	"strings"
@@ -24,6 +23,7 @@ type SMTPSender struct {
 	host string // host alone, for TLS verification
 	auth smtp.Auth
 	from string
+	tls  bool
 }
 
 // SMTPConfig is the connection detail for the relay.
@@ -33,6 +33,13 @@ type SMTPConfig struct {
 	Username string
 	Password string
 	From     string
+	// TLS requires STARTTLS before sending. It defaults to true and should only
+	// be false for a relay on the local machine, such as the Mailpit container
+	// used in development, which does not terminate TLS.
+	//
+	// Credentials are never sent without it: NewSMTPSender refuses a username
+	// with TLS disabled, so this cannot be used to leak a relay password.
+	TLS bool
 }
 
 // NewSMTPSender builds an SMTP-backed sender. It fails fast on incomplete
@@ -42,12 +49,24 @@ func NewSMTPSender(cfg SMTPConfig) (*SMTPSender, error) {
 	if cfg.Host == "" || cfg.Port == "" || cfg.From == "" {
 		return nil, errors.New("email: smtp sender requires a host, port and from address")
 	}
-	return &SMTPSender{
+	// Refusing this combination is what keeps the TLS switch from becoming a
+	// credential leak: without encryption the relay password would cross the
+	// network in the clear, so a configuration that would do so is rejected
+	// rather than honoured.
+	if !cfg.TLS && cfg.Username != "" {
+		return nil, errors.New("email: refusing to send SMTP credentials without TLS")
+	}
+
+	sender := &SMTPSender{
 		addr: net.JoinHostPort(cfg.Host, cfg.Port),
 		host: cfg.Host,
-		auth: smtp.PlainAuth("", cfg.Username, cfg.Password, cfg.Host),
 		from: cfg.From,
-	}, nil
+		tls:  cfg.TLS,
+	}
+	if cfg.Username != "" {
+		sender.auth = smtp.PlainAuth("", cfg.Username, cfg.Password, cfg.Host)
+	}
+	return sender, nil
 }
 
 // ErrHeaderInjection is returned when a recipient or subject contains a line
@@ -59,9 +78,9 @@ var ErrHeaderInjection = errors.New("email: header value contains a line break")
 
 // Send delivers one message.
 //
-// STARTTLS is mandatory, not opportunistic: smtp.PlainAuth refuses to hand
-// credentials to an unencrypted connection, and we would rather fail to send
-// than transmit the relay password in the clear.
+// STARTTLS is required unless explicitly disabled for a local relay, and is
+// never opportunistic: when enabled, a relay that does not offer it is an error
+// rather than a silent downgrade to plaintext.
 func (s *SMTPSender) Send(ctx context.Context, to, subject, body string) error {
 	if containsLineBreak(to) || containsLineBreak(subject) {
 		return ErrHeaderInjection
@@ -80,14 +99,20 @@ func (s *SMTPSender) Send(ctx context.Context, to, subject, body string) error {
 	}
 	defer func() { _ = client.Close() }()
 
-	if ok, _ := client.Extension("STARTTLS"); !ok {
-		return errors.New("email: relay does not offer STARTTLS")
+	if s.tls {
+		if ok, _ := client.Extension("STARTTLS"); !ok {
+			return errors.New("email: relay does not offer STARTTLS")
+		}
+		if err := client.StartTLS(&tls.Config{ServerName: s.host, MinVersion: tls.VersionTLS12}); err != nil {
+			return fmt.Errorf("email: starttls: %w", err)
+		}
 	}
-	if err := client.StartTLS(&tls.Config{ServerName: s.host, MinVersion: tls.VersionTLS12}); err != nil {
-		return fmt.Errorf("email: starttls: %w", err)
-	}
-	if err := client.Auth(s.auth); err != nil {
-		return fmt.Errorf("email: auth: %w", err)
+	// No auth configured means an unauthenticated relay, which is how the local
+	// development mail catcher runs.
+	if s.auth != nil {
+		if err := client.Auth(s.auth); err != nil {
+			return fmt.Errorf("email: auth: %w", err)
+		}
 	}
 
 	if err := client.Mail(s.from); err != nil {
@@ -135,19 +160,4 @@ func sanitizeHeader(v string) string {
 
 func containsLineBreak(v string) bool {
 	return strings.ContainsAny(v, "\r\n")
-}
-
-// LogSender writes mail to the application log instead of sending it. It backs
-// local development, where there is no relay configured and the verification
-// link simply needs to be reachable by a developer.
-//
-// It logs the body, which contains a live single-use token, so it must never be
-// selected in an environment with real users.
-type LogSender struct{}
-
-// Send records the message at info level.
-func (LogSender) Send(ctx context.Context, to, subject, body string) error {
-	slog.InfoContext(ctx, "email not sent (no SMTP configured), logging instead",
-		"to", to, "subject", subject, "body", body)
-	return nil
 }

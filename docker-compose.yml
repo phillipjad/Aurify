@@ -14,15 +14,30 @@ services:
       dockerfile: backend/Dockerfile
       args:
         VERSION: ${VERSION:-dev}
-    # Optional local overrides. Copy backend/.env.example to backend/.env and
-    # edit; the file is gitignored, so credentials stay out of the repo.
+    # Layered configuration, lowest precedence first. Compose applies env_file
+    # entries in order and a later file wins, so this reads as:
     #
-    # `environment:` below wins over anything in the file, which is deliberate:
-    # the database URL must use the compose service hostname, not the localhost
-    # value a developer needs when running the API outside Docker.
+    #   .env.default  committed defaults, the baseline every stack runs with
+    #   .env.dev      the shared local development preset (gitignored)
+    #   .env          personal overrides, highest precedence (gitignored)
+    #
+    # Every entry is optional. With none of them present the API applies
+    # production rules and refuses to start without a mail relay and a signing
+    # key, which is the correct behaviour for anything that is not a dev box.
+    #
+    # .env.default is committed and genuinely loaded, which is why it is named
+    # "default" rather than "example": editing it changes what every developer's
+    # stack runs with, so it is code rather than a comment.
     env_file:
+      - path: backend/.env.default
+        required: false
+      - path: backend/.env.dev
+        required: false
       - path: backend/.env
         required: false
+    # Wins over every env_file above, which is deliberate: .env.default points
+    # the database at localhost, correct for running the API outside Docker but
+    # wrong inside the container, where it must be the compose service hostname.
     environment:
       AURIFY_DATABASE_URL: postgres://aurify:aurify@postgres:5432/aurify?sslmode=disable
       AURIFY_HTTP_ADDR: :8080
@@ -32,6 +47,25 @@ services:
       postgres:
         condition: service_healthy
     restart: unless-stopped
+
+  # Mailpit is a real SMTP server that captures everything sent to it and exposes
+  # a web UI on 8025 plus a REST API for tests.
+  #
+  # It exists so development substitutes infrastructure rather than branching the
+  # application. The API speaks ordinary SMTP to it exactly as it speaks to
+  # SMTP2GO in production, so the verification and password-reset paths that run
+  # locally are the same code that runs for real users, and an integration test
+  # can read the token out of the API instead of needing a back door.
+  mailpit:
+    image: axllent/mailpit:latest
+    container_name: aurify-mailpit
+    restart: unless-stopped
+    ports:
+      - '8025:8025' # web UI and REST API
+      - '1025:1025' # SMTP
+    environment:
+      MP_SMTP_AUTH_ACCEPT_ANY: 1
+      MP_SMTP_AUTH_ALLOW_INSECURE: 1
 
   postgres:
     image: postgres:17

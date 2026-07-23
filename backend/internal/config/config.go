@@ -4,6 +4,7 @@
 package config
 
 import (
+	"errors"
 	"os"
 	"strconv"
 	"strings"
@@ -65,6 +66,8 @@ type SMTPConfig struct {
 	Username string
 	Password string
 	From     string
+	// TLS requires STARTTLS. Disable only for a relay on the local machine.
+	TLS bool
 }
 
 // DSPConfig groups the OAuth client configuration for each supported DSP.
@@ -114,6 +117,7 @@ func Load() Config {
 			Username: env("AURIFY_SMTP_USERNAME", ""),
 			Password: env("AURIFY_SMTP_PASSWORD", ""),
 			From:     env("AURIFY_SMTP_FROM", "no-reply@aurify.local"),
+			TLS:      envBool("AURIFY_SMTP_TLS", true),
 		},
 		Google: OAuthConfig{
 			ClientID:     env("AURIFY_GOOGLE_CLIENT_ID", ""),
@@ -150,6 +154,34 @@ func Load() Config {
 			},
 		},
 	}
+}
+
+// Validate reports configuration that must not be allowed to run.
+//
+// It is a pure function of the Config so it can be table-tested without
+// touching the environment, and it is called before anything is constructed so
+// a misconfigured deployment fails at startup rather than degrading silently
+// once it is already serving traffic.
+func (c Config) Validate() error {
+	// Unconditional on purpose. There is no development exemption, because the
+	// development environment substitutes a real SMTP server (Mailpit) rather
+	// than asking the application to behave differently. An unsafe
+	// configuration is therefore not representable rather than merely gated.
+	if c.SMTP.Host == "" {
+		return errors.New(
+			"AURIFY_SMTP_HOST is required: run ./scripts/dev-setup.sh for a local Mailpit-backed config",
+		)
+	}
+	if c.SMTP.From == "" {
+		return errors.New("AURIFY_SMTP_FROM is required")
+	}
+	if c.Auth.SigningKeySeed == "" {
+		return errors.New(
+			"AURIFY_AUTH_SIGNING_KEY is required: generate one with `head -c 32 /dev/urandom | base64`, " +
+				"or run ./scripts/dev-setup.sh",
+		)
+	}
+	return nil
 }
 
 // envDuration reads a Go duration string (for example "15m"), falling back on

@@ -3,6 +3,10 @@
 # Environment / secrets
 .env
 .env.*
+# Committed. Despite matching .env.* above, this is the base configuration
+# layer that docker-compose actually loads, not merely a sample to copy.
+!.env.default
+# The frontend is not containerized, so its file really is a sample.
 !.env.example
 
 # Go (backend)
