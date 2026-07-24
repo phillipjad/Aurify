@@ -1,0 +1,7 @@
+# OpenTofu / Terraform working files. The provider lock (.terraform.lock.hcl) is
+# committed for reproducible provider versions; everything below is local.
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+crash.log
