@@ -17,6 +17,7 @@ lightweight [MADR](https://adr.github.io/madr/)-style records.
 | [0010](0010-postgresql-storage.md) | PostgreSQL (relational + JSONB) via pgx + sqlc | Accepted |
 | [0011](0011-authentication-and-sessions.md) | Hand-built auth: Ed25519 access tokens + opaque refresh tokens | Accepted |
 | [0012](0012-account-lockout-policy.md) | Warn-then-block lockout on the (IP, address) pair | Accepted |
+| [0013](0013-secrets-and-deployment.md) | Secrets in Secret Manager, injected as env vars on Cloud Run | Accepted |
 
 ## Adding a new ADR
 
