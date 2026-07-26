@@ -27,7 +27,7 @@
     "tailwind-merge": "^2.6.0"
   },
   "devDependencies": {
-    "@tailwindcss/vite": "^4.0.0",
+    "@tailwindcss/vite": "^4.3.3",
     "@tanstack/react-query-devtools": "^5.66.0",
     "@tanstack/react-router-devtools": "^1.97.0",
     "@tanstack/router-plugin": "^1.168.18",
