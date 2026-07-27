@@ -1,0 +1,89 @@
+name: Deploy
+
+# Manual, so a person decides when a release ships and whether the database
+# module runs. provision_database is off by default; a routine deploy applies
+# only deploy/app and never touches the Neon database.
+on:
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: 'Image tag to build and deploy (defaults to the commit SHA)'
+        required: false
+        type: string
+      provision_database:
+        description: 'Also apply deploy/database (the Neon project). Leave off for routine deploys.'
+        required: false
+        default: false
+        type: boolean
+
+env:
+  # Non-secret configuration lives in repository variables; secrets in
+  # repository secrets. TF_VAR_* are read by tofu as input variables.
+  TF_IN_AUTOMATION: 'true'
+  TF_VAR_project: ${{ vars.GCP_PROJECT }}
+  TF_VAR_region: ${{ vars.GCP_REGION }}
+  TF_VAR_domain: ${{ vars.AURIFY_DOMAIN }}
+  TF_VAR_google_client_id: ${{ vars.AURIFY_GOOGLE_CLIENT_ID }}
+  TF_VAR_smtp_from: ${{ vars.AURIFY_SMTP_FROM }}
+  TF_VAR_support_email: ${{ vars.AURIFY_SUPPORT_EMAIL }}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - uses: opentofu/setup-opentofu@v1
+
+      - name: Resolve image reference
+        id: image
+        run: |
+          tag="${{ inputs.image_tag }}"
+          [ -n "$tag" ] || tag="${GITHUB_SHA::12}"
+          echo "ref=${{ vars.GCP_REGION }}-docker.pkg.dev/${{ vars.GCP_PROJECT }}/aurify/aurify:${tag}" >> "$GITHUB_OUTPUT"
+          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+
+      - name: Provision the database (optional)
+        if: ${{ inputs.provision_database }}
+        env:
+          NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+        run: |
+          tofu -chdir=deploy/database init -input=false -backend-config="bucket=${{ vars.TF_STATE_BUCKET }}"
+          tofu -chdir=deploy/database apply -input=false -auto-approve
+
+      - name: Initialize the app module
+        run: tofu -chdir=deploy/app init -input=false -backend-config="bucket=${{ vars.TF_STATE_BUCKET }}"
+
+      # Create the Artifact Registry repository before pushing to it. Targeted so
+      # nothing else applies yet; the image var is required but unused here.
+      - name: Ensure the image repository exists
+        run: |
+          tofu -chdir=deploy/app apply -input=false -auto-approve \
+            -target=google_artifact_registry_repository.aurify \
+            -var="image=${{ steps.image.outputs.ref }}"
+
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker ${{ vars.GCP_REGION }}-docker.pkg.dev --quiet
+
+      - name: Build and push the image
+        run: |
+          docker build --platform linux/amd64 \
+            -f backend/Dockerfile \
+            --build-arg "VERSION=${{ steps.image.outputs.tag }}" \
+            -t "${{ steps.image.outputs.ref }}" .
+          docker push "${{ steps.image.outputs.ref }}"
+
+      - name: Deploy
+        run: |
+          tofu -chdir=deploy/app apply -input=false -auto-approve \
+            -var="image=${{ steps.image.outputs.ref }}"
+
+      - name: Report the service URL
+        run: tofu -chdir=deploy/app output -raw service_url
