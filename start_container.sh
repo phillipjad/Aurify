@@ -21,12 +21,17 @@ PG_DATA_DIR="$ROOT_DIR/.data/postgres"
 detached=false
 make_mount=false
 build=false
+services=()
 
 usage() {
   cat <<'EOF'
-Usage: ./start_container.sh [options]
+Usage: ./start_container.sh [options] [service...]
 
-Start the Aurify stack (docker compose up).
+Start the Aurify stack (docker compose up). With no service names it starts
+everything; naming services starts only those, e.g. running the API natively
+against the containerised dependencies:
+
+  ./start_container.sh -dm postgres mailpit
 
 Options:
   -d, --detached     run in the background (docker compose up -d)
@@ -72,14 +77,15 @@ while [[ $# -gt 0 ]]; do
         set_flag "${cluster:i:1}"
       done
       ;;
-    *)
-      echo "start_container.sh: unexpected argument '$1'" >&2
-      echo "try: ./start_container.sh --help" >&2
-      exit 2
-      ;;
+    # Anything that is not a flag is a compose service name, passed straight
+    # through. Compose itself validates the names.
+    *) services+=("$1") ;;
   esac
   shift
 done
+
+# Whatever followed `--`.
+services+=("$@")
 
 command -v docker >/dev/null 2>&1 || {
   echo "start_container.sh: docker is not installed or not on PATH" >&2
@@ -100,6 +106,9 @@ fi
 compose_args=(compose up)
 if $build; then compose_args+=(--build); fi
 if $detached; then compose_args+=(--detach); fi
+# `${arr[@]+...}` so an empty array is not an unbound variable under `set -u`
+# (bash 3.2, which is what macOS ships).
+compose_args+=(${services[@]+"${services[@]}"})
 
 echo "→ docker ${compose_args[*]}"
 exec docker "${compose_args[@]}"
