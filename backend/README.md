@@ -46,7 +46,8 @@ concrete adapters.
 ## Prerequisites
 
 - Go 1.26.3
-- PostgreSQL 17 (e.g. `docker compose up postgres` from the repo root)
+- PostgreSQL 17 and Mailpit (`./start_container.sh -dm postgres mailpit` from the
+  repo root)
 - [`sqlc`](https://docs.sqlc.dev/en/latest/overview/install.html) on PATH — only
   needed to regenerate the `db` package after changing SQL
 
