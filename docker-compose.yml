@@ -1,6 +1,11 @@
 # Local development services for Aurify.
 #
-#   docker compose up -d postgres   # just the database (what you need today)
+# Start these through ./start_container.sh, not `docker compose` directly: it
+# guards the PostgreSQL bind-mount source directory (see the volumes note at the
+# bottom of this file) and passes service names straight through.
+#
+#   ./start_container.sh -dm postgres mailpit   # dependencies only
+#   ./start_container.sh -mb                    # the whole stack, rebuilt
 #
 # The two LLM sidecars are placeholders: the services are not built yet
 # (see docs/adr/0006-llm-sidecars.md). The backend falls back to deterministic
