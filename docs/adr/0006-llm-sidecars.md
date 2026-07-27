@@ -1,6 +1,6 @@
 # 0006 — Local LLM sidecars for prompt + image generation
 
-- Status: Proposed
+- Status: Superseded by [0014](0014-hosted-generation-apis.md)
 - Date: 2026-05-30
 
 ## Context
