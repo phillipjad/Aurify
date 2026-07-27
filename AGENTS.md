@@ -90,7 +90,7 @@ Run locally, two options:
 
 - **Full stack in Docker:** `./start_container.sh -mb` (the `-m` creates the
   Postgres host data dir on first run; add `-d` to detach). See its `--help`.
-- **Native dev loop:** `docker compose up -d postgres`, then
+- **Native dev loop:** `./start_container.sh -dm postgres mailpit`, then
   `go run build.go && ./bin/aurify` (backend) and `vp dev` (frontend). The schema
   is created/updated automatically on startup (embedded goose migrations).
 
