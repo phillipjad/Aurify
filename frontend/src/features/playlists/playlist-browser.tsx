@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { AlertTriangle, ListMusic, RefreshCw, SearchX, Unplug } from 'lucide-react'
+import { AlertTriangle, Check, ListMusic, RefreshCw, SearchX, Unplug } from 'lucide-react'
 import { Link } from '@tanstack/react-router'
 
 import { EmptyState } from '@/components/empty-state'
@@ -9,6 +9,7 @@ import { SearchInput } from '@/components/search-input'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
+import { useSession } from '@/lib/api/auth'
 import { isApiError } from '@/lib/api/client'
 import { connectDsp, useGenerateCover } from '@/lib/api/commands'
 import { usePlaylists, type PlaylistSort } from '@/lib/api/queries'
@@ -38,8 +39,13 @@ export function PlaylistBrowser({ connected, connectError, connectErrorPlatform 
 
   const playlists = usePlaylists({ platform, search, sort })
   const generate = useGenerateCover()
+  const session = useSession()
 
   const activeLabel = platformLabel(platform)
+  // The session reports which platforms are linked, so the button can say so
+  // outright instead of leaving the user to infer it from whether a list
+  // appeared. An empty list is not the same answer as "not connected".
+  const isConnected = session.data?.connections?.includes(platform) ?? false
   const items = playlists.data?.pages.flat() ?? []
   const hasQuery = search.length > 0
 
@@ -60,9 +66,25 @@ export function PlaylistBrowser({ connected, connectError, connectErrorPlatform 
       <div className="flex flex-wrap items-center justify-between gap-3">
         <PlatformPicker value={platform} onChange={setPlatform} />
         <div className="flex flex-col items-end gap-1">
-          <Button variant="outline" size="sm" onClick={() => void connectDsp(platform)}>
-            Connect {activeLabel}
-          </Button>
+          {isConnected ? (
+            <p className="flex items-center gap-1.5 text-sm text-muted-foreground">
+              <Check aria-hidden="true" className="size-4 text-primary" />
+              {activeLabel} connected
+              {/* Reconnecting is how a user re-grants a revoked or expired
+                  authorization, so it stays reachable, just demoted. */}
+              <button
+                type="button"
+                onClick={() => void connectDsp(platform)}
+                className="rounded-sm underline underline-offset-2 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background focus-visible:outline-none"
+              >
+                Reconnect
+              </button>
+            </p>
+          ) : (
+            <Button variant="outline" size="sm" onClick={() => void connectDsp(platform)}>
+              Connect {activeLabel}
+            </Button>
+          )}
           {failedConnect && (
             <p role="alert" className="max-w-xs text-right text-xs text-destructive">
               {failedConnect}

@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"errors"
+	"sort"
 
 	"github.com/fgrzl/mux"
 
@@ -306,7 +307,20 @@ func (h *Sessions) Session(c mux.RouteContext) {
 		Email:         user.Email,
 		DisplayName:   user.DisplayName,
 		EmailVerified: user.EmailVerified,
+		Connections:   connectedPlatforms(user),
 	})
+}
+
+// connectedPlatforms lists a user's linked DSP platforms, sorted so the response
+// is stable. Never nil: the client treats the field as a list, and a JSON null
+// would make every consumer guard for it.
+func connectedPlatforms(user *domain.User) []string {
+	out := make([]string, 0, len(user.Connections))
+	for platform := range user.Connections {
+		out = append(out, string(platform))
+	}
+	sort.Strings(out)
+	return out
 }
 
 // respondWithSession writes the cookie set and echoes the session plus the CSRF
@@ -328,6 +342,7 @@ func (h *Sessions) respondWithSession(c mux.RouteContext, tokens sessions.Tokens
 		response.Email = user.Email
 		response.DisplayName = user.DisplayName
 		response.EmailVerified = user.EmailVerified
+		response.Connections = connectedPlatforms(user)
 	}
 	c.OK(response)
 }

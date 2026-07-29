@@ -39,7 +39,11 @@ type SessionResponse struct {
 	Email         string `json:"email"`
 	DisplayName   string `json:"displayName"`
 	EmailVerified bool   `json:"emailVerified"`
-	CSRFToken     string `json:"csrfToken,omitempty"`
+	// Connections lists the DSP platforms this user has linked, so the client can
+	// say "connected" without having to provoke a 401 from /playlists to find
+	// out. It carries no tokens: which services are linked, nothing more.
+	Connections []string `json:"connections"`
+	CSRFToken   string   `json:"csrfToken,omitempty"`
 }
 
 // MessageResponse is a plain acknowledgement for flows that must not reveal

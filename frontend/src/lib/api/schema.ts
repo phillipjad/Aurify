@@ -316,6 +316,7 @@ export interface components {
             token?: string;
         };
         SessionResponse: {
+            connections?: string[];
             csrfToken?: string;
             displayName?: string;
             email?: string;
@@ -573,6 +574,7 @@ export interface operations {
                      *       "email": "",
                      *       "displayname": "",
                      *       "emailverified": false,
+                     *       "connections": [],
                      *       "csrftoken": ""
                      *     }
                      */
@@ -620,6 +622,7 @@ export interface operations {
                      *       "email": "",
                      *       "displayname": "",
                      *       "emailverified": false,
+                     *       "connections": [],
                      *       "csrftoken": ""
                      *     }
                      */
@@ -677,6 +680,7 @@ export interface operations {
                      *       "email": "",
                      *       "displayname": "",
                      *       "emailverified": false,
+                     *       "connections": [],
                      *       "csrftoken": ""
                      *     }
                      */

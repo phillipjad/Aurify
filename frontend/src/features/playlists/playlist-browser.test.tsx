@@ -232,6 +232,35 @@ describe('PlaylistBrowser', () => {
     expect(mockConnectDsp).toHaveBeenCalledWith('spotify')
   })
 
+  // An empty playlist list is not the same answer as "not connected", so the
+  // session's connection list says which it is rather than leaving the user to
+  // infer it from whether anything appeared.
+  it('reports a linked platform instead of offering to connect it', async () => {
+    mockFetch.mockImplementation((path: string) =>
+      path.startsWith('/auth/session')
+        ? Promise.resolve({ userId: 'u1', email: 'a@b.test', connections: ['youtube_music'] })
+        : Promise.resolve([]),
+    )
+    renderWithProviders(<PlaylistBrowser connected="youtube_music" />)
+
+    expect(await screen.findByText(/youtube music connected/i)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Connect YouTube Music' })).not.toBeInTheDocument()
+    // Re-granting a revoked authorization stays reachable.
+    expect(screen.getByRole('button', { name: 'Reconnect' })).toBeInTheDocument()
+  })
+
+  it('still offers to connect a platform that is not linked', async () => {
+    mockFetch.mockImplementation((path: string) =>
+      path.startsWith('/auth/session')
+        ? Promise.resolve({ userId: 'u1', email: 'a@b.test', connections: ['youtube_music'] })
+        : Promise.resolve([]),
+    )
+    renderWithProviders(<PlaylistBrowser />)
+
+    expect(await screen.findByRole('button', { name: 'Connect Spotify' })).toBeInTheDocument()
+    expect(screen.queryByText(/spotify connected/i)).not.toBeInTheDocument()
+  })
+
   it('opens on the platform the callback just connected', async () => {
     mockFetch.mockResolvedValue([])
     renderWithProviders(<PlaylistBrowser connected="youtube_music" />)

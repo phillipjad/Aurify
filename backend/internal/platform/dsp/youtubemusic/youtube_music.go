@@ -32,6 +32,15 @@ const (
 	youtubeReadonlyScope = "https://www.googleapis.com/auth/youtube.readonly"
 	// maxPageSize is the YouTube Data API's per-call maximum for list endpoints.
 	maxPageSize = 50
+	// likedMusicPlaylistID is YouTube's well-known id for the auto-generated
+	// "Liked Music" playlist.
+	//
+	// It is reachable but not discoverable: playlists.list?mine=true does not
+	// return it, and on accounts whose playlists were created inside YouTube
+	// Music that call answers totalResults=1 with an empty items array, so the
+	// listing comes back empty even though there is music to read. Looking the id
+	// up directly resolves the playlist, and playlistItems reads it normally.
+	likedMusicPlaylistID = "LM"
 )
 
 // Provider is the YouTube Music implementation of ports.DSPProvider.
@@ -145,7 +154,35 @@ func (p *Provider) ListPlaylists(ctx context.Context, conn domain.DSPConnection)
 		}
 		pageToken = resp.NextPageToken
 	}
+
+	// Liked Music has to be asked for by id; see likedMusicPlaylistID. Best
+	// effort, like the identity lookup in Exchange: an account with nothing
+	// liked, or a lookup that fails, must not empty out the rest of the list.
+	if liked, err := p.fetchPlaylistByID(ctx, client, likedMusicPlaylistID); err == nil {
+		out = append(out, liked)
+	}
+
 	return out, nil
+}
+
+// fetchPlaylistByID resolves a single playlist by its id.
+func (p *Provider) fetchPlaylistByID(
+	ctx context.Context,
+	client *http.Client,
+	id string,
+) (domain.Playlist, error) {
+	q := url.Values{}
+	q.Set("part", "snippet,contentDetails")
+	q.Set("id", id)
+
+	var resp playlistListResponse
+	if err := p.getJSON(ctx, client, "/playlists", q, &resp); err != nil {
+		return domain.Playlist{}, err
+	}
+	if len(resp.Items) == 0 {
+		return domain.Playlist{}, fmt.Errorf("youtubemusic: playlist %q not found", id)
+	}
+	return mapPlaylist(resp.Items[0]), nil
 }
 
 // ListTracks returns the normalized tracks of a playlist. Durations require a
