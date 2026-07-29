@@ -75,6 +75,33 @@ describe('PlaylistBrowser', () => {
     expect(screen.getByRole('radio', { name: 'YouTube Music' })).toHaveAttribute('aria-checked', 'true')
   })
 
+  // Results are held across a search or sort so typing doesn't flash skeletons,
+  // but holding them across a platform change left one service's playlists on
+  // screen under another's tab, labelled as something they are not.
+  it("drops the previous platform's playlists as soon as the tab changes", async () => {
+    let releaseYouTube: (playlists: unknown) => void = () => {}
+    mockFetch.mockImplementation((path: string) => {
+      if (path.startsWith('/auth/session')) return Promise.resolve({ userId: 'u1', connections: [] })
+      if (path.includes('youtube_music')) {
+        return new Promise((resolve) => {
+          releaseYouTube = resolve
+        })
+      }
+      return Promise.resolve([MORNING_COFFEE])
+    })
+    renderWithProviders(<PlaylistBrowser />)
+    expect(await screen.findByText('Morning Coffee')).toBeInTheDocument()
+
+    // YouTube Music's request is deliberately left in flight, which is the
+    // window the stale results used to be visible in.
+    await userEvent.click(screen.getByRole('radio', { name: 'YouTube Music' }))
+
+    await waitFor(() => expect(screen.queryByText('Morning Coffee')).not.toBeInTheDocument())
+
+    releaseYouTube([{ id: 'yt1', platform: 'youtube_music', name: 'YT Mix', description: '', trackCount: 7 }])
+    expect(await screen.findByText('YT Mix')).toBeInTheDocument()
+  })
+
   it('moves selection with arrow keys, per the radiogroup pattern', async () => {
     mockFetch.mockResolvedValue([])
     renderWithProviders(<PlaylistBrowser />)
