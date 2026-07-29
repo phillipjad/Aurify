@@ -361,6 +361,43 @@ describe('PlaylistBrowser', () => {
     expect(within(other).queryByText(/cover started/i)).not.toBeInTheDocument()
   })
 
+  // The reported bug: a second click blanked the first row's spinner, because
+  // every row read one shared mutation result that only described the most recent
+  // click. The first request was still running with nothing on screen to say so.
+  it('runs several generations at once and reports each on its own row', async () => {
+    const release: Record<string, (cover: unknown) => void> = {}
+    mockFetch.mockImplementation((path: string, init?: { body?: string }) => {
+      if (path.startsWith('/playlists')) {
+        return Promise.resolve([MORNING_COFFEE, { ...MORNING_COFFEE, id: 'sp2', name: 'Late Night' }])
+      }
+      const { playlistId } = JSON.parse(init?.body ?? '{}') as { playlistId: string }
+      return new Promise((resolve) => {
+        release[playlistId] = resolve
+      })
+    })
+    renderWithProviders(<PlaylistBrowser />)
+
+    const first = (await screen.findByText('Morning Coffee')).closest('li') as HTMLElement
+    const second = screen.getByText('Late Night').closest('li') as HTMLElement
+
+    await userEvent.click(within(first).getByRole('button', { name: 'Aurify it' }))
+    await userEvent.click(within(second).getByRole('button', { name: 'Aurify it' }))
+
+    // Both are in flight: the second click must not have cancelled the first's
+    // reporting.
+    await waitFor(() => {
+      expect(within(first).getByRole('button')).toHaveAttribute('aria-busy', 'true')
+      expect(within(second).getByRole('button')).toHaveAttribute('aria-busy', 'true')
+    })
+
+    // Finish the first only. It reports success while the second keeps working.
+    release.sp1?.({ id: 'cover1', status: 'pending' })
+
+    expect(await within(first).findByText(/cover started/i)).toBeInTheDocument()
+    expect(within(second).getByRole('button')).toHaveAttribute('aria-busy', 'true')
+    expect(within(second).queryByText(/cover started/i)).not.toBeInTheDocument()
+  })
+
   it('reports a failed generation on the row that triggered it', async () => {
     mockFetch.mockImplementation((path: string) =>
       path.startsWith('/playlists')
