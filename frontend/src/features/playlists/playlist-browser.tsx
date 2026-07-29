@@ -60,7 +60,7 @@ export function PlaylistBrowser({ connected, connectError, connectErrorPlatform 
       <div className="flex flex-wrap items-center justify-between gap-3">
         <PlatformPicker value={platform} onChange={setPlatform} />
         <div className="flex flex-col items-end gap-1">
-          <Button variant="outline" size="sm" onClick={() => connectDsp(platform)}>
+          <Button variant="outline" size="sm" onClick={() => void connectDsp(platform)}>
             Connect {activeLabel}
           </Button>
           {failedConnect && (
@@ -78,7 +78,7 @@ export function PlaylistBrowser({ connected, connectError, connectErrorPlatform 
             title={`Connect your ${activeLabel} account`}
             description={`Aurify needs access to your ${activeLabel} library before it can list your playlists.`}
             action={
-              <Button size="sm" onClick={() => connectDsp(platform)}>
+              <Button size="sm" onClick={() => void connectDsp(platform)}>
                 Connect {activeLabel}
               </Button>
             }

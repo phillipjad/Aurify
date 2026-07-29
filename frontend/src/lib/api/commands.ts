@@ -14,7 +14,17 @@ import type { Cover, GenerateCoverRequest, Platform } from './types'
  * a redirect to the provider, and the callback comes back to /playlists carrying
  * `connected` or `connect_error`, so there is no response for the SPA to hold.
  */
-export function connectDsp(platform: Platform) {
+export async function connectDsp(platform: Platform) {
+  // Touch the session first. The login route requires a signed-in caller, and
+  // it is reached by leaving the app — so an access token that expired while the
+  // page sat open would answer a bare 401 document instead of the silent refresh
+  // an in-app fetch gets. This rotates the pair when it needs to; a failure is
+  // not worth blocking on, since the API is the one that decides either way.
+  try {
+    await apiFetch('/auth/session')
+  } catch {
+    // Ignored on purpose: navigate and let the API answer.
+  }
   window.location.assign(`${BASE_URL}/auth/${encodeURIComponent(platform)}/login`)
 }
 

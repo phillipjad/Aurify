@@ -182,17 +182,18 @@ func TestDSPLoginRedirectsWithAFreshRandomState(t *testing.T) {
 	}
 }
 
-func TestDSPLoginSendsAnonymousCallersToSignIn(t *testing.T) {
+// This harness plants the principal itself, so it cannot see route
+// configuration; the real router's authentication is covered in
+// transport/http/router_test.go. What it does pin is that the handler refuses
+// to start a flow it could not attribute to anybody.
+func TestDSPLoginRefusesWithoutAPrincipal(t *testing.T) {
 	router, _ := newAuthTest(t, "")
 
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/auth/youtube_music/login", nil))
 
-	if rec.Code != http.StatusFound {
-		t.Fatalf("status = %d, want %d", rec.Code, http.StatusFound)
-	}
-	if got := rec.Header().Get("Location"); got != testAppBaseURL+"/sign-in?return=%2Fplaylists" {
-		t.Fatalf("Location = %q, want the sign-in page", got)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusUnauthorized)
 	}
 }
 

@@ -247,18 +247,26 @@ func NewRouter(deps Deps) (*mux.Router, error) {
 
 		// ---- write side (commands) ----
 		// Both legs are top-level browser navigations, like the federated routes
-		// above, so they redirect rather than answer JSON. AllowAnonymous keeps mux
-		// from returning a bare 401 body to a navigation; the handlers send an
-		// unauthenticated caller to the sign-in page instead.
+		// above, so they redirect rather than answer JSON.
+		//
+		// Neither may be AllowAnonymous, unlike the federated routes. That flag
+		// does not mean "tolerate an anonymous caller" — mux skips the
+		// authentication middleware outright, so the principal is never populated
+		// and c.User() is nil even when the request carries a valid session
+		// cookie. Both handlers need to know which Aurify user is linking the
+		// account, so with the flag set the flow can never complete: login sees
+		// nobody signed in and the callback has no user to attach tokens to.
+		//
+		// The cost is that an unauthenticated navigation gets mux's 401 rather
+		// than a redirect to sign-in. Both URLs are reached from the playlists
+		// page, which is behind the session guard, so that is the rare path.
 		api.GET("/auth/{platform}/login", dspAuth.Login).
-			AllowAnonymous().
 			WithOperationID("dspLogin").
 			WithSummary("Redirect to a DSP to begin linking the account").
 			WithPathParam("platform", "DSP platform: spotify, apple_music, youtube_music", "spotify").
 			WithResponse(302, nil)
 
 		api.GET("/auth/{platform}/callback", dspAuth.Callback).
-			AllowAnonymous().
 			WithOperationID("dspCallback").
 			WithSummary("OAuth callback that links a DSP account to the user").
 			WithPathParam("platform", "DSP platform: spotify, apple_music, youtube_music", "spotify").

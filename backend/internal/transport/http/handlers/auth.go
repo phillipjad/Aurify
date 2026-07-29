@@ -54,11 +54,11 @@ func (h *Auth) Login(c mux.RouteContext) {
 		return
 	}
 
-	// The route allows anonymous callers so mux does not answer a top-level
-	// navigation with a bare 401 body; an unauthenticated caller is sent to sign
-	// in instead. There is no user to attach a connection to until then.
+	// Belt and braces: the authentication middleware has already rejected an
+	// anonymous caller, so this only fires if the route is ever marked
+	// AllowAnonymous, which silently disables that middleware (see router.go).
 	if currentUser(c) == "" {
-		h.redirect(c, "/sign-in?return="+url.QueryEscape(connectReturnPath))
+		c.Unauthorized()
 		return
 	}
 
