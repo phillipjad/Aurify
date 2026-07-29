@@ -7,9 +7,12 @@
 
 Aurify ingests data from multiple, very different music platforms (Spotify,
 Apple Music, YouTube Music). They differ in auth (standard OAuth code flow vs.
-Apple's MusicKit JWT + user token vs. Google OAuth) and in the data they expose
-(Spotify has `/v1/audio-features`; YouTube Music has no first-party feature
-endpoint). The analysis pipeline must not care which platform a track came from.
+Apple's MusicKit JWT + user token vs. Google OAuth) and in the data they expose.
+No platform we can register with today serves audio features: YouTube Music
+never had a first-party endpoint, and Spotify deprecated `/v1/audio-features`
+on 2024-11-27 with no replacement, leaving it available only to clients approved
+before that date. The analysis pipeline must not care which platform a track
+came from.
 
 ## Decision
 
@@ -21,7 +24,10 @@ resolves a provider by `domain.DSPPlatform`.
 All providers map their data onto a normalized internal model:
 `domain.Track` with `domain.AudioFeatures` (values in `[0,1]`, plus a `Present`
 flag for platforms that supply no features). Lyric-based signals
-(`domain.Sentiment`) compensate where audio features are missing.
+(`domain.Sentiment`) carry the palette, since in practice no provider sets
+`Present`. The field stays because the flag is what lets the pipeline stay
+honest about the difference, and a future source (a local analyzer, a licensed
+feed) can fill it without touching callers.
 
 The registry is constructed in `cmd/api` and does **not** import the provider
 sub-packages, keeping the dependency graph acyclic.
