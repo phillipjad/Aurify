@@ -1,6 +1,7 @@
-import { useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { AlertTriangle, ImageOff, RefreshCw, Sparkles } from 'lucide-react'
 import { Link } from '@tanstack/react-router'
+import { useWindowVirtualizer } from '@tanstack/react-virtual'
 
 import { EmptyState } from '@/components/empty-state'
 import { LoadMore } from '@/components/load-more'
@@ -18,6 +19,54 @@ import { STATUS_LABEL, STATUS_VARIANT, isInProgress } from './cover-status'
 
 const GRID = 'grid gap-4 sm:grid-cols-2 lg:grid-cols-3'
 
+/**
+ * Starting height for an unmeasured grid row: a square thumbnail at a third of
+ * the container, plus the title, status and palette beneath it. Real heights
+ * replace it once rows are measured.
+ */
+const ROW_ESTIMATE = 360
+
+/**
+ * The breakpoints GRID switches on, read through matchMedia so the column count
+ * comes from the same numbers the CSS uses rather than from measuring a width and
+ * hoping the two agree.
+ */
+const COLUMN_QUERIES: readonly [string, number][] = [
+  ['(min-width: 1024px)', 3],
+  ['(min-width: 640px)', 2],
+]
+
+function currentColumns(): number {
+  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return 1
+  for (const [query, columns] of COLUMN_QUERIES) {
+    if (window.matchMedia(query).matches) return columns
+  }
+  return 1
+}
+
+/**
+ * How many tiles sit on a row right now.
+ *
+ * A windowed grid has to know this: it virtualizes rows, not tiles, so the row
+ * count and each row's contents depend on the breakpoint.
+ */
+function useGridColumns(): number {
+  const [columns, setColumns] = useState(currentColumns)
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return
+    const lists = COLUMN_QUERIES.map(([query]) => window.matchMedia(query))
+    const update = () => setColumns(currentColumns())
+    for (const list of lists) list.addEventListener('change', update)
+    update()
+    return () => {
+      for (const list of lists) list.removeEventListener('change', update)
+    }
+  }, [])
+
+  return columns
+}
+
 // Filter options map 1:1 to a single backend status (or "all"), so the server
 // does the filtering across every page, not just the ones already loaded.
 const FILTERS: { id: CoverFilter; label: string }[] = [
@@ -28,6 +77,7 @@ const FILTERS: { id: CoverFilter; label: string }[] = [
 
 export function CoverGallery() {
   const [filter, setFilter] = useState<CoverFilter>('all')
+  const columns = useGridColumns()
   const covers = useCovers(filter)
 
   if (covers.isError) {
@@ -82,13 +132,7 @@ export function CoverGallery() {
       <FilterBar value={filter} onChange={setFilter} />
 
       {items.length > 0 ? (
-        <ul className={GRID}>
-          {items.map((cover) => (
-            <li key={cover.id}>
-              <CoverTile cover={cover} />
-            </li>
-          ))}
-        </ul>
+        <WindowedCoverGrid items={items} columns={columns} />
       ) : (
         <p className="py-6 text-center text-sm text-muted-foreground">
           No {FILTERS.find((f) => f.id === filter)?.label.toLowerCase()} covers.
@@ -146,6 +190,76 @@ function dedupeById(covers: Cover[]): Cover[] {
 
 // A gallery tile is a pure navigation target: the whole card links to the cover
 // detail, where the actions (download, regenerate, delete) live. Keeping the
+/**
+ * The covers grid, rendering only the rows near the viewport.
+ *
+ * Rows are virtualized rather than tiles, because the layout is a grid: how many
+ * covers share a row is a function of the breakpoint, so the unit that can be
+ * positioned is the row.
+ *
+ * Semantics come from roles rather than <ul>/<li>. A wrapper element per row is
+ * unavoidable — it is what gets positioned — and one is not allowed between a
+ * list and its items, so role="list" and role="listitem" carry the meaning
+ * instead. aria-setsize and aria-posinset supply the position that a partially
+ * rendered list cannot.
+ */
+function WindowedCoverGrid({ items, columns }: { items: Cover[]; columns: number }) {
+  const gridRef = useRef<HTMLDivElement>(null)
+  const [gridTop, setGridTop] = useState(0)
+  const rowCount = Math.ceil(items.length / columns)
+
+  const virtualizer = useWindowVirtualizer({
+    count: rowCount,
+    estimateSize: () => ROW_ESTIMATE,
+    // Rows are tall, so a couple either side is plenty of slack.
+    overscan: 2,
+    scrollMargin: gridTop,
+    // Falling back to the estimate keeps this sane where there is no layout to
+    // measure, which is every test environment.
+    measureElement: (el) => el.getBoundingClientRect().height || ROW_ESTIMATE,
+  })
+
+  // The grid sits below a filter bar whose height changes, so its offset is
+  // re-read after each render and written only when it actually moved.
+  useLayoutEffect(() => {
+    const next = gridRef.current?.offsetTop ?? 0
+    if (next !== gridTop) setGridTop(next)
+  })
+
+  // A breakpoint change repacks every row, so previous measurements describe a
+  // layout that no longer exists.
+  useEffect(() => {
+    virtualizer.measure()
+  }, [columns, virtualizer])
+
+  return (
+    <div ref={gridRef}>
+      {/* Named, because a tile contains its own palette list and an unnamed one
+          is indistinguishable from it to a screen reader. */}
+      <div role="list" aria-label="Covers" className="relative" style={{ height: virtualizer.getTotalSize() }}>
+        {virtualizer.getVirtualItems().map((row) => {
+          const first = row.index * columns
+          return (
+            <div
+              key={row.index}
+              data-index={row.index}
+              ref={virtualizer.measureElement}
+              className={cn(GRID, 'absolute inset-x-0 top-0 pb-4')}
+              style={{ transform: `translateY(${row.start - gridTop}px)` }}
+            >
+              {items.slice(first, first + columns).map((cover, offset) => (
+                <div key={cover.id} role="listitem" aria-setsize={items.length} aria-posinset={first + offset + 1}>
+                  <CoverTile cover={cover} />
+                </div>
+              ))}
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
 // tile link-only avoids nested interactive elements and keeps the grid scannable.
 function CoverTile({ cover }: { cover: Cover }) {
   const working = isInProgress(cover.status)

@@ -89,7 +89,7 @@ describe('PlaylistBrowser', () => {
     expect(rendered[0]).toHaveAttribute('aria-posinset', '1')
 
     // And the container reserves room for all 200, so scrolling is not truncated.
-    const list = screen.getByRole('list')
+    const list = screen.getByRole('list', { name: 'Playlists' })
     expect(Number.parseInt(list.style.height, 10)).toBeGreaterThan(200 * 40)
   })
 

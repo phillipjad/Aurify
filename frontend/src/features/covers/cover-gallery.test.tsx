@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest'
-import { screen, within } from '@testing-library/react'
+import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
 import { CoverGallery } from '@/features/covers/cover-gallery'
@@ -32,6 +32,23 @@ beforeEach(() => {
 })
 
 describe('CoverGallery', () => {
+  // Windowing: a long list costs a fixed amount of DOM, while the reported size
+  // and the reserved height still describe the whole set.
+  it('renders only a slice of a long covers list', async () => {
+    const many = Array.from({ length: 90 }, (_, i) => ({ ...READY_COVER, id: `c${i}`, playlistName: `Cover ${i}` }))
+    mockFetch.mockResolvedValue(many)
+    renderWithProviders(<CoverGallery />)
+    await screen.findByRole('heading', { name: 'Cover 0' })
+
+    const tiles = screen.getAllByRole('listitem')
+    expect(tiles.length).toBeLessThan(30)
+    expect(screen.queryByRole('heading', { name: 'Cover 89' })).not.toBeInTheDocument()
+    expect(tiles[0]).toHaveAttribute('aria-setsize', '90')
+
+    const list = screen.getByRole('list', { name: 'Covers' })
+    expect(Number.parseInt(list.style.height, 10)).toBeGreaterThan(90 * 40)
+  })
+
   it('shows six skeleton placeholders while loading', async () => {
     mockFetch.mockReturnValue(new Promise(() => {})) // never resolves
     renderWithProviders(<CoverGallery />)
@@ -52,7 +69,9 @@ describe('CoverGallery', () => {
     mockFetch.mockResolvedValue([READY_COVER])
     renderWithProviders(<CoverGallery />)
     // Scope to the tile so we read the status badge, not the "Ready" filter chip.
-    const tile = (await screen.findByRole('heading', { name: 'Morning Coffee' })).closest('li') as HTMLElement
+    const tile = (await screen.findByRole('heading', { name: 'Morning Coffee' })).closest(
+      '[role="listitem"]',
+    ) as HTMLElement
     expect(within(tile).getByText('Ready')).toBeInTheDocument()
   })
 
@@ -97,8 +116,11 @@ describe('CoverGallery', () => {
 
     await userEvent.click(await screen.findByRole('button', { name: /load more/i }))
 
-    expect(await screen.findByRole('heading', { name: 'Playlist 22' })).toBeInTheDocument()
-    expect(mockFetch).toHaveBeenCalledWith('/covers?limit=20&offset=20')
+    // The 23rd cover is deliberately outside the rendered window, so paging is
+    // asserted on the request and on the size the grid reports, not on a tile that
+    // windowing is supposed to leave out.
+    await waitFor(() => expect(mockFetch).toHaveBeenCalledWith('/covers?limit=20&offset=20'))
+    await waitFor(() => expect(screen.getAllByRole('listitem')[0]).toHaveAttribute('aria-setsize', '23'))
     // Short second page → no further Load more.
     expect(screen.queryByRole('button', { name: /load more/i })).not.toBeInTheDocument()
   })
@@ -119,7 +141,9 @@ describe('CoverGallery', () => {
     ])
     renderWithProviders(<CoverGallery />)
 
-    const tile = (await screen.findByRole('heading', { name: 'Morning Coffee' })).closest('li') as HTMLElement
+    const tile = (await screen.findByRole('heading', { name: 'Morning Coffee' })).closest(
+      '[role="listitem"]',
+    ) as HTMLElement
     expect(within(tile).getByText('The image service timed out.')).toBeInTheDocument()
     // The gallery no longer carries an inline retry; the whole tile is a link to
     // the detail view, where regenerate/delete/download live.

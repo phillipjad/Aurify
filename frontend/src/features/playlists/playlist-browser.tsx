@@ -251,7 +251,7 @@ export function PlaylistBrowser() {
                   loaded playlist, while only the visible slice exists in the DOM.
                   aria-setsize and aria-posinset carry the real position, which a
                   partial list cannot convey on its own. */}
-              <ul className="relative" style={{ height: virtualizer.getTotalSize() }}>
+              <ul aria-label="Playlists" className="relative" style={{ height: virtualizer.getTotalSize() }}>
                 {virtualizer.getVirtualItems().map((row) => {
                   const playlist = items[row.index]
                   if (!playlist) return null
