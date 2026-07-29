@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/phillipjad/aurify/backend/internal/app/ports"
 	"github.com/phillipjad/aurify/backend/internal/domain"
+	"github.com/phillipjad/aurify/backend/internal/platform/crypto"
 	"github.com/phillipjad/aurify/backend/internal/storage/postgres/db"
 )
 
@@ -19,6 +21,9 @@ import (
 type UserRepository struct {
 	pool *pgxpool.Pool
 	q    *db.Queries
+	// tokens encrypts DSP credentials on the way to the database and back, so a
+	// stolen dump does not hand over live access to every connected library.
+	tokens *crypto.Cipher
 }
 
 var _ ports.UserRepository = (*UserRepository)(nil)
@@ -55,12 +60,20 @@ func (r *UserRepository) Save(ctx context.Context, user *domain.User) error {
 		return err
 	}
 	for platform, conn := range user.Connections {
+		access, err := r.tokens.Encrypt(conn.AccessToken)
+		if err != nil {
+			return err
+		}
+		refresh, err := r.tokens.Encrypt(conn.RefreshToken)
+		if err != nil {
+			return err
+		}
 		if err := q.UpsertDSPConnection(ctx, db.UpsertDSPConnectionParams{
 			UserID:         user.ID,
 			Platform:       string(platform),
 			ProviderUserID: conn.ProviderUserID,
-			AccessToken:    conn.AccessToken,
-			RefreshToken:   conn.RefreshToken,
+			AccessToken:    access,
+			RefreshToken:   refresh,
 			ExpiresAt:      tsFromTime(conn.ExpiresAt),
 			Scopes:         conn.Scopes,
 		}); err != nil {
@@ -140,11 +153,19 @@ func (r *UserRepository) hydrate(ctx context.Context, row db.User) (*domain.User
 	}
 	for _, c := range conns {
 		platform := domain.DSPPlatform(c.Platform)
+		access, err := r.tokens.Decrypt(c.AccessToken)
+		if err != nil {
+			return nil, fmt.Errorf("postgres: decrypt %s access token: %w", platform, err)
+		}
+		refresh, err := r.tokens.Decrypt(c.RefreshToken)
+		if err != nil {
+			return nil, fmt.Errorf("postgres: decrypt %s refresh token: %w", platform, err)
+		}
 		user.Connections[platform] = domain.DSPConnection{
 			Platform:       platform,
 			ProviderUserID: c.ProviderUserID,
-			AccessToken:    c.AccessToken,
-			RefreshToken:   c.RefreshToken,
+			AccessToken:    access,
+			RefreshToken:   refresh,
 			ExpiresAt:      timeFromTS(c.ExpiresAt),
 			Scopes:         c.Scopes,
 		}

@@ -4,9 +4,19 @@
 // implementation is documented inline:
 //   - Exchange:      POST https://accounts.spotify.com/api/token
 //   - ListPlaylists: GET  https://api.spotify.com/v1/me/playlists
-//   - ListTracks:    GET  https://api.spotify.com/v1/playlists/{id}/tracks then
-//     GET https://api.spotify.com/v1/audio-features, mapping the response onto
-//     domain.AudioFeatures (this is the canonical example feature source).
+//   - ListTracks:    GET  https://api.spotify.com/v1/playlists/{id}/items
+//
+// There is no audio-features call to make. Spotify deprecated /v1/audio-features
+// and /v1/audio-analysis on 2024-11-27 and they answer 403 for any client
+// registered since; there is no replacement. Tracks therefore normalize with
+// domain.AudioFeatures.Present == false, exactly as YouTube Music does, and the
+// pipeline leans on lyric sentiment (see docs/adr/0005).
+//
+// The February 2026 Web API revision also renamed /v1/playlists/{id}/tracks to
+// /v1/playlists/{id}/items, removed /v1/users/{id}/playlists, and trimmed fields
+// off the user object. Check the changelog before implementing rather than
+// trusting the endpoint names above:
+// https://developer.spotify.com/documentation/web-api/references/changes
 package spotify
 
 import (
@@ -24,6 +34,8 @@ import (
 const authBaseURL = "https://accounts.spotify.com/authorize"
 
 // scopes are the OAuth scopes Aurify needs to read playlists and library data.
+// TODO: re-check these against the February 2026 revision, which consolidated
+// the library endpoints; the scope names may have moved with them.
 var scopes = []string{"playlist-read-private", "playlist-read-collaborative", "user-library-read"}
 
 var errNotImplemented = errors.New("spotify: not implemented in scaffold")
@@ -60,6 +72,17 @@ func (p *Provider) Exchange(ctx context.Context, code string) (domain.DSPConnect
 	_ = ctx
 	_ = code
 	return domain.DSPConnection{}, errNotImplemented
+}
+
+// RefreshConnection would renew the access token against
+// POST https://accounts.spotify.com/api/token with grant_type=refresh_token.
+// Reporting no change is correct for the stub: there is nothing to persist.
+func (p *Provider) RefreshConnection(
+	ctx context.Context,
+	conn domain.DSPConnection,
+) (domain.DSPConnection, bool, error) {
+	_ = ctx
+	return conn, false, nil
 }
 
 // ListPlaylists returns the user's playlists. TODO: implement.

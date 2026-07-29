@@ -121,6 +121,16 @@ completed at `.../callback`. The path is deliberately *not* under the DSP routes
 `/auth/{platform}/` space: they must not collide, and the separation mirrors the
 one the schema makes between `user_identities` and `dsp_connections`.
 
+The DSP connect flow authenticates its two legs differently, on purpose. `login`
+requires a session, because that is where the Aurify user is established, and it
+records that user id in an HMAC-signed flow cookie. The `callback` is anonymous
+and trusts that cookie instead of the session: consent regularly outlasts the
+fifteen minute access token, and requiring one there discarded authorizations the
+user had just granted. The signature is what makes it safe — the user id is the
+one value in the cookie that nothing the provider returns corroborates. The trade
+is that revocation does not reach the callback, so signing out mid-consent still
+completes the link.
+
 The three per-attempt secrets — `state`, `nonce` and the PKCE verifier — live in
 a single short-lived `__Host-` cookie for the ten minutes the flow may take.
 `__Host-` is what makes that safe: it pins the cookie to this exact origin, so a

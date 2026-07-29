@@ -70,8 +70,8 @@ Probes: `GET /livez`, `GET /readyz` (readiness pings PostgreSQL).
 
 | Method | Path                                  | Side    | Notes |
 |--------|---------------------------------------|---------|-------|
-| GET    | `/api/v1/auth/{platform}/login`       | command | returns provider OAuth URL |
-| GET    | `/api/v1/auth/{platform}/callback`    | command | links a DSP account |
+| GET    | `/api/v1/auth/{platform}/login`       | command | 302 to the provider's consent screen |
+| GET    | `/api/v1/auth/{platform}/callback`    | command | links a DSP account, 302 back to `/playlists` |
 | POST   | `/api/v1/covers`                      | command | analyze a playlist + generate a cover |
 | GET    | `/api/v1/playlists?platform=`         | query   | list the user's playlists |
 | GET    | `/api/v1/covers`                      | query   | list the user's covers |

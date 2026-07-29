@@ -42,9 +42,11 @@ export const playlistsInfiniteQuery = ({ platform, search, sort }: PlaylistsArgs
     },
     initialPageParam: 0,
     getNextPageParam: (lastPage, allPages) => (lastPage.length < PAGE_SIZE ? undefined : allPages.length * PAGE_SIZE),
-    // Keep the current results on screen while a new search/sort/platform loads,
-    // rather than flashing skeletons on every keystroke.
-    placeholderData: keepPreviousData,
+    // Keep the current results on screen while a new search or sort loads, rather
+    // than flashing skeletons on every keystroke — but only within one platform.
+    // Held across a platform change, the previous service's playlists stay
+    // visible under the new tab, labelled as something they are not.
+    placeholderData: (previous, previousQuery) => (previousQuery?.queryKey[1] === platform ? previous : undefined),
   })
 
 /** Cover statuses that will never change again without a new user action. */

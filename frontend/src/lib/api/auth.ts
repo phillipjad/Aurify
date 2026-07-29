@@ -92,12 +92,17 @@ export function useSignOut() {
   })
 }
 
-/** Confirm an email address with the token from the emailed link. */
-export function useVerifyEmail() {
-  return useMutation({
-    mutationFn: (token: string) =>
-      apiFetch<MessageResponse>('/auth/verify-email', { method: 'POST', body: JSON.stringify({ token }) }),
-  })
+/**
+ * Confirm an email address with the token from the emailed link.
+ *
+ * A plain function rather than a mutation hook: the token is single-use, so
+ * consuming it belongs in the route loader, which runs once per navigation.
+ * Firing it from an effect meant the guard against React's double-invoked
+ * effects (a ref) outlived the mutation state (reset on remount), leaving the
+ * page stuck on its pending copy forever.
+ */
+export function verifyEmail(token: string) {
+  return apiFetch<MessageResponse>('/auth/verify-email', { method: 'POST', body: JSON.stringify({ token }) })
 }
 
 /**

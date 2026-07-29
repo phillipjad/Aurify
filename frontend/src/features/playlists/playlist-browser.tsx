@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { AlertTriangle, ListMusic, RefreshCw, SearchX, Unplug } from 'lucide-react'
+import { AlertTriangle, Check, ListMusic, RefreshCw, SearchX, Unplug } from 'lucide-react'
 import { Link } from '@tanstack/react-router'
 
 import { EmptyState } from '@/components/empty-state'
@@ -9,16 +9,27 @@ import { SearchInput } from '@/components/search-input'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
+import { useSession } from '@/lib/api/auth'
 import { isApiError } from '@/lib/api/client'
-import { useConnectDsp, useGenerateCover } from '@/lib/api/commands'
+import { connectDsp, useGenerateCover } from '@/lib/api/commands'
 import { usePlaylists, type PlaylistSort } from '@/lib/api/queries'
 import { useDebouncedValue } from '@/lib/use-debounced-value'
 import type { Platform, Playlist } from '@/lib/api/types'
 import { PlatformPicker } from './platform-picker'
-import { platformLabel } from './platforms'
+import { connectErrorMessage, platformLabel } from './platforms'
 
-export function PlaylistBrowser() {
-  const [platform, setPlatform] = useState<Platform>('spotify')
+interface PlaylistBrowserProps {
+  /** Platform the OAuth callback just linked, from `?connected=`. */
+  connected?: Platform
+  /** Failure code from `?connect_error=`, and the platform it belongs to. */
+  connectError?: string
+  connectErrorPlatform?: Platform
+}
+
+export function PlaylistBrowser({ connected, connectError, connectErrorPlatform }: PlaylistBrowserProps = {}) {
+  // Coming back from a connect flow, open on the library the user just linked
+  // (or the one they just failed to) rather than the default.
+  const [platform, setPlatform] = useState<Platform>(connected ?? connectErrorPlatform ?? 'spotify')
   const [query, setQuery] = useState('')
   const [sort, setSort] = useState<PlaylistSort>('name')
   // Debounce so typing doesn't fire a request per keystroke; the search runs on
@@ -27,10 +38,14 @@ export function PlaylistBrowser() {
   const search = useDebouncedValue(query.trim())
 
   const playlists = usePlaylists({ platform, search, sort })
-  const connect = useConnectDsp()
   const generate = useGenerateCover()
+  const session = useSession()
 
   const activeLabel = platformLabel(platform)
+  // The session reports which platforms are linked, so the button can say so
+  // outright instead of leaving the user to infer it from whether a list
+  // appeared. An empty list is not the same answer as "not connected".
+  const isConnected = session.data?.connections?.includes(platform) ?? false
   const items = playlists.data?.pages.flat() ?? []
   const hasQuery = search.length > 0
 
@@ -39,17 +54,40 @@ export function PlaylistBrowser() {
   // would disable every row's button with no sign of which one is running.
   const inFlightId = generate.isPending ? generate.variables?.playlistId : undefined
 
+  // The connect outcome is scoped by the platform the API redirected back with,
+  // never by whatever happens to be selected. Read unscoped, a failed YouTube
+  // Music attempt used to keep reporting itself after a switch to Spotify,
+  // blaming a platform the user never tried.
+  const failedConnect =
+    connectError && connectErrorPlatform === platform ? connectErrorMessage(connectError, activeLabel) : undefined
+
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <PlatformPicker value={platform} onChange={setPlatform} />
         <div className="flex flex-col items-end gap-1">
-          <Button variant="outline" size="sm" loading={connect.isPending} onClick={() => connect.mutate(platform)}>
-            Connect {activeLabel}
-          </Button>
-          {connect.isError && (
-            <p role="alert" className="text-xs text-destructive">
-              {errorMessage(connect.error, `Couldn’t reach ${activeLabel}.`)}
+          {isConnected ? (
+            <p className="flex items-center gap-1.5 text-sm text-muted-foreground">
+              <Check aria-hidden="true" className="size-4 text-primary" />
+              {activeLabel} connected
+              {/* Reconnecting is how a user re-grants a revoked or expired
+                  authorization, so it stays reachable, just demoted. */}
+              <button
+                type="button"
+                onClick={() => void connectDsp(platform)}
+                className="rounded-sm underline underline-offset-2 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background focus-visible:outline-none"
+              >
+                Reconnect
+              </button>
+            </p>
+          ) : (
+            <Button variant="outline" size="sm" onClick={() => void connectDsp(platform)}>
+              Connect {activeLabel}
+            </Button>
+          )}
+          {failedConnect && (
+            <p role="alert" className="max-w-xs text-right text-xs text-destructive">
+              {failedConnect}
             </p>
           )}
         </div>
@@ -62,7 +100,7 @@ export function PlaylistBrowser() {
             title={`Connect your ${activeLabel} account`}
             description={`Aurify needs access to your ${activeLabel} library before it can list your playlists.`}
             action={
-              <Button size="sm" loading={connect.isPending} onClick={() => connect.mutate(platform)}>
+              <Button size="sm" onClick={() => void connectDsp(platform)}>
                 Connect {activeLabel}
               </Button>
             }

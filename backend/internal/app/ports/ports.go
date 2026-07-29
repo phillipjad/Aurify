@@ -113,6 +113,17 @@ type DSPProvider interface {
 	AuthURL(state string) string
 	// Exchange swaps an authorization code for a connection (tokens + identity).
 	Exchange(ctx context.Context, code string) (domain.DSPConnection, error)
+	// RefreshConnection renews expired credentials, reporting whether anything
+	// changed so the caller can persist the result.
+	//
+	// It exists because the OAuth clients refresh transparently and then throw the
+	// new token away: the stored access token stayed stale forever, and every call
+	// past its expiry paid for a refresh whose outcome was discarded. Refreshing
+	// up front, where the user id is known, is what makes the write possible.
+	RefreshConnection(
+		ctx context.Context,
+		conn domain.DSPConnection,
+	) (updated domain.DSPConnection, changed bool, err error)
 	ListPlaylists(ctx context.Context, conn domain.DSPConnection) ([]domain.Playlist, error)
 	ListTracks(ctx context.Context, conn domain.DSPConnection, playlistID string) ([]domain.Track, error)
 }

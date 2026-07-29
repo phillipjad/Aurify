@@ -28,7 +28,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get the OAuth authorization URL for a DSP */
+        /** Redirect to a DSP to begin linking the account */
         get: operations["dspLogin"];
         put?: never;
         post?: never;
@@ -316,6 +316,7 @@ export interface components {
             token?: string;
         };
         SessionResponse: {
+            connections?: string[];
             csrfToken?: string;
             displayName?: string;
             email?: string;
@@ -351,6 +352,11 @@ export interface operations {
                  * @example AQD...
                  */
                 code: string;
+                /**
+                 * @description Opaque value echoed back by the provider
+                 * @example xY...
+                 */
+                state?: string;
             };
             header?: never;
             path: {
@@ -364,8 +370,8 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Success */
-            200: {
+            /** @description Response 302 */
+            302: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -388,8 +394,8 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Success */
-            200: {
+            /** @description Response 302 */
+            302: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -568,6 +574,7 @@ export interface operations {
                      *       "email": "",
                      *       "displayname": "",
                      *       "emailverified": false,
+                     *       "connections": [],
                      *       "csrftoken": ""
                      *     }
                      */
@@ -615,6 +622,7 @@ export interface operations {
                      *       "email": "",
                      *       "displayname": "",
                      *       "emailverified": false,
+                     *       "connections": [],
                      *       "csrftoken": ""
                      *     }
                      */
@@ -672,6 +680,7 @@ export interface operations {
                      *       "email": "",
                      *       "displayname": "",
                      *       "emailverified": false,
+                     *       "connections": [],
                      *       "csrftoken": ""
                      *     }
                      */

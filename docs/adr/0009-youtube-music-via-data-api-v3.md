@@ -29,6 +29,11 @@ endpoints — matching the existing `lrclib` adapter style.
 - Reads: `playlists.list?mine=true`, `playlistItems.list`, and `videos.list`
   (durations are not on playlistItems). Each is paginated; ~5 quota units cover a
   100-track playlist.
+- `playlists.list?mine=true` is not sufficient on its own. On accounts whose
+  playlists were created inside YouTube Music it answers `totalResults: 1` with
+  an empty `items` array, so the listing comes back empty while the library is
+  full. "Liked Music" is fetched separately by its well-known id (`LM`), which
+  resolves normally.
 - Tracks normalize to `domain.Track` with `AudioFeatures.Present == false`;
   "`<Artist> - Topic`" owner channels yield clean artist names, and
   private/deleted items are skipped.
@@ -37,9 +42,14 @@ endpoints — matching the existing `lrclib` adapter style.
 
 - No new service to operate; the adapter drops into the existing registry and
   the `youtube_music` value already flows through the OpenAPI contract.
-- Metadata is video-centric: no `album`/`isrc`, and the auto-generated "Liked
-  Music" playlist is not exposed by the Data API. Lyric sentiment compensates,
-  per ADR 0005.
+- Metadata is video-centric: no `album`/`isrc`. Lyric sentiment compensates, per
+  ADR 0005.
+- "Liked Music" is reachable but not discoverable. It never appears in a listing
+  call, so it has to be asked for by id; the same is true of "Liked videos"
+  (`LL`), which Aurify does not surface because it is mostly not music. An
+  account whose only music lives in playlists created inside YouTube Music will
+  still see nothing beyond Liked Music — that is the case for a `ytmusicapi`
+  sidecar, if it ever becomes worth operating one.
 - Adds the `golang.org/x/oauth2` dependency (and transitive
   `cloud.google.com/go/compute/metadata`).
 - If richer library/liked-songs access is needed later, a `ytmusicapi` sidecar

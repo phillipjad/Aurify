@@ -182,8 +182,13 @@ func TestListPlaylists(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListPlaylists: %v", err)
 	}
-	if len(got) != 2 {
-		t.Fatalf("got %d playlists, want 2 (second page must be followed)", len(got))
+	// Two pages of mine=true, plus Liked Music, which mine=true never returns.
+	if len(got) != 3 {
+		t.Fatalf("got %d playlists, want 3 (second page followed, plus Liked Music)", len(got))
+	}
+	liked := got[len(got)-1]
+	if liked.ID != likedMusicPlaylistID || liked.Name != "Liked Music" || liked.TrackCount != 82 {
+		t.Errorf("Liked Music = %+v, want it resolved by id", liked)
 	}
 	if got[0].ID != "PL1" || got[0].Name != "Chill" || got[0].TrackCount != 2 {
 		t.Errorf("playlist[0] = %+v", got[0])
@@ -255,6 +260,19 @@ func newTestServer() *httptest.Server {
 	})
 
 	mux.HandleFunc("/playlists", func(w http.ResponseWriter, r *http.Request) {
+		// Liked Music is fetched by id, not returned by mine=true.
+		if id := r.URL.Query().Get("id"); id != "" {
+			if id != "LM" {
+				_, _ = w.Write([]byte(`{"items":[]}`))
+				return
+			}
+			_, _ = w.Write(
+				[]byte(
+					`{"items":[{"id":"LM","snippet":{"title":"Liked Music","thumbnails":{}},"contentDetails":{"itemCount":82}}]}`,
+				),
+			)
+			return
+		}
 		if r.URL.Query().Get("pageToken") == "" {
 			_, _ = w.Write(
 				[]byte(

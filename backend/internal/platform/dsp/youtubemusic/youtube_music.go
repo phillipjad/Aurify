@@ -32,6 +32,15 @@ const (
 	youtubeReadonlyScope = "https://www.googleapis.com/auth/youtube.readonly"
 	// maxPageSize is the YouTube Data API's per-call maximum for list endpoints.
 	maxPageSize = 50
+	// likedMusicPlaylistID is YouTube's well-known id for the auto-generated
+	// "Liked Music" playlist.
+	//
+	// It is reachable but not discoverable: playlists.list?mine=true does not
+	// return it, and on accounts whose playlists were created inside YouTube
+	// Music that call answers totalResults=1 with an empty items array, so the
+	// listing comes back empty even though there is music to read. Looking the id
+	// up directly resolves the playlist, and playlistItems reads it normally.
+	likedMusicPlaylistID = "LM"
 )
 
 // Provider is the YouTube Music implementation of ports.DSPProvider.
@@ -117,6 +126,47 @@ func (p *Provider) Exchange(ctx context.Context, code string) (domain.DSPConnect
 	return conn, nil
 }
 
+// RefreshConnection renews the access token when it has expired, returning the
+// updated connection so the caller can store it.
+//
+// oauth2's token source refreshes on demand during a call and keeps the result
+// to itself, which left the stored token permanently stale. Forcing the refresh
+// here, before the API calls, means what the database holds is what the next
+// request will use.
+func (p *Provider) RefreshConnection(
+	ctx context.Context,
+	conn domain.DSPConnection,
+) (domain.DSPConnection, bool, error) {
+	// Without a refresh token there is nothing to renew with; the connection has
+	// to be re-authorized by the user instead.
+	if conn.RefreshToken == "" {
+		return conn, false, nil
+	}
+
+	ctx = p.withHTTPClient(ctx)
+	tok, err := p.oauthConfig().TokenSource(ctx, &oauth2.Token{
+		AccessToken:  conn.AccessToken,
+		RefreshToken: conn.RefreshToken,
+		Expiry:       conn.ExpiresAt,
+	}).Token()
+	if err != nil {
+		return conn, false, fmt.Errorf("youtubemusic: refresh token: %w", err)
+	}
+	if tok.AccessToken == conn.AccessToken {
+		return conn, false, nil
+	}
+
+	conn.AccessToken = tok.AccessToken
+	// Google only returns a new refresh token when it rotates one; an empty value
+	// means keep the one we have, and overwriting it with "" would strand the
+	// connection with no way to renew.
+	if tok.RefreshToken != "" {
+		conn.RefreshToken = tok.RefreshToken
+	}
+	conn.ExpiresAt = tok.Expiry
+	return conn, true, nil
+}
+
 // ListPlaylists returns the authenticated user's playlists.
 func (p *Provider) ListPlaylists(ctx context.Context, conn domain.DSPConnection) ([]domain.Playlist, error) {
 	ctx = p.withHTTPClient(ctx)
@@ -145,7 +195,35 @@ func (p *Provider) ListPlaylists(ctx context.Context, conn domain.DSPConnection)
 		}
 		pageToken = resp.NextPageToken
 	}
+
+	// Liked Music has to be asked for by id; see likedMusicPlaylistID. Best
+	// effort, like the identity lookup in Exchange: an account with nothing
+	// liked, or a lookup that fails, must not empty out the rest of the list.
+	if liked, err := p.fetchPlaylistByID(ctx, client, likedMusicPlaylistID); err == nil {
+		out = append(out, liked)
+	}
+
 	return out, nil
+}
+
+// fetchPlaylistByID resolves a single playlist by its id.
+func (p *Provider) fetchPlaylistByID(
+	ctx context.Context,
+	client *http.Client,
+	id string,
+) (domain.Playlist, error) {
+	q := url.Values{}
+	q.Set("part", "snippet,contentDetails")
+	q.Set("id", id)
+
+	var resp playlistListResponse
+	if err := p.getJSON(ctx, client, "/playlists", q, &resp); err != nil {
+		return domain.Playlist{}, err
+	}
+	if len(resp.Items) == 0 {
+		return domain.Playlist{}, fmt.Errorf("youtubemusic: playlist %q not found", id)
+	}
+	return mapPlaylist(resp.Items[0]), nil
 }
 
 // ListTracks returns the normalized tracks of a playlist. Durations require a

@@ -5,9 +5,9 @@ package generatecover
 
 import (
 	"context"
-	"fmt"
 	"time"
 
+	"github.com/phillipjad/aurify/backend/internal/app/dspconn"
 	"github.com/phillipjad/aurify/backend/internal/app/ports"
 	"github.com/phillipjad/aurify/backend/internal/domain"
 )
@@ -21,21 +21,19 @@ type Command struct {
 
 // Handler executes the GenerateCover command.
 type Handler struct {
-	users     ports.UserRepository
-	covers    ports.CoverRepository
-	providers ports.DSPRegistry
-	lyrics    ports.LyricsClient
-	sentiment ports.SentimentAnalyzer
-	analysis  ports.AnalysisEngine
-	prompts   ports.PromptGenerator
-	images    ports.ImageGenerator
+	connections *dspconn.Resolver
+	covers      ports.CoverRepository
+	lyrics      ports.LyricsClient
+	sentiment   ports.SentimentAnalyzer
+	analysis    ports.AnalysisEngine
+	prompts     ports.PromptGenerator
+	images      ports.ImageGenerator
 }
 
 // NewHandler constructs a GenerateCover handler with all of its dependencies.
 func NewHandler(
-	users ports.UserRepository,
+	connections *dspconn.Resolver,
 	covers ports.CoverRepository,
-	providers ports.DSPRegistry,
 	lyrics ports.LyricsClient,
 	sentiment ports.SentimentAnalyzer,
 	analysis ports.AnalysisEngine,
@@ -43,14 +41,13 @@ func NewHandler(
 	images ports.ImageGenerator,
 ) *Handler {
 	return &Handler{
-		users:     users,
-		covers:    covers,
-		providers: providers,
-		lyrics:    lyrics,
-		sentiment: sentiment,
-		analysis:  analysis,
-		prompts:   prompts,
-		images:    images,
+		connections: connections,
+		covers:      covers,
+		lyrics:      lyrics,
+		sentiment:   sentiment,
+		analysis:    analysis,
+		prompts:     prompts,
+		images:      images,
 	}
 }
 
@@ -61,17 +58,7 @@ func NewHandler(
 // pending cover immediately, since analysis + generation can take many seconds
 // for large playlists. The synchronous flow here keeps the scaffold readable.
 func (h *Handler) Handle(ctx context.Context, cmd Command) (string, error) {
-	user, err := h.users.FindByID(ctx, cmd.UserID)
-	if err != nil {
-		return "", err
-	}
-
-	conn, ok := user.Connections[cmd.Platform]
-	if !ok {
-		return "", fmt.Errorf("%w: user has no %s connection", domain.ErrUnauthorized, cmd.Platform)
-	}
-
-	provider, err := h.providers.Get(cmd.Platform)
+	provider, conn, err := h.connections.Resolve(ctx, cmd.UserID, cmd.Platform)
 	if err != nil {
 		return "", err
 	}

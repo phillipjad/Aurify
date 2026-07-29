@@ -74,7 +74,7 @@ func (h *Federated) GoogleStart(c mux.RouteContext) {
 	// smuggle a destination back into the callback.
 	returnTo, _ := c.Query().String("return")
 
-	if err := setFlowState(c, flowState{
+	if err := setFlowState(c, flowCookieName(h.cookies.Secure()), flowState{
 		State:    req.State,
 		Nonce:    req.Nonce,
 		Verifier: req.CodeVerifier,
@@ -122,8 +122,12 @@ func (h *Federated) GoogleCallback(c mux.RouteContext) {
 		return
 	}
 
-	flow, err := readFlowState(c, secure)
-	if err != nil {
+	flow, err := readFlowState(c, flowCookieName(secure))
+	// The nonce and verifier are required here rather than in decodeFlowState,
+	// which only insists on the fields every flow has. Without them the ID token
+	// could not be bound to this attempt, so a cookie missing either is not a
+	// sign-in flow this handler can complete.
+	if err != nil || flow.Nonce == "" || flow.Verifier == "" {
 		// A missing or stale flow cookie is usually a bookmarked callback, a
 		// double submit, or a user who took longer than the window. Benign, so it
 		// does not count against the lockout.
@@ -160,7 +164,7 @@ func (h *Federated) GoogleCallback(c mux.RouteContext) {
 		IP:            ip,
 	})
 	if err != nil {
-		clearFlowState(c, secure)
+		clearFlowState(c, flowCookieName(secure), secure)
 		// These two are the user's own account state, not an attack: they need to
 		// be told what to do rather than counted against a lockout.
 		switch {
@@ -176,7 +180,7 @@ func (h *Federated) GoogleCallback(c mux.RouteContext) {
 	}
 
 	h.guard.Reset(ip, "")
-	clearFlowState(c, secure)
+	clearFlowState(c, flowCookieName(secure), secure)
 	if _, err := h.cookies.Issue(c, tokens); err != nil {
 		c.ServerError("internal error", err.Error())
 		return
@@ -203,7 +207,7 @@ func (h *Federated) recordFailure(c mux.RouteContext, ip string, secure bool, re
 
 // fail clears the half-finished flow and sends the browser back to sign-in.
 func (h *Federated) fail(c mux.RouteContext, secure bool, reason string) {
-	clearFlowState(c, secure)
+	clearFlowState(c, flowCookieName(secure), secure)
 	h.redirect(c, "/sign-in?error="+url.QueryEscape(reason))
 }
 

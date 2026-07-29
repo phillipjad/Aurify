@@ -40,7 +40,7 @@ export function LoadMore({ hasNextPage, isFetchingNextPage, fetchNextPage, label
     <div ref={sentinel} className="flex justify-center pt-2">
       {isFetchingNextPage ? (
         <span className="flex items-center gap-2 text-sm text-muted-foreground">
-          <Loader2 aria-hidden="true" className="size-4 animate-spin" />
+          <Loader2 aria-hidden="true" data-motion="busy" className="size-4 animate-spin" />
           Loading more…
         </span>
       ) : (

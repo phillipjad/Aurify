@@ -182,7 +182,7 @@ body::before {
   background-repeat: no-repeat;
 }
 
-/* Reduced motion: kill spinners, pulses, and transitions rather than letting
+/* Reduced motion: kill decorative movement and transitions rather than letting
    Tailwind's animate-* utilities run regardless of the user's preference. */
 @media (prefers-reduced-motion: reduce) {
   *,
@@ -192,5 +192,18 @@ body::before {
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
+  }
+
+  /* Busy indicators are exempt. The rule above froze them on their first frame,
+     which turned every spinner into a static icon — a button that was working
+     looked identical to one that had died, which is worse for the user than the
+     motion it was protecting them from. The preference is still honoured: these
+     turn slowly and steadily, with no bounce, flash or travel across the page.
+
+     Marked with an attribute rather than a class so a utility sweep cannot
+     silently drop it. */
+  [data-motion='busy'] {
+    animation-duration: 1.8s !important;
+    animation-iteration-count: infinite !important;
   }
 }

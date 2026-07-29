@@ -27,6 +27,7 @@ import (
 	"github.com/phillipjad/aurify/backend/internal/app/command/signout"
 	"github.com/phillipjad/aurify/backend/internal/app/command/signup"
 	"github.com/phillipjad/aurify/backend/internal/app/command/verifyemail"
+	"github.com/phillipjad/aurify/backend/internal/app/dspconn"
 	"github.com/phillipjad/aurify/backend/internal/app/lockout"
 	"github.com/phillipjad/aurify/backend/internal/app/query"
 	"github.com/phillipjad/aurify/backend/internal/app/query/getcover"
@@ -36,6 +37,7 @@ import (
 	"github.com/phillipjad/aurify/backend/internal/app/sessions"
 	"github.com/phillipjad/aurify/backend/internal/config"
 	"github.com/phillipjad/aurify/backend/internal/platform/auth"
+	"github.com/phillipjad/aurify/backend/internal/platform/crypto"
 	"github.com/phillipjad/aurify/backend/internal/platform/dsp"
 	"github.com/phillipjad/aurify/backend/internal/platform/dsp/applemusic"
 	"github.com/phillipjad/aurify/backend/internal/platform/dsp/spotify"
@@ -77,8 +79,15 @@ func run() error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
+	// The signing seed is resolved first: the key that encrypts stored DSP tokens
+	// is derived from it, so storage cannot be constructed before it exists.
+	signingKey, err := resolveSigningKey(cfg.Auth.SigningKeySeed)
+	if err != nil {
+		return err
+	}
+
 	// --- storage ---
-	store, err := postgres.Connect(ctx, cfg.DatabaseURL)
+	store, err := postgres.Connect(ctx, cfg.DatabaseURL, crypto.DeriveKey(signingKey.Seed()))
 	if err != nil {
 		return err
 	}
@@ -99,10 +108,6 @@ func run() error {
 	images := imagegen.New(cfg.ImageGenURL)
 
 	// --- authentication ---
-	signingKey, err := resolveSigningKey(cfg.Auth.SigningKeySeed)
-	if err != nil {
-		return err
-	}
 	signer, err := auth.NewSigner(signingKey, cfg.Auth.Issuer, cfg.Auth.Audience)
 	if err != nil {
 		return err
@@ -147,12 +152,16 @@ func run() error {
 		slog.Warn("AURIFY_GOOGLE_CLIENT_ID/SECRET are not set, Sign in with Google is disabled")
 	}
 
+	// Resolves a user's DSP credentials, refreshing and storing them when they
+	// have expired, so both the read and write side see a current token.
+	connections := dspconn.NewResolver(store.Users(), providers)
+
 	// --- application layer (lightweight CQRS) ---
 	application := &app.App{
 		Commands: &command.Bus{
 			ConnectDSP: connectdsp.NewHandler(store.Users(), providers),
 			GenerateCover: generatecover.NewHandler(
-				store.Users(), store.Covers(), providers,
+				connections, store.Covers(),
 				lyricsClient, sentiment, engine, prompts, images,
 			),
 			DeleteCover: deletecover.NewHandler(store.Covers()),
@@ -173,7 +182,7 @@ func run() error {
 			ResetPassword: resetpassword.NewHandler(store.EmailTokens(), store.Credentials(), issuer),
 		},
 		Queries: &query.Bus{
-			ListPlaylists: listplaylists.NewHandler(store.Users(), providers),
+			ListPlaylists: listplaylists.NewHandler(connections),
 			GetCover:      getcover.NewHandler(store.Covers()),
 			ListCovers:    listcovers.NewHandler(store.Covers()),
 			GetUser:       getuser.NewHandler(store.Users()),
@@ -200,6 +209,9 @@ func run() error {
 		SessionCheck: issuer.Verify,
 		Google:       googleProvider,
 		AppBaseURL:   cfg.AppBaseURL,
+		// Derived from the authentication seed rather than configured separately,
+		// so there is no second secret to deploy.
+		FlowKey: handlers.DeriveFlowKey(signingKey.Seed()),
 	})
 	if err != nil {
 		return err
