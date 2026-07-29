@@ -1,6 +1,7 @@
-import { useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { AlertTriangle, Check, ListMusic, RefreshCw, SearchX, Unplug } from 'lucide-react'
-import { Link } from '@tanstack/react-router'
+import { Link, useNavigate, useSearch } from '@tanstack/react-router'
+import { useWindowVirtualizer } from '@tanstack/react-virtual'
 
 import { EmptyState } from '@/components/empty-state'
 import { ImageWithFallback } from '@/components/image-with-fallback'
@@ -16,28 +17,66 @@ import { usePlaylists, type PlaylistSort } from '@/lib/api/queries'
 import { useDebouncedValue } from '@/lib/use-debounced-value'
 import type { Platform, Playlist } from '@/lib/api/types'
 import { PlatformPicker } from './platform-picker'
-import { connectErrorMessage, platformLabel } from './platforms'
+import {
+  connectErrorMessage,
+  DEFAULT_PLATFORM,
+  platformLabel,
+  readLastPlatform,
+  rememberLastPlatform,
+  toPlatform,
+  toPlaylistSort,
+} from './platforms'
 
-interface PlaylistBrowserProps {
-  /** Platform the OAuth callback just linked, from `?connected=`. */
-  connected?: Platform
-  /** Failure code from `?connect_error=`, and the platform it belongs to. */
-  connectError?: string
-  connectErrorPlatform?: Platform
-}
+/**
+ * Starting height for an unmeasured row: a 56px thumbnail inside 12px padding
+ * plus the 8px gap. Real heights replace it as rows are measured, so this only
+ * has to be close enough to keep the scrollbar honest before that happens.
+ */
+const ROW_ESTIMATE = 88
 
-export function PlaylistBrowser({ connected, connectError, connectErrorPlatform }: PlaylistBrowserProps = {}) {
-  // Coming back from a connect flow, open on the library the user just linked
-  // (or the one they just failed to) rather than the default.
-  const [platform, setPlatform] = useState<Platform>(connected ?? connectErrorPlatform ?? 'spotify')
-  const [query, setQuery] = useState('')
-  const [sort, setSort] = useState<PlaylistSort>('name')
-  // Debounce so typing doesn't fire a request per keystroke; the search runs on
-  // the server (see the /playlists q param) so it covers every page, not just
-  // the ones already loaded.
-  const search = useDebouncedValue(query.trim())
+export function PlaylistBrowser() {
+  const navigate = useNavigate()
+  // strict: false so this reads whatever route it is mounted under, which is what
+  // keeps it renderable in isolation. The values are narrowed again here rather
+  // than trusted: at this looseness their shape genuinely is not known, and the
+  // route's own validateSearch only covers navigation into the route.
+  const params = useSearch({ strict: false }) as Record<string, unknown>
 
-  const playlists = usePlaylists({ platform, search, sort })
+  const connected = toPlatform(params.connected)
+  const connectError = typeof params.connect_error === 'string' ? params.connect_error : undefined
+  const urlSearch = typeof params.q === 'string' ? params.q : ''
+  const sort = toPlaylistSort(params.sort) ?? 'name'
+
+  // Resolution order matters. An explicit platform in the URL wins, so a shared
+  // link shows what it says; then the platform a callback just connected; then
+  // whatever was used last, which is what makes the header's Playlists link
+  // return somewhere useful; then the default.
+  const platform = toPlatform(params.platform) ?? connected ?? readLastPlatform() ?? DEFAULT_PLATFORM
+
+  // The search box keeps its own copy so typing stays instant. The URL gets the
+  // settled term, since navigating on every keystroke would put a history entry
+  // behind each letter.
+  const [input, setInput] = useState(urlSearch)
+  const settledInput = useDebouncedValue(input.trim())
+
+  useEffect(() => {
+    if (settledInput === urlSearch) return
+    // replace, not push: a search term is a refinement, and pushing one entry per
+    // pause would make leaving the page a matter of pressing back repeatedly.
+    void navigate({
+      to: '/playlists',
+      search: (prev) => ({ ...prev, q: settledInput || undefined }),
+      replace: true,
+    })
+  }, [settledInput, urlSearch, navigate])
+
+  // Remembered on every resolved value, not just on a click, so a deep link or a
+  // returning OAuth callback also becomes the thing to come back to.
+  useEffect(() => {
+    rememberLastPlatform(platform)
+  }, [platform])
+
+  const playlists = usePlaylists({ platform, search: urlSearch, sort })
   const generate = useGenerateCover()
   const session = useSession()
 
@@ -47,24 +86,82 @@ export function PlaylistBrowser({ connected, connectError, connectErrorPlatform 
   // appeared. An empty list is not the same answer as "not connected".
   const isConnected = session.data?.connections?.includes(platform) ?? false
   const items = playlists.data?.pages.flat() ?? []
-  const hasQuery = search.length > 0
+  const hasQuery = urlSearch.length > 0
+
+  // Whether what is on screen corresponds to what is in the box. Between a
+  // keystroke and the debounce landing it does not, and the list still holds the
+  // previous term's results — which is how "No playlists match <new term>" used
+  // to appear over the old term's empty result set.
+  const resultsMatchInput = input.trim() === urlSearch && !playlists.isFetching
+
+  // --- windowing ---
+  //
+  // Rows are rendered only around the viewport, so the DOM stays a fixed size no
+  // matter how many pages have been loaded. The window virtualizer is used rather
+  // than an element one deliberately: an inner scroll container would give the
+  // page two scrollbars and strand the footer, and the list is meant to flow with
+  // the document.
+  const listRef = useRef<HTMLDivElement>(null)
+  const [listTop, setListTop] = useState(0)
+
+  const virtualizer = useWindowVirtualizer({
+    count: items.length,
+    estimateSize: () => ROW_ESTIMATE,
+    // A few rows of slack above and below, so scrolling reveals rendered rows
+    // rather than blank space that fills in a frame later.
+    overscan: 6,
+    scrollMargin: listTop,
+    // Rows have variable height (a name can wrap to two lines, a description is
+    // optional), so real measurements replace the estimate. Falling back to the
+    // estimate when layout reports zero keeps this working where there is no
+    // layout at all, which is every test environment.
+    measureElement: (el) => el.getBoundingClientRect().height || ROW_ESTIMATE,
+  })
+
+  // The list starts partway down the document and the toolbar above it changes
+  // height, so its offset is re-read after every render and only written when it
+  // actually moved.
+  useLayoutEffect(() => {
+    const next = listRef.current?.offsetTop ?? 0
+    if (next !== listTop) setListTop(next)
+  })
+
+  function selectPlatform(next: Platform) {
+    // A push, unlike search and sort: switching source is a change of view, and
+    // back should undo it.
+    void navigate({
+      to: '/playlists',
+      search: (prev) => ({
+        ...prev,
+        platform: next,
+        // A deliberate switch retires the last connect outcome; leaving it would
+        // report a stale result against a platform the user moved on from.
+        connected: undefined,
+        connect_error: undefined,
+      }),
+    })
+  }
+
+  function selectSort(next: PlaylistSort) {
+    void navigate({ to: '/playlists', search: (prev) => ({ ...prev, sort: next }), replace: true })
+  }
 
   // The mutation is shared across the list, so derive per-row state from the
   // variables it was last called with. Without this, one in-flight generation
   // would disable every row's button with no sign of which one is running.
   const inFlightId = generate.isPending ? generate.variables?.playlistId : undefined
 
-  // The connect outcome is scoped by the platform the API redirected back with,
-  // never by whatever happens to be selected. Read unscoped, a failed YouTube
-  // Music attempt used to keep reporting itself after a switch to Spotify,
-  // blaming a platform the user never tried.
-  const failedConnect =
-    connectError && connectErrorPlatform === platform ? connectErrorMessage(connectError, activeLabel) : undefined
+  // No platform comparison needed any more. The callback redirects with the
+  // platform it was for, that value is the selection, and switching away strips
+  // connect_error from the URL — so a failed YouTube Music attempt cannot follow a
+  // switch to Spotify by construction rather than by a check that could be
+  // forgotten.
+  const failedConnect = connectError ? connectErrorMessage(connectError, activeLabel) : undefined
 
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <PlatformPicker value={platform} onChange={setPlatform} />
+        <PlatformPicker value={platform} onChange={selectPlatform} />
         <div className="flex flex-col items-end gap-1">
           {isConnected ? (
             <p className="flex items-center gap-1.5 text-sm text-muted-foreground">
@@ -134,12 +231,12 @@ export function PlaylistBrowser({ connected, connectError, connectErrorPlatform 
       ) : (
         <div className="space-y-4" aria-busy={playlists.isFetching || undefined}>
           <div className="flex flex-wrap items-center gap-3">
-            <SearchInput className="min-w-56 flex-1" value={query} onChange={setQuery} label="Search playlists" />
+            <SearchInput className="min-w-56 flex-1" value={input} onChange={setInput} label="Search playlists" />
             <label className="flex items-center gap-2 text-sm text-muted-foreground">
               Sort
               <select
                 value={sort}
-                onChange={(event) => setSort(event.target.value as PlaylistSort)}
+                onChange={(event) => selectSort(event.target.value as PlaylistSort)}
                 className="h-9 rounded-lg border border-border bg-card px-2 text-sm text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background focus-visible:outline-none"
               >
                 <option value="name">Name</option>
@@ -149,23 +246,50 @@ export function PlaylistBrowser({ connected, connectError, connectErrorPlatform 
           </div>
 
           {items.length > 0 ? (
-            <ul className="space-y-2">
-              {items.map((playlist) => (
-                <PlaylistRow
-                  key={playlist.id}
-                  playlist={playlist}
-                  generating={inFlightId === playlist.id}
-                  // Only the row that was acted on reports the outcome.
-                  error={
-                    generate.isError && generate.variables?.playlistId === playlist.id ? generate.error : undefined
-                  }
-                  succeeded={generate.isSuccess && generate.variables?.playlistId === playlist.id}
-                  onGenerate={() => generate.mutate({ platform, playlistId: playlist.id })}
-                />
-              ))}
-            </ul>
+            <div ref={listRef}>
+              {/* The list keeps its full height so the scrollbar reflects every
+                  loaded playlist, while only the visible slice exists in the DOM.
+                  aria-setsize and aria-posinset carry the real position, which a
+                  partial list cannot convey on its own. */}
+              <ul aria-label="Playlists" className="relative" style={{ height: virtualizer.getTotalSize() }}>
+                {virtualizer.getVirtualItems().map((row) => {
+                  const playlist = items[row.index]
+                  if (!playlist) return null
+                  return (
+                    <li
+                      key={playlist.id}
+                      data-index={row.index}
+                      ref={virtualizer.measureElement}
+                      aria-setsize={items.length}
+                      aria-posinset={row.index + 1}
+                      className="absolute inset-x-0 top-0 pb-2"
+                      style={{ transform: `translateY(${row.start - listTop}px)` }}
+                    >
+                      <PlaylistRow
+                        playlist={playlist}
+                        generating={inFlightId === playlist.id}
+                        // Only the row that was acted on reports the outcome.
+                        error={
+                          generate.isError && generate.variables?.playlistId === playlist.id
+                            ? generate.error
+                            : undefined
+                        }
+                        succeeded={generate.isSuccess && generate.variables?.playlistId === playlist.id}
+                        onGenerate={() => generate.mutate({ platform, playlistId: playlist.id })}
+                      />
+                    </li>
+                  )
+                })}
+              </ul>
+            </div>
+          ) : resultsMatchInput ? (
+            // Only a settled list may return a verdict, and it names the term the
+            // results are actually for.
+            <EmptyState icon={SearchX} title="No matches" description={`No playlists match “${urlSearch}”.`} />
           ) : (
-            <EmptyState icon={SearchX} title="No matches" description={`No playlists match “${query.trim()}”.`} />
+            // Mid-debounce the list still holds the previous term's results, so
+            // there is nothing truthful to say about them yet.
+            <PlaylistSkeletons />
           )}
 
           <LoadMore
@@ -188,9 +312,13 @@ interface PlaylistRowProps {
   onGenerate: () => void
 }
 
+/**
+ * One row's content. The surrounding <li> belongs to the windowed list, which has
+ * to position it absolutely, so this renders the card and nothing structural.
+ */
 function PlaylistRow({ playlist, generating, error, succeeded, onGenerate }: PlaylistRowProps) {
   return (
-    <li>
+    <>
       <Card className="flex flex-wrap items-center gap-4 p-3 sm:flex-nowrap">
         <PlaylistArtwork playlist={playlist} />
 
@@ -224,7 +352,7 @@ function PlaylistRow({ playlist, generating, error, succeeded, onGenerate }: Pla
           {errorMessage(error, 'Generation failed. Try again in a moment.')}
         </p>
       )}
-    </li>
+    </>
   )
 }
 

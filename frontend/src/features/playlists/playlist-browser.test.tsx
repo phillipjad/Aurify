@@ -33,6 +33,10 @@ const MORNING_COFFEE = {
 beforeEach(() => {
   mockFetch.mockReset()
   mockConnectDsp.mockReset()
+  // The last-used platform is remembered in real localStorage, which jsdom shares
+  // across tests in a file. Left over, it silently changes which platform a test
+  // starts on.
+  localStorage.clear()
 })
 
 describe('PlaylistBrowser', () => {
@@ -57,6 +61,36 @@ describe('PlaylistBrowser', () => {
 
     expect(await screen.findByText('Morning Coffee')).toBeInTheDocument()
     expect(screen.getByText('12 tracks')).toBeInTheDocument()
+  })
+
+  // Windowing: the point is that a long list costs a fixed amount of DOM. The
+  // full height is still reserved so the scrollbar tells the truth, and
+  // aria-setsize carries the real total, which a partial list cannot convey.
+  it('renders only a slice of a long list while reporting its true size', async () => {
+    const many = Array.from({ length: 200 }, (_, i) => ({
+      id: `p${i}`,
+      platform: 'spotify',
+      name: `Playlist ${i}`,
+      description: '',
+      trackCount: i,
+    }))
+    mockFetch.mockResolvedValue(many)
+    renderWithProviders(<PlaylistBrowser />)
+    await screen.findByText('Playlist 0')
+
+    const rendered = screen.getAllByRole('listitem')
+    expect(rendered.length).toBeGreaterThanOrEqual(5)
+    expect(rendered.length).toBeLessThan(60)
+    // Far down the list, so it must not have been rendered.
+    expect(screen.queryByText('Playlist 199')).not.toBeInTheDocument()
+
+    // Every rendered row still announces its place in the whole set.
+    expect(rendered[0]).toHaveAttribute('aria-setsize', '200')
+    expect(rendered[0]).toHaveAttribute('aria-posinset', '1')
+
+    // And the container reserves room for all 200, so scrolling is not truncated.
+    const list = screen.getByRole('list', { name: 'Playlists' })
+    expect(Number.parseInt(list.style.height, 10)).toBeGreaterThan(200 * 40)
   })
 
   it('switches platform and re-queries when another DSP is chosen', async () => {
@@ -102,6 +136,67 @@ describe('PlaylistBrowser', () => {
     expect(await screen.findByText('YT Mix')).toBeInTheDocument()
   })
 
+  // The reason this state moved into the URL: useState died on unmount, so
+  // returning from another page dropped the user back on the default.
+  it('puts the selected platform in the URL so it survives navigation', async () => {
+    mockFetch.mockResolvedValue([])
+    const { router } = renderWithProviders(<PlaylistBrowser />)
+    await screen.findByRole('radiogroup', { name: 'Music platform' })
+
+    await userEvent.click(screen.getByRole('radio', { name: 'YouTube Music' }))
+
+    await waitFor(() => expect(router.state.location.search).toMatchObject({ platform: 'youtube_music' }))
+  })
+
+  it('restores platform and sort from the URL on a cold load', async () => {
+    // Non-empty, since the search and sort controls only render alongside a list.
+    mockFetch.mockResolvedValue([MORNING_COFFEE])
+    renderWithProviders(<PlaylistBrowser />, { path: '/playlists?platform=apple_music&sort=tracks' })
+    // The controls only appear once the list has resolved.
+    await screen.findByText('Morning Coffee')
+
+    expect(screen.getByRole('radio', { name: 'Apple Music' })).toHaveAttribute('aria-checked', 'true')
+    expect(screen.getByRole('combobox', { name: /sort/i })).toHaveValue('tracks')
+    await waitFor(() => expect(mockFetch).toHaveBeenCalledWith(expect.stringContaining('platform=apple_music')))
+  })
+
+  // A URL is typed by anyone, so an unknown platform must not reach the request.
+  it('falls back to the default when the URL names a platform that does not exist', async () => {
+    mockFetch.mockResolvedValue([MORNING_COFFEE])
+    renderWithProviders(<PlaylistBrowser />, { path: '/playlists?platform=napster&sort=sideways' })
+    await screen.findByText('Morning Coffee')
+
+    expect(screen.getByRole('radio', { name: 'Spotify' })).toHaveAttribute('aria-checked', 'true')
+    expect(screen.getByRole('combobox', { name: /sort/i })).toHaveValue('name')
+  })
+
+  // The header's Playlists link carries no search params, so without a remembered
+  // value every trip through the nav bar landed back on the default.
+  it('reopens on the last platform used when the URL says nothing', async () => {
+    mockFetch.mockResolvedValue([])
+    const first = renderWithProviders(<PlaylistBrowser />)
+    await screen.findByRole('radiogroup', { name: 'Music platform' })
+    await userEvent.click(screen.getByRole('radio', { name: 'YouTube Music' }))
+    await waitFor(() => expect(first.router.state.location.search).toMatchObject({ platform: 'youtube_music' }))
+    first.unmount()
+
+    // A fresh mount at a bare /playlists, as the nav link produces.
+    renderWithProviders(<PlaylistBrowser />)
+
+    expect(await screen.findByRole('radio', { name: 'YouTube Music' })).toHaveAttribute('aria-checked', 'true')
+  })
+
+  // An explicit platform in the URL has to beat the remembered one, or a shared
+  // link would show whatever the recipient looked at last.
+  it('lets the URL override the remembered platform', async () => {
+    mockFetch.mockResolvedValue([])
+    localStorage.setItem('aurify.playlists.platform', 'youtube_music')
+
+    renderWithProviders(<PlaylistBrowser />, { path: '/playlists?platform=apple_music' })
+
+    expect(await screen.findByRole('radio', { name: 'Apple Music' })).toHaveAttribute('aria-checked', 'true')
+  })
+
   it('moves selection with arrow keys, per the radiogroup pattern', async () => {
     mockFetch.mockResolvedValue([])
     renderWithProviders(<PlaylistBrowser />)
@@ -110,7 +205,9 @@ describe('PlaylistBrowser', () => {
     screen.getByRole('radio', { name: 'Spotify' }).focus()
     await userEvent.keyboard('{ArrowRight}')
 
-    expect(screen.getByRole('radio', { name: 'Apple Music' })).toHaveAttribute('aria-checked', 'true')
+    await waitFor(() =>
+      expect(screen.getByRole('radio', { name: 'Apple Music' })).toHaveAttribute('aria-checked', 'true'),
+    )
     await waitFor(() => expect(mockFetch).toHaveBeenCalledWith(expect.stringContaining('platform=apple_music')))
   })
 
@@ -134,6 +231,36 @@ describe('PlaylistBrowser', () => {
     expect(await screen.findByText('Gym Bangers')).toBeInTheDocument()
     expect(screen.queryByText('Morning Coffee')).not.toBeInTheDocument()
     await waitFor(() => expect(mockFetch).toHaveBeenCalledWith(expect.stringContaining('q=gym')))
+  })
+
+  // The reported bug: typing a matching term straight after an unmatched one
+  // briefly read "No playlists match <matching term>", because the message
+  // interpolated the live input while the list still held the previous term's
+  // empty results. A debounce already existed; the pair was mismatched.
+  it('never names a term the results on screen do not belong to', async () => {
+    mockFetch.mockImplementation((path: string) => {
+      const q = new URL(`http://x${path}`).searchParams.get('q')
+      if (q === 'zzz') return Promise.resolve([])
+      if (q === 'gym') {
+        return Promise.resolve([
+          { id: 'sp2', platform: 'spotify', name: 'Gym Bangers', description: '', trackCount: 3 },
+        ])
+      }
+      return Promise.resolve([MORNING_COFFEE])
+    })
+    renderWithProviders(<PlaylistBrowser />)
+    const box = await screen.findByRole('searchbox', { name: /search playlists/i })
+
+    await userEvent.type(box, 'zzz')
+    expect(await screen.findByText(/no playlists match .zzz./i)).toBeInTheDocument()
+
+    // Straight from an unmatched term to a matching one.
+    await userEvent.clear(box)
+    await userEvent.type(box, 'gym')
+
+    // At no point may a verdict name "gym" while the empty "zzz" results are up.
+    expect(screen.queryByText(/no playlists match .gym./i)).not.toBeInTheDocument()
+    expect(await screen.findByText('Gym Bangers')).toBeInTheDocument()
   })
 
   it('shows a no-matches state when the server returns nothing for the search', async () => {
@@ -268,7 +395,7 @@ describe('PlaylistBrowser', () => {
         ? Promise.resolve({ userId: 'u1', email: 'a@b.test', connections: ['youtube_music'] })
         : Promise.resolve([]),
     )
-    renderWithProviders(<PlaylistBrowser connected="youtube_music" />)
+    renderWithProviders(<PlaylistBrowser />, { path: '/playlists?connected=youtube_music' })
 
     expect(await screen.findByText(/youtube music connected/i)).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Connect YouTube Music' })).not.toBeInTheDocument()
@@ -290,7 +417,7 @@ describe('PlaylistBrowser', () => {
 
   it('opens on the platform the callback just connected', async () => {
     mockFetch.mockResolvedValue([])
-    renderWithProviders(<PlaylistBrowser connected="youtube_music" />)
+    renderWithProviders(<PlaylistBrowser />, { path: '/playlists?connected=youtube_music' })
 
     expect(await screen.findByRole('radio', { name: 'YouTube Music' })).toHaveAttribute('aria-checked', 'true')
     await waitFor(() => expect(mockFetch).toHaveBeenCalledWith(expect.stringContaining('platform=youtube_music')))
@@ -301,13 +428,17 @@ describe('PlaylistBrowser', () => {
   // never attempted.
   it('reports a failed connection against the platform it belongs to, and only that one', async () => {
     mockFetch.mockResolvedValue([])
-    renderWithProviders(<PlaylistBrowser connectError="cancelled" connectErrorPlatform="youtube_music" />)
+    renderWithProviders(<PlaylistBrowser />, {
+      path: '/playlists?platform=youtube_music&connect_error=cancelled',
+    })
 
     const alert = await screen.findByRole('alert')
     expect(alert).toHaveTextContent(/youtube music/i)
 
     await userEvent.click(screen.getByRole('radio', { name: 'Spotify' }))
 
-    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    // Switching platform strips connect_error from the URL, so the outcome cannot
+    // follow the switch and be reported against a platform never attempted.
+    await waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument())
   })
 })
