@@ -15,6 +15,7 @@ import (
 	_ "github.com/jackc/pgx/v5/stdlib" // registers the "pgx" database/sql driver for goose
 	"github.com/pressly/goose/v3"
 
+	"github.com/phillipjad/aurify/backend/internal/platform/crypto"
 	"github.com/phillipjad/aurify/backend/internal/storage/postgres/db"
 )
 
@@ -32,8 +33,14 @@ type Store struct {
 
 // Connect dials PostgreSQL, verifies the connection, brings the schema up to
 // date with the embedded migrations, and constructs the repositories.
-func Connect(ctx context.Context, dsn string) (*Store, error) {
-	pool, err := pgxpool.New(ctx, dsn)
+func Connect(ctx context.Context, dsn string, tokenKey []byte) (*Store, error) {
+	tokens, err := crypto.NewCipher(tokenKey)
+	if err != nil {
+		return nil, err
+	}
+	var pool *pgxpool.Pool
+
+	pool, err = pgxpool.New(ctx, dsn)
 	if err != nil {
 		return nil, fmt.Errorf("postgres: connect: %w", err)
 	}
@@ -53,7 +60,7 @@ func Connect(ctx context.Context, dsn string) (*Store, error) {
 	queries := db.New(pool)
 	return &Store{
 		pool:        pool,
-		users:       &UserRepository{pool: pool, q: queries},
+		users:       &UserRepository{pool: pool, q: queries, tokens: tokens},
 		covers:      &CoverRepository{q: queries},
 		credentials: &CredentialRepository{q: queries},
 		identities:  &IdentityRepository{q: queries},

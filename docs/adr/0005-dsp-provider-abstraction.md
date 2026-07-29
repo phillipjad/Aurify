@@ -48,5 +48,12 @@ sub-packages, keeping the dependency graph acyclic.
   before redirecting back to `/playlists`. It reuses the sign-in flow-state
   helpers under its own cookie, so a half-finished sign-in cannot satisfy a DSP
   callback.
-- Token storage is plaintext — encrypt `DSPConnection` tokens at rest before
-  production.
+- `DSPConnection` tokens are encrypted at rest with AES-256-GCM
+  (`internal/platform/crypto`), keyed off the Ed25519 authentication seed so
+  there is no second secret to deploy. Rotating that seed makes stored tokens
+  undecryptable and users have to reconnect; a dedicated key is the upgrade path
+  if that becomes unacceptable. Values with no `v1:` envelope are read as legacy
+  plaintext and replaced on the next save.
+- Providers refresh their own credentials through `RefreshConnection`, and
+  `app/dspconn.Resolver` stores the result. Without that step oauth2 refreshed in
+  memory and discarded the new token, so the stored one stayed stale forever.

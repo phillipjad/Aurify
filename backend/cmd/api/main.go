@@ -37,6 +37,7 @@ import (
 	"github.com/phillipjad/aurify/backend/internal/app/sessions"
 	"github.com/phillipjad/aurify/backend/internal/config"
 	"github.com/phillipjad/aurify/backend/internal/platform/auth"
+	"github.com/phillipjad/aurify/backend/internal/platform/crypto"
 	"github.com/phillipjad/aurify/backend/internal/platform/dsp"
 	"github.com/phillipjad/aurify/backend/internal/platform/dsp/applemusic"
 	"github.com/phillipjad/aurify/backend/internal/platform/dsp/spotify"
@@ -78,8 +79,15 @@ func run() error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
+	// The signing seed is resolved first: the key that encrypts stored DSP tokens
+	// is derived from it, so storage cannot be constructed before it exists.
+	signingKey, err := resolveSigningKey(cfg.Auth.SigningKeySeed)
+	if err != nil {
+		return err
+	}
+
 	// --- storage ---
-	store, err := postgres.Connect(ctx, cfg.DatabaseURL)
+	store, err := postgres.Connect(ctx, cfg.DatabaseURL, crypto.DeriveKey(signingKey.Seed()))
 	if err != nil {
 		return err
 	}
@@ -100,10 +108,6 @@ func run() error {
 	images := imagegen.New(cfg.ImageGenURL)
 
 	// --- authentication ---
-	signingKey, err := resolveSigningKey(cfg.Auth.SigningKeySeed)
-	if err != nil {
-		return err
-	}
 	signer, err := auth.NewSigner(signingKey, cfg.Auth.Issuer, cfg.Auth.Audience)
 	if err != nil {
 		return err

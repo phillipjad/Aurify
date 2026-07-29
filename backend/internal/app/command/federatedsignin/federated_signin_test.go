@@ -14,6 +14,7 @@ import (
 	"github.com/phillipjad/aurify/backend/internal/app/sessions"
 	"github.com/phillipjad/aurify/backend/internal/domain"
 	"github.com/phillipjad/aurify/backend/internal/platform/auth"
+	"github.com/phillipjad/aurify/backend/internal/platform/crypto"
 	"github.com/phillipjad/aurify/backend/internal/storage/postgres"
 )
 
@@ -87,7 +88,7 @@ func newFixture(t *testing.T) *fixture {
 
 	// Connect runs the goose migrations, so the schema under test is the real
 	// one rather than something the test hand-rolled.
-	store, err := postgres.Connect(ctx, dsn)
+	store, err := postgres.Connect(ctx, dsn, crypto.DeriveKey([]byte("integration-test-seed")))
 	if err != nil {
 		t.Fatalf("connect to %s: %v", dsn, err)
 	}
