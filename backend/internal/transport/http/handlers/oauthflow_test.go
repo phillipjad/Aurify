@@ -45,6 +45,47 @@ func TestFlowStateRejectsExpired(t *testing.T) {
 	}
 }
 
+// A DSP connect flow carries no nonce or verifier — those belong to the OIDC
+// sign-in. decodeFlowState must still accept it, and must still insist on the
+// two fields every flow has.
+func TestFlowStateAcceptsADSPFlowWithoutOIDCFields(t *testing.T) {
+	encoded, err := encodeFlowState(flowState{
+		State:    "the-state",
+		Platform: "youtube_music",
+		Expires:  time.Now().Add(10 * time.Minute).Unix(),
+	})
+	if err != nil {
+		t.Fatalf("encode: %v", err)
+	}
+
+	got, err := decodeFlowState(encoded)
+	if err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if got.Platform != "youtube_music" {
+		t.Fatalf("platform = %q, want it carried through", got.Platform)
+	}
+
+	stateless, err := encodeFlowState(flowState{Expires: time.Now().Add(time.Minute).Unix()})
+	if err != nil {
+		t.Fatalf("encode: %v", err)
+	}
+	if _, err := decodeFlowState(stateless); err == nil {
+		t.Fatal("a flow state with no state value was accepted")
+	}
+}
+
+// The two flows must not share a cookie: a half-finished sign-in satisfying a
+// DSP callback (or the reverse) is exactly the confusion the separate handlers
+// exist to prevent.
+func TestFlowCookieNamesAreDistinct(t *testing.T) {
+	for _, secure := range []bool{true, false} {
+		if flowCookieName(secure) == dspFlowCookieName(secure) {
+			t.Errorf("sign-in and DSP flows share a cookie name (secure=%v)", secure)
+		}
+	}
+}
+
 func TestFlowStateRejectsGarbage(t *testing.T) {
 	for _, in := range []string{"", "not-base64!!", "aGVsbG8"} {
 		if _, err := decodeFlowState(in); err == nil {

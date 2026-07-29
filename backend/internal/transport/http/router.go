@@ -143,7 +143,7 @@ func NewRouter(deps Deps) (*mux.Router, error) {
 		"/api/v1/auth/refresh": true,
 	}))
 
-	dspAuth := handlers.NewAuth(application, providers)
+	dspAuth := handlers.NewAuth(application, providers, deps.Cookies, deps.AppBaseURL)
 	sessions := handlers.NewSessions(application, deps.Cookies, deps.Guard, deps.Verifier, deps.SupportEmail)
 	federated := handlers.NewFederated(
 		application, deps.Google, deps.Cookies, deps.Guard, deps.AppBaseURL, deps.SupportEmail,
@@ -246,18 +246,25 @@ func NewRouter(deps Deps) (*mux.Router, error) {
 			WithResponse(401, mux.ProblemDetails{})
 
 		// ---- write side (commands) ----
+		// Both legs are top-level browser navigations, like the federated routes
+		// above, so they redirect rather than answer JSON. AllowAnonymous keeps mux
+		// from returning a bare 401 body to a navigation; the handlers send an
+		// unauthenticated caller to the sign-in page instead.
 		api.GET("/auth/{platform}/login", dspAuth.Login).
 			AllowAnonymous().
 			WithOperationID("dspLogin").
-			WithSummary("Get the OAuth authorization URL for a DSP").
-			WithPathParam("platform", "DSP platform: spotify, apple_music, youtube_music", "spotify")
+			WithSummary("Redirect to a DSP to begin linking the account").
+			WithPathParam("platform", "DSP platform: spotify, apple_music, youtube_music", "spotify").
+			WithResponse(302, nil)
 
 		api.GET("/auth/{platform}/callback", dspAuth.Callback).
 			AllowAnonymous().
 			WithOperationID("dspCallback").
 			WithSummary("OAuth callback that links a DSP account to the user").
 			WithPathParam("platform", "DSP platform: spotify, apple_music, youtube_music", "spotify").
-			WithRequiredQueryParam("code", "OAuth authorization code from the provider", "AQD...")
+			WithRequiredQueryParam("code", "OAuth authorization code from the provider", "AQD...").
+			WithQueryParam("state", "Opaque value echoed back by the provider", "xY...").
+			WithResponse(302, nil)
 
 		api.POST("/covers", covers.Generate).
 			WithOperationID("generateCover").

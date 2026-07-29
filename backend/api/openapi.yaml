@@ -28,14 +28,20 @@ paths:
           schema:
             type: string
           example: AQD...
+        - name: state
+          in: query
+          description: Opaque value echoed back by the provider
+          schema:
+            type: string
+          example: xY...
       responses:
-        "200":
-          description: Success
+        "302":
+          description: Response 302
   /api/v1/auth/{platform}/login:
     get:
       tags:
         - aurify
-      summary: Get the OAuth authorization URL for a DSP
+      summary: Redirect to a DSP to begin linking the account
       operationId: dspLogin
       parameters:
         - name: platform
@@ -46,8 +52,8 @@ paths:
             type: string
           example: spotify
       responses:
-        "200":
-          description: Success
+        "302":
+          description: Response 302
   /api/v1/auth/federated/google/callback:
     get:
       tags:
