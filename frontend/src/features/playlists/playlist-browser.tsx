@@ -39,17 +39,23 @@ export function PlaylistBrowser() {
   // would disable every row's button with no sign of which one is running.
   const inFlightId = generate.isPending ? generate.variables?.playlistId : undefined
 
+  // Same reasoning for connect, which is one mutation shared by every platform.
+  // Read unscoped, a failed YouTube Music attempt kept reporting itself after a
+  // switch to Spotify, blaming a platform the user never tried.
+  const connecting = connect.isPending && connect.variables === platform
+  const connectError = connect.isError && connect.variables === platform ? connect.error : undefined
+
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <PlatformPicker value={platform} onChange={setPlatform} />
         <div className="flex flex-col items-end gap-1">
-          <Button variant="outline" size="sm" loading={connect.isPending} onClick={() => connect.mutate(platform)}>
+          <Button variant="outline" size="sm" loading={connecting} onClick={() => connect.mutate(platform)}>
             Connect {activeLabel}
           </Button>
-          {connect.isError && (
+          {connectError != null && (
             <p role="alert" className="text-xs text-destructive">
-              {errorMessage(connect.error, `Couldn’t reach ${activeLabel}.`)}
+              {errorMessage(connectError, `Couldn’t reach ${activeLabel}.`)}
             </p>
           )}
         </div>
@@ -62,7 +68,7 @@ export function PlaylistBrowser() {
             title={`Connect your ${activeLabel} account`}
             description={`Aurify needs access to your ${activeLabel} library before it can list your playlists.`}
             action={
-              <Button size="sm" loading={connect.isPending} onClick={() => connect.mutate(platform)}>
+              <Button size="sm" loading={connecting} onClick={() => connect.mutate(platform)}>
                 Connect {activeLabel}
               </Button>
             }
