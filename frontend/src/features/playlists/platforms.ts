@@ -1,9 +1,15 @@
+import type { PlaylistSort } from '@/lib/api/queries'
 import type { Platform } from '@/lib/api/types'
 
 // Constants only — no components — so importing these never costs Fast Refresh
 // in the modules that render them.
 
 export const PLATFORMS: readonly Platform[] = ['spotify', 'apple_music', 'youtube_music']
+
+const PLAYLIST_SORTS: readonly PlaylistSort[] = ['name', 'tracks']
+
+/** The platform shown when neither the URL nor storage names one. */
+export const DEFAULT_PLATFORM: Platform = 'spotify'
 
 const PLATFORM_LABELS: Record<Platform, string> = {
   spotify: 'Spotify',
@@ -18,6 +24,41 @@ export function platformLabel(platform: Platform): string {
 /** Narrow an untrusted value (a URL parameter) to a platform we actually serve. */
 export function toPlatform(value: unknown): Platform | undefined {
   return PLATFORMS.find((platform) => platform === value)
+}
+
+/** Narrow an untrusted value to an ordering the playlists endpoint accepts. */
+export function toPlaylistSort(value: unknown): PlaylistSort | undefined {
+  return PLAYLIST_SORTS.find((sort) => sort === value)
+}
+
+/**
+ * The platform the user last chose, remembered across visits.
+ *
+ * The URL is the source of truth for view state, but the header's Playlists link
+ * is a plain navigation carrying no search parameters, so without this every trip
+ * through the nav bar landed back on the default. This is the fallback for that
+ * case only: a platform named in the URL always wins, which keeps a shared link
+ * showing what it says.
+ *
+ * Storage access is guarded because it throws outright in some privacy modes, and
+ * a preference is never worth failing a render over.
+ */
+const LAST_PLATFORM_KEY = 'aurify.playlists.platform'
+
+export function readLastPlatform(): Platform | undefined {
+  try {
+    return toPlatform(localStorage.getItem(LAST_PLATFORM_KEY))
+  } catch {
+    return undefined
+  }
+}
+
+export function rememberLastPlatform(platform: Platform) {
+  try {
+    localStorage.setItem(LAST_PLATFORM_KEY, platform)
+  } catch {
+    // A remembered preference is a nicety, not a requirement.
+  }
 }
 
 /**
