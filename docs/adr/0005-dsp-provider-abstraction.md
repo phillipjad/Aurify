@@ -32,7 +32,15 @@ sub-packages, keeping the dependency graph acyclic.
   changes.
 - The normalized model is the contract; per-platform quirks are confined to the
   adapter.
-- In the scaffold every provider's network calls are stubbed (return
-  "not implemented"); only the interface, registry, and OAuth-URL construction
-  are real. Token storage is plaintext in the scaffold — encrypt
-  `DSPConnection` tokens at rest before production.
+- YouTube Music is implemented against the Data API v3 (see
+  [ADR 0009](0009-youtube-music-via-data-api-v3.md)). Spotify and Apple Music
+  are still stubs returning "not implemented".
+- The connect flow is shared by every provider and lives in
+  `transport/http/handlers/auth.go`: both legs are top-level browser
+  navigations, so `login` redirects to the provider carrying a random state
+  stored in a flow cookie, and the callback verifies that state and the platform
+  before redirecting back to `/playlists`. It reuses the sign-in flow-state
+  helpers under its own cookie, so a half-finished sign-in cannot satisfy a DSP
+  callback.
+- Token storage is plaintext — encrypt `DSPConnection` tokens at rest before
+  production.

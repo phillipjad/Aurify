@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"fmt"
 	"log/slog"
 	"net/http"
 	"net/url"
@@ -100,7 +101,7 @@ func (h *Auth) Callback(c mux.RouteContext) {
 
 	// How a provider reports a user who declined consent. A normal outcome.
 	if providerErr, ok := c.Query().String("error"); ok && providerErr != "" {
-		h.fail(c, secure, "cancelled")
+		h.fail(c, secure, platform, "cancelled")
 		return
 	}
 
@@ -108,7 +109,7 @@ func (h *Auth) Callback(c mux.RouteContext) {
 	if err != nil {
 		// Usually a bookmarked callback, a double submit, or a user who sat on the
 		// consent screen for longer than the window.
-		h.fail(c, secure, "expired")
+		h.fail(c, secure, platform, "expired")
 		return
 	}
 
@@ -118,7 +119,7 @@ func (h *Auth) Callback(c mux.RouteContext) {
 	// A mismatch on either means this callback does not belong to a flow this
 	// browser started for this platform, which is forged rather than accidental.
 	if !matchesState(flow.State, echoedState) || flow.Platform != platform || code == "" {
-		h.fail(c, secure, "state")
+		h.fail(c, secure, platform, "state")
 		return
 	}
 
@@ -128,7 +129,7 @@ func (h *Auth) Callback(c mux.RouteContext) {
 	// id into the flow cookie is the upgrade path if that turns out to bite.
 	userID := currentUser(c)
 	if userID == "" {
-		h.fail(c, secure, "session")
+		h.fail(c, secure, platform, "session")
 		return
 	}
 
@@ -138,7 +139,7 @@ func (h *Auth) Callback(c mux.RouteContext) {
 		Code:     code,
 	}); err != nil {
 		slog.Error("dsp connect failed", "error", err, "platform", platform)
-		h.fail(c, secure, "exchange")
+		h.fail(c, secure, platform, "exchange")
 		return
 	}
 
@@ -147,9 +148,17 @@ func (h *Auth) Callback(c mux.RouteContext) {
 }
 
 // fail clears the half-finished flow and sends the browser back with a reason.
-func (h *Auth) fail(c mux.RouteContext, secure bool, reason string) {
+//
+// The platform travels with the reason so the UI can attribute the failure to
+// the account the user actually tried to link. Without it the page has to guess
+// from whatever it happens to have selected, which is how a failed YouTube Music
+// attempt used to report itself against Spotify.
+func (h *Auth) fail(c mux.RouteContext, secure bool, platform, reason string) {
 	clearFlowState(c, dspFlowCookieName(secure), secure)
-	h.redirect(c, connectReturnPath+"?connect_error="+url.QueryEscape(reason))
+	h.redirect(c, fmt.Sprintf(
+		"%s?connect_error=%s&platform=%s",
+		connectReturnPath, url.QueryEscape(reason), url.QueryEscape(platform),
+	))
 }
 
 // redirect confines the destination to this app's own origin.

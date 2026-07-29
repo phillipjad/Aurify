@@ -222,7 +222,7 @@ func TestDSPCallbackRejectsAMismatchedState(t *testing.T) {
 
 	rec := callback(router, "youtube_music", "forged-state", "the-code", cookie)
 
-	assertConnectError(t, rec, "state")
+	assertConnectError(t, rec, "youtube_music", "state")
 	if provider.exchanges != 0 {
 		t.Fatalf("provider exchanges = %d, want 0: a forged callback reached the exchange", provider.exchanges)
 	}
@@ -236,7 +236,7 @@ func TestDSPCallbackRejectsAnotherPlatformsFlow(t *testing.T) {
 
 	rec := callback(router, "spotify", state, "the-code", cookie)
 
-	assertConnectError(t, rec, "state")
+	assertConnectError(t, rec, "spotify", "state")
 	if provider.exchanges != 0 {
 		t.Fatalf("provider exchanges = %d, want 0", provider.exchanges)
 	}
@@ -247,7 +247,7 @@ func TestDSPCallbackWithoutAFlowCookieIsExpired(t *testing.T) {
 
 	rec := callback(router, "youtube_music", "some-state", "the-code", nil)
 
-	assertConnectError(t, rec, "expired")
+	assertConnectError(t, rec, "youtube_music", "expired")
 	if provider.exchanges != 0 {
 		t.Fatalf("provider exchanges = %d, want 0", provider.exchanges)
 	}
@@ -264,18 +264,21 @@ func TestDSPCallbackReportsDeclinedConsent(t *testing.T) {
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, req)
 
-	assertConnectError(t, rec, "cancelled")
+	assertConnectError(t, rec, "youtube_music", "cancelled")
 	if provider.exchanges != 0 {
 		t.Fatalf("provider exchanges = %d, want 0", provider.exchanges)
 	}
 }
 
-func assertConnectError(t *testing.T, rec *httptest.ResponseRecorder, reason string) {
+// assertConnectError also pins the platform on the redirect: the UI attributes
+// the failure from it, so a reason that travels without one is how a failed
+// YouTube Music attempt ends up reported against Spotify.
+func assertConnectError(t *testing.T, rec *httptest.ResponseRecorder, platform, reason string) {
 	t.Helper()
 	if rec.Code != http.StatusFound {
 		t.Fatalf("status = %d, want %d", rec.Code, http.StatusFound)
 	}
-	want := testAppBaseURL + "/playlists?connect_error=" + reason
+	want := testAppBaseURL + "/playlists?connect_error=" + reason + "&platform=" + platform
 	if got := rec.Header().Get("Location"); got != want {
 		t.Fatalf("Location = %q, want %q", got, want)
 	}

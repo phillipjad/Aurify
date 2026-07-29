@@ -10,15 +10,25 @@ import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { isApiError } from '@/lib/api/client'
-import { useConnectDsp, useGenerateCover } from '@/lib/api/commands'
+import { connectDsp, useGenerateCover } from '@/lib/api/commands'
 import { usePlaylists, type PlaylistSort } from '@/lib/api/queries'
 import { useDebouncedValue } from '@/lib/use-debounced-value'
 import type { Platform, Playlist } from '@/lib/api/types'
 import { PlatformPicker } from './platform-picker'
-import { platformLabel } from './platforms'
+import { connectErrorMessage, platformLabel } from './platforms'
 
-export function PlaylistBrowser() {
-  const [platform, setPlatform] = useState<Platform>('spotify')
+interface PlaylistBrowserProps {
+  /** Platform the OAuth callback just linked, from `?connected=`. */
+  connected?: Platform
+  /** Failure code from `?connect_error=`, and the platform it belongs to. */
+  connectError?: string
+  connectErrorPlatform?: Platform
+}
+
+export function PlaylistBrowser({ connected, connectError, connectErrorPlatform }: PlaylistBrowserProps = {}) {
+  // Coming back from a connect flow, open on the library the user just linked
+  // (or the one they just failed to) rather than the default.
+  const [platform, setPlatform] = useState<Platform>(connected ?? connectErrorPlatform ?? 'spotify')
   const [query, setQuery] = useState('')
   const [sort, setSort] = useState<PlaylistSort>('name')
   // Debounce so typing doesn't fire a request per keystroke; the search runs on
@@ -27,7 +37,6 @@ export function PlaylistBrowser() {
   const search = useDebouncedValue(query.trim())
 
   const playlists = usePlaylists({ platform, search, sort })
-  const connect = useConnectDsp()
   const generate = useGenerateCover()
 
   const activeLabel = platformLabel(platform)
@@ -39,23 +48,24 @@ export function PlaylistBrowser() {
   // would disable every row's button with no sign of which one is running.
   const inFlightId = generate.isPending ? generate.variables?.playlistId : undefined
 
-  // Same reasoning for connect, which is one mutation shared by every platform.
-  // Read unscoped, a failed YouTube Music attempt kept reporting itself after a
-  // switch to Spotify, blaming a platform the user never tried.
-  const connecting = connect.isPending && connect.variables === platform
-  const connectError = connect.isError && connect.variables === platform ? connect.error : undefined
+  // The connect outcome is scoped by the platform the API redirected back with,
+  // never by whatever happens to be selected. Read unscoped, a failed YouTube
+  // Music attempt used to keep reporting itself after a switch to Spotify,
+  // blaming a platform the user never tried.
+  const failedConnect =
+    connectError && connectErrorPlatform === platform ? connectErrorMessage(connectError, activeLabel) : undefined
 
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <PlatformPicker value={platform} onChange={setPlatform} />
         <div className="flex flex-col items-end gap-1">
-          <Button variant="outline" size="sm" loading={connecting} onClick={() => connect.mutate(platform)}>
+          <Button variant="outline" size="sm" onClick={() => connectDsp(platform)}>
             Connect {activeLabel}
           </Button>
-          {connectError != null && (
-            <p role="alert" className="text-xs text-destructive">
-              {errorMessage(connectError, `Couldn’t reach ${activeLabel}.`)}
+          {failedConnect && (
+            <p role="alert" className="max-w-xs text-right text-xs text-destructive">
+              {failedConnect}
             </p>
           )}
         </div>
@@ -68,7 +78,7 @@ export function PlaylistBrowser() {
             title={`Connect your ${activeLabel} account`}
             description={`Aurify needs access to your ${activeLabel} library before it can list your playlists.`}
             action={
-              <Button size="sm" loading={connecting} onClick={() => connect.mutate(platform)}>
+              <Button size="sm" onClick={() => connectDsp(platform)}>
                 Connect {activeLabel}
               </Button>
             }

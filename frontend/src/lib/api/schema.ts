@@ -28,7 +28,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get the OAuth authorization URL for a DSP */
+        /** Redirect to a DSP to begin linking the account */
         get: operations["dspLogin"];
         put?: never;
         post?: never;
@@ -351,6 +351,11 @@ export interface operations {
                  * @example AQD...
                  */
                 code: string;
+                /**
+                 * @description Opaque value echoed back by the provider
+                 * @example xY...
+                 */
+                state?: string;
             };
             header?: never;
             path: {
@@ -364,8 +369,8 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Success */
-            200: {
+            /** @description Response 302 */
+            302: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -388,8 +393,8 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Success */
-            200: {
+            /** @description Response 302 */
+            302: {
                 headers: {
                     [name: string]: unknown;
                 };

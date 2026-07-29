@@ -8,7 +8,7 @@
 // HttpOnly and deliberately invisible to script.
 import type { ProblemDetails } from './types'
 
-const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? '/api/v1'
+export const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? '/api/v1'
 
 /**
  * Name of the CSRF cookie the API issues. It is the one auth cookie readable by

@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event'
 
 import { PlaylistBrowser } from '@/features/playlists/playlist-browser'
 import { ApiError, apiFetch } from '@/lib/api/client'
+import { connectDsp } from '@/lib/api/commands'
 import { renderWithProviders } from '@/test/render'
 
 vi.mock('@/lib/api/client', async (importOriginal) => {
@@ -11,7 +12,15 @@ vi.mock('@/lib/api/client', async (importOriginal) => {
   return { ...actual, apiFetch: vi.fn() }
 })
 
+// connectDsp leaves the app, which jsdom cannot do. Stubbing it keeps the
+// assertion on "did we send the browser to the right place".
+vi.mock('@/lib/api/commands', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/api/commands')>()
+  return { ...actual, connectDsp: vi.fn() }
+})
+
 const mockFetch = apiFetch as unknown as Mock
+const mockConnectDsp = connectDsp as unknown as Mock
 
 const MORNING_COFFEE = {
   id: 'sp1',
@@ -23,6 +32,7 @@ const MORNING_COFFEE = {
 
 beforeEach(() => {
   mockFetch.mockReset()
+  mockConnectDsp.mockReset()
 })
 
 describe('PlaylistBrowser', () => {
@@ -212,14 +222,36 @@ describe('PlaylistBrowser', () => {
   })
 
   it('starts the OAuth flow when "Connect" is clicked', async () => {
-    // Resolve an empty authUrl so the success handler skips jsdom navigation.
-    mockFetch.mockImplementation((path: string) =>
-      path.startsWith('/auth/') ? Promise.resolve({ authUrl: '' }) : Promise.resolve([]),
-    )
+    mockFetch.mockResolvedValue([])
     renderWithProviders(<PlaylistBrowser />)
 
     await userEvent.click(await screen.findByRole('button', { name: 'Connect Spotify' }))
 
-    await waitFor(() => expect(mockFetch).toHaveBeenCalledWith('/auth/spotify/login'))
+    // A top-level navigation, not a fetch: the API redirects to the provider and
+    // the callback redirects back, so the SPA has no response to hold.
+    expect(mockConnectDsp).toHaveBeenCalledWith('spotify')
+  })
+
+  it('opens on the platform the callback just connected', async () => {
+    mockFetch.mockResolvedValue([])
+    renderWithProviders(<PlaylistBrowser connected="youtube_music" />)
+
+    expect(await screen.findByRole('radio', { name: 'YouTube Music' })).toHaveAttribute('aria-checked', 'true')
+    await waitFor(() => expect(mockFetch).toHaveBeenCalledWith(expect.stringContaining('platform=youtube_music')))
+  })
+
+  // The bug this scoping exists for: a failed YouTube Music connection used to
+  // keep reporting itself after a switch to Spotify, blaming a platform the user
+  // never attempted.
+  it('reports a failed connection against the platform it belongs to, and only that one', async () => {
+    mockFetch.mockResolvedValue([])
+    renderWithProviders(<PlaylistBrowser connectError="cancelled" connectErrorPlatform="youtube_music" />)
+
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent(/youtube music/i)
+
+    await userEvent.click(screen.getByRole('radio', { name: 'Spotify' }))
+
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   })
 })
