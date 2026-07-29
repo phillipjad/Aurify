@@ -63,6 +63,36 @@ describe('PlaylistBrowser', () => {
     expect(screen.getByText('12 tracks')).toBeInTheDocument()
   })
 
+  // Windowing: the point is that a long list costs a fixed amount of DOM. The
+  // full height is still reserved so the scrollbar tells the truth, and
+  // aria-setsize carries the real total, which a partial list cannot convey.
+  it('renders only a slice of a long list while reporting its true size', async () => {
+    const many = Array.from({ length: 200 }, (_, i) => ({
+      id: `p${i}`,
+      platform: 'spotify',
+      name: `Playlist ${i}`,
+      description: '',
+      trackCount: i,
+    }))
+    mockFetch.mockResolvedValue(many)
+    renderWithProviders(<PlaylistBrowser />)
+    await screen.findByText('Playlist 0')
+
+    const rendered = screen.getAllByRole('listitem')
+    expect(rendered.length).toBeGreaterThanOrEqual(5)
+    expect(rendered.length).toBeLessThan(60)
+    // Far down the list, so it must not have been rendered.
+    expect(screen.queryByText('Playlist 199')).not.toBeInTheDocument()
+
+    // Every rendered row still announces its place in the whole set.
+    expect(rendered[0]).toHaveAttribute('aria-setsize', '200')
+    expect(rendered[0]).toHaveAttribute('aria-posinset', '1')
+
+    // And the container reserves room for all 200, so scrolling is not truncated.
+    const list = screen.getByRole('list')
+    expect(Number.parseInt(list.style.height, 10)).toBeGreaterThan(200 * 40)
+  })
+
   it('switches platform and re-queries when another DSP is chosen', async () => {
     mockFetch.mockImplementation((path: string) =>
       path.includes('youtube_music')

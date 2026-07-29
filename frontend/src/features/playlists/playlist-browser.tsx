@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { AlertTriangle, Check, ListMusic, RefreshCw, SearchX, Unplug } from 'lucide-react'
 import { Link, useNavigate, useSearch } from '@tanstack/react-router'
+import { useWindowVirtualizer } from '@tanstack/react-virtual'
 
 import { EmptyState } from '@/components/empty-state'
 import { ImageWithFallback } from '@/components/image-with-fallback'
@@ -25,6 +26,13 @@ import {
   toPlatform,
   toPlaylistSort,
 } from './platforms'
+
+/**
+ * Starting height for an unmeasured row: a 56px thumbnail inside 12px padding
+ * plus the 8px gap. Real heights replace it as rows are measured, so this only
+ * has to be close enough to keep the scrollbar honest before that happens.
+ */
+const ROW_ESTIMATE = 88
 
 export function PlaylistBrowser() {
   const navigate = useNavigate()
@@ -85,6 +93,38 @@ export function PlaylistBrowser() {
   // previous term's results — which is how "No playlists match <new term>" used
   // to appear over the old term's empty result set.
   const resultsMatchInput = input.trim() === urlSearch && !playlists.isFetching
+
+  // --- windowing ---
+  //
+  // Rows are rendered only around the viewport, so the DOM stays a fixed size no
+  // matter how many pages have been loaded. The window virtualizer is used rather
+  // than an element one deliberately: an inner scroll container would give the
+  // page two scrollbars and strand the footer, and the list is meant to flow with
+  // the document.
+  const listRef = useRef<HTMLDivElement>(null)
+  const [listTop, setListTop] = useState(0)
+
+  const virtualizer = useWindowVirtualizer({
+    count: items.length,
+    estimateSize: () => ROW_ESTIMATE,
+    // A few rows of slack above and below, so scrolling reveals rendered rows
+    // rather than blank space that fills in a frame later.
+    overscan: 6,
+    scrollMargin: listTop,
+    // Rows have variable height (a name can wrap to two lines, a description is
+    // optional), so real measurements replace the estimate. Falling back to the
+    // estimate when layout reports zero keeps this working where there is no
+    // layout at all, which is every test environment.
+    measureElement: (el) => el.getBoundingClientRect().height || ROW_ESTIMATE,
+  })
+
+  // The list starts partway down the document and the toolbar above it changes
+  // height, so its offset is re-read after every render and only written when it
+  // actually moved.
+  useLayoutEffect(() => {
+    const next = listRef.current?.offsetTop ?? 0
+    if (next !== listTop) setListTop(next)
+  })
 
   function selectPlatform(next: Platform) {
     // A push, unlike search and sort: switching source is a change of view, and
@@ -206,21 +246,42 @@ export function PlaylistBrowser() {
           </div>
 
           {items.length > 0 ? (
-            <ul className="space-y-2">
-              {items.map((playlist) => (
-                <PlaylistRow
-                  key={playlist.id}
-                  playlist={playlist}
-                  generating={inFlightId === playlist.id}
-                  // Only the row that was acted on reports the outcome.
-                  error={
-                    generate.isError && generate.variables?.playlistId === playlist.id ? generate.error : undefined
-                  }
-                  succeeded={generate.isSuccess && generate.variables?.playlistId === playlist.id}
-                  onGenerate={() => generate.mutate({ platform, playlistId: playlist.id })}
-                />
-              ))}
-            </ul>
+            <div ref={listRef}>
+              {/* The list keeps its full height so the scrollbar reflects every
+                  loaded playlist, while only the visible slice exists in the DOM.
+                  aria-setsize and aria-posinset carry the real position, which a
+                  partial list cannot convey on its own. */}
+              <ul className="relative" style={{ height: virtualizer.getTotalSize() }}>
+                {virtualizer.getVirtualItems().map((row) => {
+                  const playlist = items[row.index]
+                  if (!playlist) return null
+                  return (
+                    <li
+                      key={playlist.id}
+                      data-index={row.index}
+                      ref={virtualizer.measureElement}
+                      aria-setsize={items.length}
+                      aria-posinset={row.index + 1}
+                      className="absolute inset-x-0 top-0 pb-2"
+                      style={{ transform: `translateY(${row.start - listTop}px)` }}
+                    >
+                      <PlaylistRow
+                        playlist={playlist}
+                        generating={inFlightId === playlist.id}
+                        // Only the row that was acted on reports the outcome.
+                        error={
+                          generate.isError && generate.variables?.playlistId === playlist.id
+                            ? generate.error
+                            : undefined
+                        }
+                        succeeded={generate.isSuccess && generate.variables?.playlistId === playlist.id}
+                        onGenerate={() => generate.mutate({ platform, playlistId: playlist.id })}
+                      />
+                    </li>
+                  )
+                })}
+              </ul>
+            </div>
           ) : resultsMatchInput ? (
             // Only a settled list may return a verdict, and it names the term the
             // results are actually for.
@@ -251,9 +312,13 @@ interface PlaylistRowProps {
   onGenerate: () => void
 }
 
+/**
+ * One row's content. The surrounding <li> belongs to the windowed list, which has
+ * to position it absolutely, so this renders the card and nothing structural.
+ */
 function PlaylistRow({ playlist, generating, error, succeeded, onGenerate }: PlaylistRowProps) {
   return (
-    <li>
+    <>
       <Card className="flex flex-wrap items-center gap-4 p-3 sm:flex-nowrap">
         <PlaylistArtwork playlist={playlist} />
 
@@ -287,7 +352,7 @@ function PlaylistRow({ playlist, generating, error, succeeded, onGenerate }: Pla
           {errorMessage(error, 'Generation failed. Try again in a moment.')}
         </p>
       )}
-    </li>
+    </>
   )
 }
 
