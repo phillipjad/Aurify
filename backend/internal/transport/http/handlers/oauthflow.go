@@ -1,7 +1,9 @@
 package handlers
 
 import (
+	"crypto/hmac"
 	"crypto/rand"
+	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/base64"
 	"encoding/json"
@@ -57,6 +59,15 @@ type flowState struct {
 	// it against the platform in its own path, so a flow started for one provider
 	// cannot be completed as another.
 	Platform string `json:"p,omitempty"`
+	// UserID is who the resulting connection belongs to, recorded when the flow
+	// starts because that is the moment the caller is known to be signed in.
+	//
+	// It is only trustworthy in a signed cookie: unlike the state and nonce, it is
+	// not checked against anything the provider returns, so an unauthenticated
+	// payload would let a user rewrite it and file their DSP account against
+	// somebody else's. Written and read exclusively through
+	// setSignedFlowState/readSignedFlowState.
+	UserID string `json:"uid,omitempty"`
 	// Expires is a unix timestamp. The cookie's own Max-Age already bounds this,
 	// but a client controls its cookie jar and we do not, so the deadline is
 	// checked server-side too.
@@ -115,21 +126,79 @@ func randomState() (string, error) {
 	return base64.RawURLEncoding.EncodeToString(raw), nil
 }
 
+// DeriveFlowKey derives the key that authenticates the DSP flow cookie from the
+// Ed25519 authentication seed, so a deployment needs no second secret to manage.
+//
+// The coupling costs one thing, and it is small: rotating the authentication key
+// invalidates connect attempts that are already in flight, a window bounded by
+// flowTTL.
+func DeriveFlowKey(seed []byte) []byte {
+	h := sha256.New()
+	h.Write([]byte("aurify/dsp-flow-cookie/v1"))
+	h.Write(seed)
+	return h.Sum(nil)
+}
+
+// setSignedFlowState writes a flow cookie whose payload is authenticated.
+//
+// The unsigned form is fine for sign-in, where every value inside is compared
+// against something the provider hands back. A DSP flow additionally carries the
+// user id, which nothing external can corroborate, so that payload has to be
+// tamper-evident on its own.
+func setSignedFlowState(c mux.RouteContext, name string, f flowState, key []byte, secure bool) error {
+	payload, err := encodeFlowState(f)
+	if err != nil {
+		return err
+	}
+	setFlowCookie(c, name, payload+"."+signFlowPayload(payload, key), secure)
+	return nil
+}
+
+// readSignedFlowState verifies the cookie's signature before decoding it. A
+// missing, malformed or unauthenticated value is indistinguishable in the result:
+// all of them mean "no usable flow".
+func readSignedFlowState(c mux.RouteContext, name string, key []byte) (flowState, error) {
+	raw, err := c.Cookies().Get(name)
+	if err != nil {
+		return flowState{}, errFlowState
+	}
+	payload, signature, ok := strings.Cut(raw, ".")
+	if !ok {
+		return flowState{}, errFlowState
+	}
+	if !hmac.Equal([]byte(signature), []byte(signFlowPayload(payload, key))) {
+		return flowState{}, errFlowState
+	}
+	return decodeFlowState(payload)
+}
+
+func signFlowPayload(payload string, key []byte) string {
+	mac := hmac.New(sha256.New, key)
+	mac.Write([]byte(payload))
+	return base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
+}
+
 // setFlowState writes the named flow cookie.
 func setFlowState(c mux.RouteContext, name string, f flowState, secure bool) error {
 	encoded, err := encodeFlowState(f)
 	if err != nil {
 		return err
 	}
-	// SameSite must be Lax, not Strict. The callback arrives as a cross-site
-	// top-level navigation from the provider, and a Strict cookie is not sent on
-	// one — the state, nonce and verifier would simply be missing.
+	setFlowCookie(c, name, encoded, secure)
+	return nil
+}
+
+// setFlowCookie writes a flow cookie value.
+//
+// SameSite must be Lax, not Strict. The callback arrives as a cross-site
+// top-level navigation from the provider, and a Strict cookie is not sent on
+// one — the state, nonce and verifier would simply be missing.
+func setFlowCookie(c mux.RouteContext, name, value string, secure bool) {
 	c.Cookies().Set(
-		name, encoded,
+		name, value,
 		int(flowTTL.Seconds()),
 		"/", "", secure, true, http.SameSiteLaxMode,
 	)
-	return nil
 }
 
 // clearFlowState removes the named flow cookie. It is called on both the success

@@ -2,10 +2,13 @@ package handlers
 
 import (
 	"context"
+	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strings"
 	"testing"
 
 	"github.com/fgrzl/claims"
@@ -19,6 +22,9 @@ import (
 )
 
 const testAppBaseURL = "http://localhost:5173"
+
+// testFlowKey stands in for the key derived from the deployment's auth seed.
+var testFlowKey = DeriveFlowKey([]byte("test-seed"))
 
 // --- fakes ---
 
@@ -110,7 +116,7 @@ func newAuthTest(t *testing.T, userID string) (*mux.Router, *fakeProvider) {
 
 	// Secure=false: these requests are plain HTTP, and a __Host- cookie would be
 	// dropped by the recorder round trip the same way a browser would drop it.
-	h := NewAuth(application, fakeRegistry{provider: provider}, NewCookieWriter(false), testAppBaseURL)
+	h := NewAuth(application, fakeRegistry{provider: provider}, NewCookieWriter(false), testAppBaseURL, testFlowKey)
 
 	router := mux.NewRouter()
 	router.Use(mux.MiddlewareFunc(func(c mux.MutableRouteContext, next mux.HandlerFunc) {
@@ -121,6 +127,10 @@ func newAuthTest(t *testing.T, userID string) (*mux.Router, *fakeProvider) {
 	}))
 	err := router.Configure(func(r *mux.Router) {
 		api := r.Group("/api/v1")
+		// login is authenticated in the real router; this harness plants the
+		// principal itself, so AllowAnonymous here only stops mux rejecting the
+		// request before the handler runs. The callback is anonymous for real: it
+		// authenticates itself from the signed flow cookie.
 		api.GET("/auth/{platform}/login", h.Login).AllowAnonymous()
 		api.GET("/auth/{platform}/callback", h.Callback).AllowAnonymous()
 	})
@@ -281,6 +291,72 @@ func TestDSPCallbackReportsDeclinedConsent(t *testing.T) {
 // assertConnectError also pins the platform on the redirect: the UI attributes
 // the failure from it, so a reason that travels without one is how a failed
 // YouTube Music attempt ends up reported against Spotify.
+// The callback deliberately does not consult the session: consent can outlast a
+// fifteen minute access token, and requiring one threw away an authorization the
+// user had just granted. The signed cookie is what identifies them.
+func TestDSPCallbackCompletesWithNoLiveSession(t *testing.T) {
+	router, provider := newAuthTest(t, "user-1")
+	state, cookie := startFlow(t, router, "youtube_music")
+
+	// A second router with no principal at all stands in for a session that
+	// expired while the user was on the consent screen.
+	anonymous, provider2 := newAuthTest(t, "")
+	_ = provider2
+	rec := callback(anonymous, "youtube_music", state, "the-code", cookie)
+
+	if rec.Code != http.StatusFound {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusFound)
+	}
+	want := testAppBaseURL + "/playlists?connected=youtube_music"
+	if got := rec.Header().Get("Location"); got != want {
+		t.Fatalf("Location = %q, want %q", got, want)
+	}
+	if provider.exchanges != 0 {
+		t.Fatalf("the first router should not have exchanged anything, got %d", provider.exchanges)
+	}
+	if provider2.exchanges != 1 {
+		t.Fatalf("exchanges on the anonymous router = %d, want 1", provider2.exchanges)
+	}
+}
+
+// The user id is the one value in the cookie that nothing external corroborates,
+// so it has to be tamper-evident: without the signature a user could rewrite it
+// and file their DSP account against somebody else's account.
+func TestDSPCallbackRejectsATamperedUserID(t *testing.T) {
+	router, provider := newAuthTest(t, "user-1")
+	state, cookie := startFlow(t, router, "youtube_music")
+
+	payload, _, ok := strings.Cut(cookie.Value, ".")
+	if !ok {
+		t.Fatal("flow cookie is not signed: expected payload.signature")
+	}
+	raw, err := base64.RawURLEncoding.DecodeString(payload)
+	if err != nil {
+		t.Fatalf("decode payload: %v", err)
+	}
+	var forged flowState
+	if err := json.Unmarshal(raw, &forged); err != nil {
+		t.Fatalf("unmarshal payload: %v", err)
+	}
+	if forged.UserID != "user-1" {
+		t.Fatalf("flow user id = %q, want it recorded at login", forged.UserID)
+	}
+	forged.UserID = "victim"
+	forgedPayload, err := encodeFlowState(forged)
+	if err != nil {
+		t.Fatalf("encode: %v", err)
+	}
+	// Payload swapped, original signature kept — the MAC no longer matches.
+	cookie.Value = forgedPayload + "." + strings.SplitN(cookie.Value, ".", 2)[1]
+
+	rec := callback(router, "youtube_music", state, "the-code", cookie)
+
+	assertConnectError(t, rec, "youtube_music", "expired")
+	if provider.exchanges != 0 {
+		t.Fatalf("exchanges = %d, want 0: a forged user id reached the exchange", provider.exchanges)
+	}
+}
+
 func assertConnectError(t *testing.T, rec *httptest.ResponseRecorder, platform, reason string) {
 	t.Helper()
 	if rec.Code != http.StatusFound {

@@ -56,6 +56,9 @@ type Deps struct {
 	// AppBaseURL is the origin the federated callback redirects back to, and the
 	// only origin it will redirect to.
 	AppBaseURL string
+	// FlowKey authenticates the DSP connect flow cookie, which is what lets the
+	// callback trust the user id it carries. Derive it with handlers.DeriveFlowKey.
+	FlowKey []byte
 }
 
 // NewRouter builds the fully configured API router. Version is reported in the
@@ -143,7 +146,7 @@ func NewRouter(deps Deps) (*mux.Router, error) {
 		"/api/v1/auth/refresh": true,
 	}))
 
-	dspAuth := handlers.NewAuth(application, providers, deps.Cookies, deps.AppBaseURL)
+	dspAuth := handlers.NewAuth(application, providers, deps.Cookies, deps.AppBaseURL, deps.FlowKey)
 	sessions := handlers.NewSessions(application, deps.Cookies, deps.Guard, deps.Verifier, deps.SupportEmail)
 	federated := handlers.NewFederated(
 		application, deps.Google, deps.Cookies, deps.Guard, deps.AppBaseURL, deps.SupportEmail,
@@ -249,24 +252,28 @@ func NewRouter(deps Deps) (*mux.Router, error) {
 		// Both legs are top-level browser navigations, like the federated routes
 		// above, so they redirect rather than answer JSON.
 		//
-		// Neither may be AllowAnonymous, unlike the federated routes. That flag
-		// does not mean "tolerate an anonymous caller" — mux skips the
-		// authentication middleware outright, so the principal is never populated
-		// and c.User() is nil even when the request carries a valid session
-		// cookie. Both handlers need to know which Aurify user is linking the
-		// account, so with the flag set the flow can never complete: login sees
-		// nobody signed in and the callback has no user to attach tokens to.
-		//
-		// The cost is that an unauthenticated navigation gets mux's 401 rather
-		// than a redirect to sign-in. Both URLs are reached from the playlists
-		// page, which is behind the session guard, so that is the rare path.
+		// login must NOT be AllowAnonymous. That flag does not mean "tolerate an
+		// anonymous caller" — mux skips the authentication middleware outright, so
+		// the principal is never populated and c.User() is nil even when the
+		// request carries a valid session cookie. This leg is where the user is
+		// established, so with the flag set the flow could never start: it saw
+		// nobody signed in and redirected to the sign-in page.
 		api.GET("/auth/{platform}/login", dspAuth.Login).
 			WithOperationID("dspLogin").
 			WithSummary("Redirect to a DSP to begin linking the account").
 			WithPathParam("platform", "DSP platform: spotify, apple_music, youtube_music", "spotify").
 			WithResponse(302, nil)
 
+		// The callback, by contrast, is deliberately anonymous. It authenticates
+		// itself: the flow cookie is HMAC-signed, HttpOnly, __Host- scoped, single
+		// use, ten minutes old at most, and carries the user id recorded when the
+		// flow started. Requiring a live access token here as well meant consent
+		// lasting longer than the fifteen minute token threw the authorization
+		// away — the user granted access and Aurify dropped it. The trade is that
+		// session revocation does not reach this route, so signing out mid-consent
+		// still completes the link.
 		api.GET("/auth/{platform}/callback", dspAuth.Callback).
+			AllowAnonymous().
 			WithOperationID("dspCallback").
 			WithSummary("OAuth callback that links a DSP account to the user").
 			WithPathParam("platform", "DSP platform: spotify, apple_music, youtube_music", "spotify").

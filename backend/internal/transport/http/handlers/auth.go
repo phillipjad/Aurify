@@ -30,13 +30,28 @@ type Auth struct {
 	providers  ports.DSPRegistry
 	cookies    *CookieWriter
 	appBaseURL string
+	// flowKey authenticates the flow cookie, which is what lets the callback trust
+	// the user id inside it rather than needing a live access token.
+	flowKey []byte
 }
 
 // NewAuth constructs the auth handler. It needs the provider registry directly
 // because building the authorization-redirect URL is a transport concern, not a
 // domain use case.
-func NewAuth(a *app.App, providers ports.DSPRegistry, cookies *CookieWriter, appBaseURL string) *Auth {
-	return &Auth{app: a, providers: providers, cookies: cookies, appBaseURL: appBaseURL}
+func NewAuth(
+	a *app.App,
+	providers ports.DSPRegistry,
+	cookies *CookieWriter,
+	appBaseURL string,
+	flowKey []byte,
+) *Auth {
+	return &Auth{
+		app:        a,
+		providers:  providers,
+		cookies:    cookies,
+		appBaseURL: appBaseURL,
+		flowKey:    flowKey,
+	}
 }
 
 // Login redirects to the provider's OAuth authorization page.
@@ -54,10 +69,11 @@ func (h *Auth) Login(c mux.RouteContext) {
 		return
 	}
 
-	// Belt and braces: the authentication middleware has already rejected an
-	// anonymous caller, so this only fires if the route is ever marked
-	// AllowAnonymous, which silently disables that middleware (see router.go).
-	if currentUser(c) == "" {
+	// The login leg is where the user is established. It runs authenticated, so
+	// this only fires if the route is ever marked AllowAnonymous, which silently
+	// disables the authentication middleware (see router.go).
+	userID := currentUser(c)
+	if userID == "" {
 		c.Unauthorized()
 		return
 	}
@@ -72,12 +88,16 @@ func (h *Auth) Login(c mux.RouteContext) {
 		return
 	}
 
+	// The user id is recorded here, signed, rather than read from the session in
+	// the callback. Consent can outlast a 15 minute access token, and when it did
+	// the callback had no principal and threw the authorization away.
 	secure := h.cookies.Secure()
-	if err := setFlowState(c, dspFlowCookieName(secure), flowState{
+	if err := setSignedFlowState(c, dspFlowCookieName(secure), flowState{
 		State:    state,
 		Platform: platform,
+		UserID:   userID,
 		Expires:  time.Now().Add(flowTTL).Unix(),
-	}, secure); err != nil {
+	}, h.flowKey, secure); err != nil {
 		c.ServerError("internal error", err.Error())
 		return
 	}
@@ -105,7 +125,7 @@ func (h *Auth) Callback(c mux.RouteContext) {
 		return
 	}
 
-	flow, err := readFlowState(c, dspFlowCookieName(secure))
+	flow, err := readSignedFlowState(c, dspFlowCookieName(secure), h.flowKey)
 	if err != nil {
 		// Usually a bookmarked callback, a double submit, or a user who sat on the
 		// consent screen for longer than the window.
@@ -123,18 +143,17 @@ func (h *Auth) Callback(c mux.RouteContext) {
 		return
 	}
 
-	// ponytail: the link is attributed to whoever the session cookie names, so an
-	// access token that expires during consent (a 15 minute TTL against a 10
-	// minute flow window) loses the attempt and the user retries. Signing the user
-	// id into the flow cookie is the upgrade path if that turns out to bite.
-	userID := currentUser(c)
-	if userID == "" {
+	// Whose connection this is comes from the signed cookie, written while the
+	// caller was demonstrably signed in. The session cookie is deliberately not
+	// consulted: it may well have expired during consent, and failing then would
+	// throw away an authorization the user just granted.
+	if flow.UserID == "" {
 		h.fail(c, secure, platform, "session")
 		return
 	}
 
 	if err := h.app.Commands.ConnectDSP.Handle(c, connectdsp.Command{
-		UserID:   userID,
+		UserID:   flow.UserID,
 		Platform: domain.DSPPlatform(platform),
 		Code:     code,
 	}); err != nil {

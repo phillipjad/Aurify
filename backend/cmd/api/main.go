@@ -205,6 +205,9 @@ func run() error {
 		SessionCheck: issuer.Verify,
 		Google:       googleProvider,
 		AppBaseURL:   cfg.AppBaseURL,
+		// Derived from the authentication seed rather than configured separately,
+		// so there is no second secret to deploy.
+		FlowKey: handlers.DeriveFlowKey(signingKey.Seed()),
 	})
 	if err != nil {
 		return err
