@@ -60,6 +60,18 @@ func (p *Provider) ListPlaylists(ctx context.Context, conn domain.DSPConnection)
 	return nil, errNotImplemented
 }
 
+// GetPlaylist reads a single playlist by id. TODO: implement.
+func (p *Provider) GetPlaylist(
+	ctx context.Context,
+	conn domain.DSPConnection,
+	playlistID string,
+) (domain.Playlist, error) {
+	_ = ctx
+	_ = conn
+	_ = playlistID
+	return domain.Playlist{}, errNotImplemented
+}
+
 // ListTracks returns the normalized tracks of a playlist. TODO: implement.
 func (p *Provider) ListTracks(
 	ctx context.Context,

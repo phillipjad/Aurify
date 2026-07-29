@@ -125,6 +125,15 @@ type DSPProvider interface {
 		conn domain.DSPConnection,
 	) (updated domain.DSPConnection, changed bool, err error)
 	ListPlaylists(ctx context.Context, conn domain.DSPConnection) ([]domain.Playlist, error)
+	// GetPlaylist reads one playlist's metadata by id.
+	//
+	// Listing everything to find one is the alternative, which costs a paginated
+	// sweep per call; providers can answer this with a single request.
+	GetPlaylist(
+		ctx context.Context,
+		conn domain.DSPConnection,
+		playlistID string,
+	) (domain.Playlist, error)
 	ListTracks(ctx context.Context, conn domain.DSPConnection, playlistID string) ([]domain.Track, error)
 }
 
