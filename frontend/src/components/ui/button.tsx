@@ -26,7 +26,10 @@ export function Button({ className, variant, size, loading = false, disabled, ch
       aria-busy={loading || undefined}
       {...props}
     >
-      {loading && <Loader2 aria-hidden="true" className="size-4 shrink-0 animate-spin" />}
+      {/* data-motion="busy" keeps this turning under prefers-reduced-motion,
+          where the global reset would otherwise freeze it on frame one and make
+          a working button look like a broken one (see styles.css). */}
+      {loading && <Loader2 aria-hidden="true" data-motion="busy" className="size-4 shrink-0 animate-spin" />}
       {children}
     </button>
   )
