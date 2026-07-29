@@ -6,7 +6,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/phillipjad/aurify/backend/internal/app/ports"
+	"github.com/phillipjad/aurify/backend/internal/app/dspconn"
 	"github.com/phillipjad/aurify/backend/internal/domain"
 )
 
@@ -41,29 +41,18 @@ type Query struct {
 
 // Handler executes the ListPlaylists query.
 type Handler struct {
-	users     ports.UserRepository
-	providers ports.DSPRegistry
+	connections *dspconn.Resolver
 }
 
 // NewHandler constructs a ListPlaylists handler.
-func NewHandler(users ports.UserRepository, providers ports.DSPRegistry) *Handler {
-	return &Handler{users: users, providers: providers}
+func NewHandler(connections *dspconn.Resolver) *Handler {
+	return &Handler{connections: connections}
 }
 
 // Handle resolves the user's connection, asks the provider for playlists, then
 // applies the search filter, ordering, and pagination.
 func (h *Handler) Handle(ctx context.Context, q Query) ([]domain.Playlist, error) {
-	user, err := h.users.FindByID(ctx, q.UserID)
-	if err != nil {
-		return nil, err
-	}
-
-	conn, ok := user.Connections[q.Platform]
-	if !ok {
-		return nil, domain.ErrUnauthorized
-	}
-
-	provider, err := h.providers.Get(q.Platform)
+	provider, conn, err := h.connections.Resolve(ctx, q.UserID, q.Platform)
 	if err != nil {
 		return nil, err
 	}

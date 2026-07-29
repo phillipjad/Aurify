@@ -27,6 +27,12 @@ func (fakeDSP) AuthURL(state string) string  { return "https://provider.test/aut
 func (fakeDSP) Exchange(context.Context, string) (domain.DSPConnection, error) {
 	return domain.DSPConnection{}, nil
 }
+func (fakeDSP) RefreshConnection(
+	_ context.Context,
+	conn domain.DSPConnection,
+) (domain.DSPConnection, bool, error) {
+	return conn, false, nil
+}
 func (fakeDSP) ListPlaylists(context.Context, domain.DSPConnection) ([]domain.Playlist, error) {
 	return nil, nil
 }

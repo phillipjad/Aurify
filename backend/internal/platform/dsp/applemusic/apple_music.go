@@ -42,6 +42,17 @@ func (p *Provider) Exchange(ctx context.Context, code string) (domain.DSPConnect
 	return domain.DSPConnection{}, errNotImplemented
 }
 
+// RefreshConnection has nothing to do here: a Music User Token cannot be renewed
+// without the user, so an expired one is re-obtained through MusicKit in the
+// browser rather than refreshed server-side.
+func (p *Provider) RefreshConnection(
+	ctx context.Context,
+	conn domain.DSPConnection,
+) (domain.DSPConnection, bool, error) {
+	_ = ctx
+	return conn, false, nil
+}
+
 // ListPlaylists returns the user's playlists. TODO: implement.
 func (p *Provider) ListPlaylists(ctx context.Context, conn domain.DSPConnection) ([]domain.Playlist, error) {
 	_ = ctx

@@ -27,6 +27,7 @@ import (
 	"github.com/phillipjad/aurify/backend/internal/app/command/signout"
 	"github.com/phillipjad/aurify/backend/internal/app/command/signup"
 	"github.com/phillipjad/aurify/backend/internal/app/command/verifyemail"
+	"github.com/phillipjad/aurify/backend/internal/app/dspconn"
 	"github.com/phillipjad/aurify/backend/internal/app/lockout"
 	"github.com/phillipjad/aurify/backend/internal/app/query"
 	"github.com/phillipjad/aurify/backend/internal/app/query/getcover"
@@ -147,12 +148,16 @@ func run() error {
 		slog.Warn("AURIFY_GOOGLE_CLIENT_ID/SECRET are not set, Sign in with Google is disabled")
 	}
 
+	// Resolves a user's DSP credentials, refreshing and storing them when they
+	// have expired, so both the read and write side see a current token.
+	connections := dspconn.NewResolver(store.Users(), providers)
+
 	// --- application layer (lightweight CQRS) ---
 	application := &app.App{
 		Commands: &command.Bus{
 			ConnectDSP: connectdsp.NewHandler(store.Users(), providers),
 			GenerateCover: generatecover.NewHandler(
-				store.Users(), store.Covers(), providers,
+				connections, store.Covers(),
 				lyricsClient, sentiment, engine, prompts, images,
 			),
 			DeleteCover: deletecover.NewHandler(store.Covers()),
@@ -173,7 +178,7 @@ func run() error {
 			ResetPassword: resetpassword.NewHandler(store.EmailTokens(), store.Credentials(), issuer),
 		},
 		Queries: &query.Bus{
-			ListPlaylists: listplaylists.NewHandler(store.Users(), providers),
+			ListPlaylists: listplaylists.NewHandler(connections),
 			GetCover:      getcover.NewHandler(store.Covers()),
 			ListCovers:    listcovers.NewHandler(store.Covers()),
 			GetUser:       getuser.NewHandler(store.Users()),

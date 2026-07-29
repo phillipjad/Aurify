@@ -45,6 +45,13 @@ func (p *fakeProvider) Exchange(_ context.Context, _ string) (domain.DSPConnecti
 	return domain.DSPConnection{Platform: domain.PlatformYouTubeMusic, AccessToken: "tok"}, nil
 }
 
+func (p *fakeProvider) RefreshConnection(
+	_ context.Context,
+	conn domain.DSPConnection,
+) (domain.DSPConnection, bool, error) {
+	return conn, false, nil
+}
+
 func (p *fakeProvider) ListPlaylists(context.Context, domain.DSPConnection) ([]domain.Playlist, error) {
 	return nil, nil
 }

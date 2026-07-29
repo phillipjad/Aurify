@@ -126,6 +126,47 @@ func (p *Provider) Exchange(ctx context.Context, code string) (domain.DSPConnect
 	return conn, nil
 }
 
+// RefreshConnection renews the access token when it has expired, returning the
+// updated connection so the caller can store it.
+//
+// oauth2's token source refreshes on demand during a call and keeps the result
+// to itself, which left the stored token permanently stale. Forcing the refresh
+// here, before the API calls, means what the database holds is what the next
+// request will use.
+func (p *Provider) RefreshConnection(
+	ctx context.Context,
+	conn domain.DSPConnection,
+) (domain.DSPConnection, bool, error) {
+	// Without a refresh token there is nothing to renew with; the connection has
+	// to be re-authorized by the user instead.
+	if conn.RefreshToken == "" {
+		return conn, false, nil
+	}
+
+	ctx = p.withHTTPClient(ctx)
+	tok, err := p.oauthConfig().TokenSource(ctx, &oauth2.Token{
+		AccessToken:  conn.AccessToken,
+		RefreshToken: conn.RefreshToken,
+		Expiry:       conn.ExpiresAt,
+	}).Token()
+	if err != nil {
+		return conn, false, fmt.Errorf("youtubemusic: refresh token: %w", err)
+	}
+	if tok.AccessToken == conn.AccessToken {
+		return conn, false, nil
+	}
+
+	conn.AccessToken = tok.AccessToken
+	// Google only returns a new refresh token when it rotates one; an empty value
+	// means keep the one we have, and overwriting it with "" would strand the
+	// connection with no way to renew.
+	if tok.RefreshToken != "" {
+		conn.RefreshToken = tok.RefreshToken
+	}
+	conn.ExpiresAt = tok.Expiry
+	return conn, true, nil
+}
+
 // ListPlaylists returns the authenticated user's playlists.
 func (p *Provider) ListPlaylists(ctx context.Context, conn domain.DSPConnection) ([]domain.Playlist, error) {
 	ctx = p.withHTTPClient(ctx)

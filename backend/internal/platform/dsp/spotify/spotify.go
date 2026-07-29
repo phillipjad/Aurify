@@ -74,6 +74,17 @@ func (p *Provider) Exchange(ctx context.Context, code string) (domain.DSPConnect
 	return domain.DSPConnection{}, errNotImplemented
 }
 
+// RefreshConnection would renew the access token against
+// POST https://accounts.spotify.com/api/token with grant_type=refresh_token.
+// Reporting no change is correct for the stub: there is nothing to persist.
+func (p *Provider) RefreshConnection(
+	ctx context.Context,
+	conn domain.DSPConnection,
+) (domain.DSPConnection, bool, error) {
+	_ = ctx
+	return conn, false, nil
+}
+
 // ListPlaylists returns the user's playlists. TODO: implement.
 func (p *Provider) ListPlaylists(ctx context.Context, conn domain.DSPConnection) ([]domain.Playlist, error) {
 	_ = ctx
