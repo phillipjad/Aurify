@@ -40,7 +40,7 @@ jobs:
 
       - uses: google-github-actions/setup-gcloud@v2
 
-      - uses: opentofu/setup-opentofu@v1
+      - uses: opentofu/setup-opentofu@v2
 
       - name: Resolve image reference
         id: image
