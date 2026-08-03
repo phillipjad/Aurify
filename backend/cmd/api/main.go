@@ -29,6 +29,7 @@ import (
 	"github.com/phillipjad/aurify/backend/internal/app/command/verifyemail"
 	"github.com/phillipjad/aurify/backend/internal/app/dspconn"
 	"github.com/phillipjad/aurify/backend/internal/app/lockout"
+	"github.com/phillipjad/aurify/backend/internal/app/lyrics"
 	"github.com/phillipjad/aurify/backend/internal/app/query"
 	"github.com/phillipjad/aurify/backend/internal/app/query/getcover"
 	"github.com/phillipjad/aurify/backend/internal/app/query/getuser"
@@ -46,6 +47,7 @@ import (
 	"github.com/phillipjad/aurify/backend/internal/platform/identity/google"
 	"github.com/phillipjad/aurify/backend/internal/platform/llm/imagegen"
 	"github.com/phillipjad/aurify/backend/internal/platform/llm/promptgen"
+	"github.com/phillipjad/aurify/backend/internal/platform/lyrics/breaker"
 	"github.com/phillipjad/aurify/backend/internal/platform/lyrics/lrclib"
 	"github.com/phillipjad/aurify/backend/internal/platform/nlp"
 	"github.com/phillipjad/aurify/backend/internal/storage/postgres"
@@ -101,7 +103,14 @@ func run() error {
 	)
 
 	// --- platform services ---
-	lyricsClient := lrclib.New(cfg.LRCLibBaseURL, version)
+	// Composed innermost first: the network client, a circuit breaker so a
+	// failing provider is left alone, and a resolver that batches lookups through
+	// the caches. The caches sit outside the breaker on purpose, so a cached
+	// answer is still served while the circuit is open.
+	lyricsResolver := lyrics.NewResolver(
+		store.Lyrics(),
+		breaker.New(lrclib.New(cfg.LRCLibBaseURL, version)),
+	)
 	sentiment := nlp.NewAnalyzer()
 	engine := analysis.NewEngine()
 	prompts := promptgen.New(cfg.PromptGenURL)
@@ -162,7 +171,7 @@ func run() error {
 			ConnectDSP: connectdsp.NewHandler(store.Users(), providers),
 			GenerateCover: generatecover.NewHandler(
 				connections, store.Covers(),
-				lyricsClient, sentiment, engine, prompts, images,
+				lyricsResolver, sentiment, engine, prompts, images,
 			),
 			DeleteCover: deletecover.NewHandler(store.Covers()),
 

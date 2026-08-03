@@ -15,6 +15,7 @@ import (
 
 	"github.com/phillipjad/aurify/backend/internal/app/ports"
 	"github.com/phillipjad/aurify/backend/internal/domain"
+	"github.com/phillipjad/aurify/backend/internal/platform/lyrics/breaker"
 )
 
 // DefaultBaseURL is the public lrclib endpoint.
@@ -37,8 +38,34 @@ func New(baseURL, version string) *Client {
 	return &Client{
 		baseURL: strings.TrimRight(baseURL, "/"),
 		version: version,
-		client:  &http.Client{Timeout: 10 * time.Second},
+		// A healthy lookup answers in about a quarter of a second. Ten seconds was
+		// generous to the point of being harmful: with a provider timing out, each
+		// track cost ten seconds before the circuit breaker upstream had seen
+		// enough failures to stop asking.
+		client: &http.Client{Timeout: 4 * time.Second},
 	}
+}
+
+// parseRetryAfter reads the header in both forms RFC 9110 allows: a delay in
+// seconds, or an HTTP date. A past date or unparseable value reports false, so
+// the caller falls back on its own schedule.
+func parseRetryAfter(value string, now time.Time) (time.Duration, bool) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return 0, false
+	}
+	if seconds, err := strconv.Atoi(value); err == nil {
+		if seconds <= 0 {
+			return 0, false
+		}
+		return time.Duration(seconds) * time.Second, true
+	}
+	if when, err := http.ParseTime(value); err == nil {
+		if d := when.Sub(now); d > 0 {
+			return d, true
+		}
+	}
+	return 0, false
 }
 
 type getResponse struct {
@@ -80,7 +107,17 @@ func (c *Client) Fetch(ctx context.Context, track domain.Track) (string, error) 
 	case http.StatusOK:
 		// handled below
 	case http.StatusNotFound:
+		// Not a failure: lrclib simply has nothing for this track, which is the
+		// common case for a video-centric library.
 		return "", nil
+	case http.StatusTooManyRequests, http.StatusServiceUnavailable:
+		// lrclib does not send Retry-After today, but if it ever starts, an
+		// explicit instruction is worth more than the breaker's guess.
+		err := fmt.Errorf("lrclib: unexpected status %d", resp.StatusCode)
+		if after, ok := parseRetryAfter(resp.Header.Get("Retry-After"), time.Now()); ok {
+			return "", &breaker.RetryAfter{After: after, Err: err}
+		}
+		return "", err
 	default:
 		return "", fmt.Errorf("lrclib: unexpected status %d", resp.StatusCode)
 	}

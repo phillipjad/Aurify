@@ -29,6 +29,7 @@ type Store struct {
 	sessions    *SessionRepository
 	emailTokens *EmailTokenRepository
 	authBlocks  *AuthBlockRepository
+	lyrics      *LyricsRepository
 }
 
 // Connect dials PostgreSQL, verifies the connection, brings the schema up to
@@ -67,6 +68,7 @@ func Connect(ctx context.Context, dsn string, tokenKey []byte) (*Store, error) {
 		sessions:    &SessionRepository{pool: pool, q: queries},
 		emailTokens: &EmailTokenRepository{q: queries},
 		authBlocks:  &AuthBlockRepository{q: queries},
+		lyrics:      &LyricsRepository{q: queries},
 	}, nil
 }
 
@@ -121,6 +123,9 @@ func tsFromTime(t time.Time) pgtype.Timestamptz {
 
 // timeFromTS converts a stored timestamp back into a Go time (zero if NULL).
 func timeFromTS(ts pgtype.Timestamptz) time.Time { return ts.Time }
+
+// Lyrics returns the lyric cache repository.
+func (s *Store) Lyrics() *LyricsRepository { return s.lyrics }
 
 // AuthBlocks returns the permanent authentication lockout repository.
 func (s *Store) AuthBlocks() *AuthBlockRepository { return s.authBlocks }
