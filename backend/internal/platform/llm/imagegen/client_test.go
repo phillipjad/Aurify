@@ -18,7 +18,11 @@ import (
 // byte for byte and that its magic number is real.
 var jpegBytes = append([]byte{0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10, 'J', 'F', 'I', 'F'}, make([]byte, 600)...)
 
-func serve(t *testing.T, status int, body string) (*httptest.Server, *string, *generateRequest) {
+var pngBytes = append([]byte{0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A}, make([]byte, 600)...)
+
+// serve answers one request with the given content type and body, capturing what
+// was asked of it.
+func serve(t *testing.T, status int, contentType, body string) (*httptest.Server, *string, *generateRequest) {
 	t.Helper()
 	var path string
 	var captured generateRequest
@@ -26,7 +30,7 @@ func serve(t *testing.T, status int, body string) (*httptest.Server, *string, *g
 		path = r.URL.Path
 		raw, _ := io.ReadAll(r.Body)
 		_ = json.Unmarshal(raw, &captured)
-		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Content-Type", contentType)
 		w.WriteHeader(status)
 		_, _ = io.WriteString(w, body)
 	}))
@@ -34,17 +38,19 @@ func serve(t *testing.T, status int, body string) (*httptest.Server, *string, *g
 	return server, &path, &captured
 }
 
-func okBody(raw []byte) string {
+func envelope(raw []byte) string {
 	b, _ := json.Marshal(map[string]any{
-		"data": []map[string]any{{"index": 0, "b64_json": base64.StdEncoding.EncodeToString(raw)}},
+		"result":  map[string]string{"image": base64.StdEncoding.EncodeToString(raw)},
+		"success": true,
+		"errors":  []any{},
 	})
 	return string(b)
 }
 
 func TestRendersAnImage(t *testing.T) {
-	server, path, captured := serve(t, http.StatusOK, okBody(jpegBytes))
+	server, path, captured := serve(t, http.StatusOK, "application/json", envelope(jpegBytes))
 
-	client := New(server.URL, "gemini-2.5-flash-image", "tok")
+	client := New(server.URL, "@cf/leonardoai/lucid-origin", "tok")
 	img, err := client.GenerateImage(context.Background(), "a violet field")
 	if err != nil {
 		t.Fatalf("GenerateImage: %v", err)
@@ -53,53 +59,46 @@ func TestRendersAnImage(t *testing.T) {
 	if !bytes.Equal(img.Bytes, jpegBytes) {
 		t.Errorf("bytes round-tripped wrong: got %d bytes, want %d", len(img.Bytes), len(jpegBytes))
 	}
-	if *path != "/images/generations" {
-		t.Errorf("posted to %q, want /images/generations", *path)
-	}
-	if captured.Model != "gemini-2.5-flash-image" {
-		t.Errorf("model = %q", captured.Model)
+	// The model is part of the path, not the body, so a wrong join here silently
+	// asks for a different model than the one configured.
+	if *path != "/@cf/leonardoai/lucid-origin" {
+		t.Errorf("posted to %q", *path)
 	}
 	if captured.Prompt != "a violet field" {
 		t.Errorf("prompt = %q", captured.Prompt)
 	}
-	// Album art is square. Providers that do not take this ignore it.
-	if captured.Size != "1024x1024" {
-		t.Errorf("size = %q, want 1024x1024", captured.Size)
-	}
-	// Ignored by Gemini, but the diffusion providers default to 20 and FLUX.1
-	// [schnell] rejects more than 4, so sending it keeps them reachable.
-	if captured.Steps != 4 {
-		t.Errorf("steps = %d, want 4", captured.Steps)
-	}
-	// OpenAI's own spelling, which Gemini follows. A URL would expire within the
-	// hour, and the bytes have to be stored regardless.
-	if captured.ResponseFormat != "b64_json" {
-		t.Errorf("response_format = %q, want b64_json", captured.ResponseFormat)
+	if captured.Width != 1024 || captured.Height != 1024 {
+		t.Errorf("size = %dx%d, want 1024x1024", captured.Width, captured.Height)
 	}
 }
 
-// The content type is stored and later served verbatim, so getting it from the
-// bytes rather than a constant is what keeps a PNG from being served as JPEG
-// when a provider or model changes.
-func TestContentTypeComesFromTheBytes(t *testing.T) {
-	pngBytes := append([]byte{0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A}, make([]byte, 600)...)
-
+// Workers AI models disagree on how they answer: the newer ones wrap base64 in
+// Cloudflare's envelope, the Stable Diffusion ones stream the image itself.
+// Trying a different model must not need a code change, since model-shopping is
+// exactly what this adapter exists to survive.
+func TestHandlesBothResponseShapes(t *testing.T) {
 	for _, tc := range []struct {
-		name string
-		raw  []byte
-		want string
+		name        string
+		contentType string
+		body        string
+		want        []byte
+		wantType    string
 	}{
-		{"jpeg", jpegBytes, "image/jpeg"},
-		{"png", pngBytes, "image/png"},
+		{"base64 in a JSON envelope", "application/json", envelope(jpegBytes), jpegBytes, "image/jpeg"},
+		{"a raw image stream", "image/png", string(pngBytes), pngBytes, "image/png"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			server, _, _ := serve(t, http.StatusOK, okBody(tc.raw))
+			server, _, _ := serve(t, http.StatusOK, tc.contentType, tc.body)
 			img, err := New(server.URL, "m", "tok").GenerateImage(context.Background(), "x")
 			if err != nil {
 				t.Fatalf("GenerateImage: %v", err)
 			}
-			if img.ContentType != tc.want {
-				t.Errorf("content type = %q, want %q", img.ContentType, tc.want)
+			if !bytes.Equal(img.Bytes, tc.want) {
+				t.Errorf("bytes = %d, want %d", len(img.Bytes), len(tc.want))
+			}
+			// Sniffed rather than assumed, since it is stored and served verbatim.
+			if img.ContentType != tc.wantType {
+				t.Errorf("content type = %q, want %q", img.ContentType, tc.wantType)
 			}
 		})
 	}
@@ -109,7 +108,8 @@ func TestSendsTheKey(t *testing.T) {
 	var got string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		got = r.Header.Get("Authorization")
-		_, _ = io.WriteString(w, okBody(jpegBytes))
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, envelope(jpegBytes))
 	}))
 	defer server.Close()
 
@@ -123,48 +123,71 @@ func TestSendsTheKey(t *testing.T) {
 
 func TestReportsProviderFailures(t *testing.T) {
 	for _, tc := range []struct {
-		name   string
-		status int
-		body   string
-		want   string
+		name        string
+		status      int
+		contentType string
+		body        string
+		want        string
 	}{
 		{
-			// The provider's message is the only thing that distinguishes a bad
-			// key from a bad model from a refused prompt.
-			name:   "the error body wins over the status code",
-			status: http.StatusUnauthorized,
-			body:   `{"error":{"message":"Invalid API key provided"}}`,
-			want:   "Invalid API key provided",
+			// Cloudflare returns 200 with success=false often enough that
+			// trusting the status line would swallow the failure entirely.
+			name:        "a failure inside a 200 is still a failure",
+			status:      http.StatusOK,
+			contentType: "application/json",
+			body:        `{"success":false,"errors":[{"code":10000,"message":"Authentication error"}]}`,
+			want:        "Authentication error",
 		},
 		{
-			name:   "a content refusal is surfaced as written",
-			status: http.StatusBadRequest,
-			body:   `{"error":{"message":"Your request was rejected by our safety system"}}`,
-			want:   "rejected by our safety system",
+			// This is the class of failure that cost us the FLUX models.
+			name:        "a safety refusal is surfaced as written",
+			status:      http.StatusBadRequest,
+			contentType: "application/json",
+			body:        `{"success":false,"errors":[{"code":3030,"message":"Input prompt contains NSFW content."}]}`,
+			want:        "NSFW",
 		},
 		{
-			name:   "a bare status is still reported",
-			status: http.StatusServiceUnavailable,
-			body:   `nope`,
-			want:   "status 503",
+			name:        "a bare status is still reported",
+			status:      http.StatusServiceUnavailable,
+			contentType: "application/json",
+			body:        `nope`,
+			want:        "status 503",
 		},
 		{
-			name:   "an empty data array is not a result",
-			status: http.StatusOK,
-			body:   `{"data":[]}`,
-			want:   "no image",
+			// An ingress error arrives as HTML, which the JSON path would never
+			// see; without the status check it would look like an empty image.
+			name:        "a non-JSON error is still reported",
+			status:      http.StatusBadGateway,
+			contentType: "text/html",
+			body:        `<html>bad gateway</html>`,
+			want:        "status 502",
+		},
+		{
+			name:        "success=false with no explanation",
+			status:      http.StatusOK,
+			contentType: "application/json",
+			body:        `{"success":false,"errors":[]}`,
+			want:        "failure without an error",
 		},
 		{
 			// Storing undecodable bytes would produce a cover that 200s and
 			// renders nothing, which is harder to diagnose than a failure.
-			name:   "malformed base64 fails rather than storing garbage",
-			status: http.StatusOK,
-			body:   `{"data":[{"b64_json":"!!!not base64!!!"}]}`,
-			want:   "decoding the image",
+			name:        "malformed base64 fails rather than storing garbage",
+			status:      http.StatusOK,
+			contentType: "application/json",
+			body:        `{"success":true,"result":{"image":"!!!not base64!!!"}}`,
+			want:        "decoding the image",
+		},
+		{
+			name:        "an empty image is not a result",
+			status:      http.StatusOK,
+			contentType: "application/json",
+			body:        `{"success":true,"result":{"image":""}}`,
+			want:        "no image",
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			server, _, _ := serve(t, tc.status, tc.body)
+			server, _, _ := serve(t, tc.status, tc.contentType, tc.body)
 			_, err := New(server.URL, "m", "tok").GenerateImage(context.Background(), "x")
 			if err == nil {
 				t.Fatal("expected an error")
@@ -181,7 +204,7 @@ func TestReportsProviderFailures(t *testing.T) {
 func TestMissingKeyRendersALocalPlaceholder(t *testing.T) {
 	// A live URL proves the network is not reached rather than merely
 	// unreachable.
-	server, path, _ := serve(t, http.StatusOK, okBody(jpegBytes))
+	server, path, _ := serve(t, http.StatusOK, "application/json", envelope(jpegBytes))
 
 	img, err := New(server.URL, "m", "").GenerateImage(context.Background(), "a violet field")
 	if err != nil {

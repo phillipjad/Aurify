@@ -9,7 +9,7 @@
 #
 # There are no model services here. Prompt generation talks to Ollama running
 # natively on the host, since Docker on macOS cannot reach Metal, and image
-# generation calls Gemini. With neither configured the backend
+# generation calls Cloudflare Workers AI. With neither configured the backend
 # renders deterministic placeholders, so the API runs with no setup at all.
 # See docs/adr/0016-generation-providers.md.
 

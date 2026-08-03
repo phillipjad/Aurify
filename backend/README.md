@@ -30,7 +30,7 @@ internal/
     dsp/{spotify,applemusic,youtubemusic}/
     lyrics/lrclib/           # lrclib.net client (implemented)
     nlp/                     # lyric sentiment (naive lexicon placeholder)
-    llm/{promptgen,imagegen}/# local LLM sidecar clients (stubbed — ADR 0006)
+    llm/{promptgen,imagegen}/# prompt + image model clients (ADR 0016)
   storage/postgres/          # PostgreSQL repositories (implement ports)
     migrations/              # goose SQL migrations (embedded, applied on startup)
     query/                   # sqlc query sources
@@ -129,10 +129,13 @@ changing any DTO or route, and keep the route `With*` decorations accurate. See
 
 - Cover generation runs **synchronously** in the request; move it to a queue
   for production (the handler is structured to make this easy).
-- DSP providers, the OAuth `state`/CSRF handling, and token encryption-at-rest
-  are stubbed.
-- The two LLM sidecars are not built; the clients fall back to deterministic
-  placeholders when `AURIFY_PROMPTGEN_URL` / `AURIFY_IMAGEGEN_URL` are empty.
+- Spotify and Apple Music providers are stubbed; YouTube Music is built.
+- Prompt and image generation call OpenAI-compatible providers, defaulting to
+  Ollama on the host and Cloudflare Workers AI. Each falls back to a deterministic
+  placeholder when unconfigured: `AURIFY_PROMPTGEN_URL` empty for prompts,
+  `AURIFY_IMAGEGEN_API_KEY` empty for images (the image URL and model have
+  working defaults, so the key is the switch). See
+  [ADR 0016](../docs/adr/0016-generation-providers.md).
 - Module path is `github.com/phillipjad/aurify/backend`. The GitHub repo is
   `Aurify` (capitalized); Go module paths are lowercase by convention, so for
   `go get` to work via the proxy the repo should be referenced in lowercase.

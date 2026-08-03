@@ -49,9 +49,10 @@ type PromptGenConfig struct {
 	APIKey string
 }
 
-// ImageGenConfig points at any OpenAI-compatible images provider: Gemini by
-// default, through its OpenAI-compatibility layer, or OpenAI and Together
-// unchanged. An empty APIKey selects the locally rendered placeholder image.
+// ImageGenConfig points at Cloudflare Workers AI, the only image provider found
+// that is free without a card, a deposit or an expiry. The account id lives in
+// BaseURL rather than in a field of its own, so this reads the same as
+// PromptGenConfig. An empty APIKey selects the locally rendered placeholder.
 type ImageGenConfig struct {
 	BaseURL string
 	Model   string
@@ -117,12 +118,9 @@ func Load() Config {
 			APIKey:  env("AURIFY_PROMPTGEN_API_KEY", ""),
 		},
 		ImageGen: ImageGenConfig{
-			BaseURL: env(
-				"AURIFY_IMAGEGEN_URL",
-				"https://generativelanguage.googleapis.com/v1beta/openai",
-			),
-			Model:  env("AURIFY_IMAGEGEN_MODEL", "gemini-2.5-flash-image"),
-			APIKey: env("AURIFY_IMAGEGEN_API_KEY", ""),
+			BaseURL: env("AURIFY_IMAGEGEN_URL", ""),
+			Model:   env("AURIFY_IMAGEGEN_MODEL", "@cf/leonardoai/lucid-origin"),
+			APIKey:  env("AURIFY_IMAGEGEN_API_KEY", ""),
 		},
 		CORSOrigins:  splitList(env("AURIFY_CORS_ORIGINS", "http://localhost:5173")),
 		AppBaseURL:   env("AURIFY_APP_BASE_URL", "http://localhost:5173"),

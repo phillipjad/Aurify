@@ -1,4 +1,4 @@
-# 0016 — Generation providers: an OpenAI-compatible base URL, and images in PostgreSQL
+# 0016 — Generation providers: real models, and images in PostgreSQL
 
 - Status: Accepted
 - Date: 2026-08-03
@@ -32,30 +32,38 @@ containerized model would fall back to CPU. `docker-compose.yml` gains
 `extra_hosts: host.docker.internal:host-gateway` so the containerized API can
 reach it.
 
-**Image generation speaks the OpenAI images API**, `POST
-{baseURL}/images/generations`, for the same reason. The default is Gemini
-through its OpenAI-compatibility layer, whose free tier is 500 images a day with
-no card and no expiry; OpenAI and Together are a change of URL, model and key.
+**Image generation calls Cloudflare Workers AI, on a non-FLUX model.** Unlike
+promptgen this adapter is provider-shaped, because Workers AI serves OpenAI
+compatibility for text only. That is a real cost, accepted for a specific
+reason: Workers AI is the only image provider found that is free without a card,
+a deposit or an expiry, and being able to run the pipeline at all outranks the
+adapter being portable.
 
-Two providers were tried and rejected first, which is why the portability
-mattered.
+The constraint that decided it was money, and the search was narrower than
+expected:
 
-**Cloudflare Workers AI**, for its 10,000 free neurons a day against 57.6 per
-image. Its safety classifier refused 2 of 8 measured generations with "Input
-prompt contains NSFW content", on text like "Deep indigo nebula swirls engulfing
-bursts of radiant gold, creating an unsettling beauty". The refusal tracks
-wording rather than content, so the same playlist passes on a retry. There is no
-parameter to disable or tune it, the request to add one has been open since
-October 2024, and public reports include the single word "hamburger" being
-refused. A provider that rejects a quarter of ordinary prompts is not one to
-build on. Its bespoke request shape was also the only thing keeping this adapter
-from being as portable as promptgen, so replacing it fixed both problems.
+| Provider | Free without a card | Why not |
+|---|---|---|
+| Workers AI, FLUX | Yes, 10,000 neurons/day | Safety classifier, see below |
+| Workers AI, non-FLUX | Yes, same allowance | **Chosen** |
+| Together AI, FLUX.1 [schnell] | No longer | $5 deposit |
+| Gemini 2.5 Flash Image | No | Paid only, $0.039/image |
 
-**Together AI**, which serves this exact endpoint with free FLUX.1 [schnell].
-Its free tier now requires a $5 deposit, which defeats the point of proving the
-pipeline before committing money. It remains one variable away. Note that
-Together spells `response_format` as `"base64"` where OpenAI and Gemini use
-`"b64_json"`, the one place these APIs disagree.
+**The model is deliberately not FLUX.** Cloudflare's FLUX endpoints refused 2 of
+8 measured generations with "Input prompt contains NSFW content", on text like
+"Deep indigo nebula swirls engulfing bursts of radiant gold, creating an
+unsettling beauty". The refusal tracks wording rather than content, so the same
+playlist passes on a retry. There is no parameter to disable or tune it, the
+request to add one has been open since October 2024, and public reports include
+the single word "hamburger" being refused. That error, code 3030, is documented
+only against the FLUX endpoints, so the same account and allowance work through
+`@cf/leonardoai/lucid-origin` instead.
+
+Workers AI answers in two shapes depending on the model: newer ones wrap base64
+in Cloudflare's JSON envelope, the Stable Diffusion ones stream the image. The
+adapter switches on the response content type rather than the model name, so
+trying another model stays a configuration change. That matters more than usual
+here, since model-shopping is how this provider was made usable.
 
 **`ImageGenerator` returns bytes, not a URL.** Image APIs return the image
 itself, or a link that expires within the hour. A new `ports.ImageStore` decides
@@ -71,7 +79,7 @@ further.
 The ceiling is real and closer than expected. Over nine generations, FLUX.1
 [schnell] via Cloudflare returned 1024x1024 JPEGs averaging **935KB** (841KB to
 1094KB), not the ~150KB assumed when this was drafted, putting Neon's free 0.5GB
-at roughly 530 covers. That figure is per-provider and Gemini's has not been
+at roughly 530 covers. That figure is per-model and the chosen one has not been
 measured, but the order of magnitude is what matters: about a megabyte a cover,
 not a tenth of one. Moving to a bucket is a second `ports.ImageStore`, which is
 why the port returns the URL rather than having callers build one.
@@ -93,8 +101,9 @@ covers the route serving without a session.
   prompt, rather than a link to `placehold.co`. The bytes have to reach the
   store either way, and a remote URL meant development covers stopped rendering
   without a network.
-- Both adapters now take the same three settings, a base URL, a model and a key,
-  which is the whole portability claim made concrete.
+- Both adapters still take the same three settings, a base URL, a model and a
+  key. promptgen is portable across providers by API shape; imagegen is portable
+  only across Workers AI models, and another vendor means a sibling adapter.
 - A refused prompt still fails the generation. There is no retry: with a
   provider that does not refuse ordinary prompts there is nothing to retry, and
   adding one would have hidden exactly the signal that made Cloudflare's
