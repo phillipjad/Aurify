@@ -50,7 +50,7 @@ func envelope(raw []byte) string {
 func TestRendersAnImage(t *testing.T) {
 	server, path, captured := serve(t, http.StatusOK, "application/json", envelope(jpegBytes))
 
-	client := New(server.URL, "@cf/leonardoai/lucid-origin", "tok")
+	client := New(server.URL, "acct-1", "@cf/leonardoai/lucid-origin", "tok")
 	img, err := client.GenerateImage(context.Background(), "a violet field")
 	if err != nil {
 		t.Fatalf("GenerateImage: %v", err)
@@ -59,10 +59,10 @@ func TestRendersAnImage(t *testing.T) {
 	if !bytes.Equal(img.Bytes, jpegBytes) {
 		t.Errorf("bytes round-tripped wrong: got %d bytes, want %d", len(img.Bytes), len(jpegBytes))
 	}
-	// The model is part of the path, not the body, so a wrong join here silently
-	// asks for a different model than the one configured.
-	if *path != "/@cf/leonardoai/lucid-origin" {
-		t.Errorf("posted to %q", *path)
+	// The account and model are both path segments assembled here rather than
+	// configured, so a wrong join asks the wrong endpoint entirely.
+	if want := "/accounts/acct-1/ai/run/@cf/leonardoai/lucid-origin"; *path != want {
+		t.Errorf("posted to %q, want %q", *path, want)
 	}
 	if captured.Prompt != "a violet field" {
 		t.Errorf("prompt = %q", captured.Prompt)
@@ -89,7 +89,7 @@ func TestHandlesBothResponseShapes(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			server, _, _ := serve(t, http.StatusOK, tc.contentType, tc.body)
-			img, err := New(server.URL, "m", "tok").GenerateImage(context.Background(), "x")
+			img, err := New(server.URL, "acct-1", "m", "tok").GenerateImage(context.Background(), "x")
 			if err != nil {
 				t.Fatalf("GenerateImage: %v", err)
 			}
@@ -113,7 +113,7 @@ func TestSendsTheKey(t *testing.T) {
 	}))
 	defer server.Close()
 
-	if _, err := New(server.URL, "m", "tok").GenerateImage(context.Background(), "x"); err != nil {
+	if _, err := New(server.URL, "acct-1", "m", "tok").GenerateImage(context.Background(), "x"); err != nil {
 		t.Fatalf("GenerateImage: %v", err)
 	}
 	if got != "Bearer tok" {
@@ -188,7 +188,7 @@ func TestReportsProviderFailures(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			server, _, _ := serve(t, tc.status, tc.contentType, tc.body)
-			_, err := New(server.URL, "m", "tok").GenerateImage(context.Background(), "x")
+			_, err := New(server.URL, "acct-1", "m", "tok").GenerateImage(context.Background(), "x")
 			if err == nil {
 				t.Fatal("expected an error")
 			}
@@ -206,7 +206,7 @@ func TestMissingKeyRendersALocalPlaceholder(t *testing.T) {
 	// unreachable.
 	server, path, _ := serve(t, http.StatusOK, "application/json", envelope(jpegBytes))
 
-	img, err := New(server.URL, "m", "").GenerateImage(context.Background(), "a violet field")
+	img, err := New(server.URL, "acct-1", "m", "").GenerateImage(context.Background(), "a violet field")
 	if err != nil {
 		t.Fatalf("GenerateImage: %v", err)
 	}
@@ -231,5 +231,32 @@ func TestThePlaceholderVariesWithThePrompt(t *testing.T) {
 	}
 	if bytes.Equal(first.Bytes, other.Bytes) {
 		t.Error("different prompts should render different placeholders")
+	}
+}
+
+// The endpoint is assembled from the account id rather than configured whole,
+// so this is the only place a mistake in Cloudflare's URL layout can hide.
+func TestDefaultBaseURLBuildsTheRealEndpoint(t *testing.T) {
+	got := New("", "acct-1", "@cf/leonardoai/lucid-origin", "tok").endpoint()
+	want := "https://api.cloudflare.com/client/v4/accounts/acct-1/ai/run/@cf/leonardoai/lucid-origin"
+	if got != want {
+		t.Errorf("endpoint = %q, want %q", got, want)
+	}
+}
+
+// Either credential missing means the provider cannot be called, so both must
+// select the placeholder rather than producing a request that 404s.
+func TestMissingAccountAlsoRendersThePlaceholder(t *testing.T) {
+	server, path, _ := serve(t, http.StatusOK, "application/json", envelope(jpegBytes))
+
+	img, err := New(server.URL, "", "m", "tok").GenerateImage(context.Background(), "x")
+	if err != nil {
+		t.Fatalf("GenerateImage: %v", err)
+	}
+	if *path != "" {
+		t.Errorf("the provider was called at %q despite having no account id", *path)
+	}
+	if img.ContentType != "image/png" {
+		t.Errorf("content type = %q, want the placeholder's image/png", img.ContentType)
 	}
 }

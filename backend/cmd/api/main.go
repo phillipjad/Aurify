@@ -1,5 +1,5 @@
 // Command api is the Aurify HTTP API server. It wires the concrete adapters
-// (PostgreSQL, DSP providers, lyrics/NLP, LLM sidecars) into the CQRS application
+// (PostgreSQL, DSP providers, lyrics/NLP, prompt + image models) into the CQRS application
 // layer and serves the mux router.
 package main
 
@@ -115,7 +115,12 @@ func run() error {
 	sentiment := nlp.NewAnalyzer()
 	engine := analysis.NewEngine()
 	prompts := promptgen.New(cfg.PromptGen.BaseURL, cfg.PromptGen.Model, cfg.PromptGen.APIKey)
-	images := imagegen.New(cfg.ImageGen.BaseURL, cfg.ImageGen.Model, cfg.ImageGen.APIKey)
+	images := imagegen.New(
+		cfg.ImageGen.BaseURL,
+		cfg.ImageGen.AccountID,
+		cfg.ImageGen.Model,
+		cfg.ImageGen.APIKey,
+	)
 
 	// --- authentication ---
 	signer, err := auth.NewSigner(signingKey, cfg.Auth.Issuer, cfg.Auth.Audience)

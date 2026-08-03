@@ -59,6 +59,11 @@ the single word "hamburger" being refused. That error, code 3030, is documented
 only against the FLUX endpoints, so the same account and allowance work through
 `@cf/leonardoai/lucid-origin` instead.
 
+The account id is configured on its own and the endpoint is assembled in code.
+Everything but the account and model is fixed, so asking for the whole URL would
+only create somewhere to typo it, which is how an earlier OAuth redirect URI lost
+an afternoon to a trailing character.
+
 Workers AI answers in two shapes depending on the model: newer ones wrap base64
 in Cloudflare's JSON envelope, the Stable Diffusion ones stream the image. The
 adapter switches on the response content type rather than the model name, so

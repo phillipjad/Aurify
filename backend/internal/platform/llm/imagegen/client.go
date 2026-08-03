@@ -39,30 +39,47 @@ const (
 	imageHeight = 1024
 )
 
-// Client is a Workers AI image client.
+// DefaultBaseURL is the Workers AI API root.
 //
-// The account id lives inside baseURL rather than in a setting of its own, so
-// this takes the same three values as promptgen: where, which model, and the
-// credential.
+// The account id is configured on its own and the endpoint is assembled here,
+// rather than asking for the whole URL: everything but the id is fixed, so
+// putting the fixed part in configuration only creates somewhere to make a typo
+// that surfaces as a confusing 404.
+const DefaultBaseURL = "https://api.cloudflare.com/client/v4"
+
+// Client is a Workers AI image client.
 type Client struct {
-	baseURL string
-	model   string
-	apiKey  string
-	client  *http.Client
+	baseURL   string
+	accountID string
+	model     string
+	apiKey    string
+	client    *http.Client
 }
 
 var _ ports.ImageGenerator = (*Client)(nil)
 
-// New constructs an image-generation client. An empty apiKey enables the
-// placeholder behavior: no image API is usable without one, so it is the single
-// switch between "configured" and "not".
-func New(baseURL, model, apiKey string) *Client {
-	return &Client{
-		baseURL: strings.TrimRight(baseURL, "/"),
-		model:   model,
-		apiKey:  apiKey,
-		client:  &http.Client{Timeout: 120 * time.Second},
+// New constructs an image-generation client. An empty baseURL means
+// DefaultBaseURL; it exists to be pointed at a test server, not because another
+// host would understand these requests.
+//
+// An empty accountID or apiKey enables the placeholder behavior, since neither
+// is usable without the other.
+func New(baseURL, accountID, model, apiKey string) *Client {
+	if baseURL == "" {
+		baseURL = DefaultBaseURL
 	}
+	return &Client{
+		baseURL:   strings.TrimRight(baseURL, "/"),
+		accountID: accountID,
+		model:     model,
+		apiKey:    apiKey,
+		client:    &http.Client{Timeout: 120 * time.Second},
+	}
+}
+
+// endpoint is the run URL for the configured account and model.
+func (c *Client) endpoint() string {
+	return fmt.Sprintf("%s/accounts/%s/ai/run/%s", c.baseURL, c.accountID, c.model)
 }
 
 type generateRequest struct {
@@ -86,7 +103,7 @@ type generateResponse struct {
 
 // GenerateImage renders the prompt and returns the image bytes.
 func (c *Client) GenerateImage(ctx context.Context, prompt string) (domain.GeneratedImage, error) {
-	if c.apiKey == "" {
+	if c.accountID == "" || c.apiKey == "" {
 		return placeholderImage(prompt), nil
 	}
 
@@ -99,9 +116,7 @@ func (c *Client) GenerateImage(ctx context.Context, prompt string) (domain.Gener
 		return domain.GeneratedImage{}, err
 	}
 
-	req, err := http.NewRequestWithContext(
-		ctx, http.MethodPost, c.baseURL+"/"+c.model, bytes.NewReader(body),
-	)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.endpoint(), bytes.NewReader(body))
 	if err != nil {
 		return domain.GeneratedImage{}, err
 	}

@@ -50,13 +50,18 @@ type PromptGenConfig struct {
 }
 
 // ImageGenConfig points at Cloudflare Workers AI, the only image provider found
-// that is free without a card, a deposit or an expiry. The account id lives in
-// BaseURL rather than in a field of its own, so this reads the same as
-// PromptGenConfig. An empty APIKey selects the locally rendered placeholder.
+// that is free without a card, a deposit or an expiry.
+//
+// Only AccountID and APIKey need setting. BaseURL defaults to the Workers AI
+// root and exists to be aimed at a test server: everything in the endpoint but
+// the account id and model is fixed, so asking for the whole URL would only
+// create somewhere to typo it. Empty AccountID or APIKey selects the locally
+// rendered placeholder.
 type ImageGenConfig struct {
-	BaseURL string
-	Model   string
-	APIKey  string
+	BaseURL   string
+	AccountID string
+	Model     string
+	APIKey    string
 }
 
 // AuthConfig holds the session and token settings.
@@ -118,9 +123,10 @@ func Load() Config {
 			APIKey:  env("AURIFY_PROMPTGEN_API_KEY", ""),
 		},
 		ImageGen: ImageGenConfig{
-			BaseURL: env("AURIFY_IMAGEGEN_URL", ""),
-			Model:   env("AURIFY_IMAGEGEN_MODEL", "@cf/leonardoai/lucid-origin"),
-			APIKey:  env("AURIFY_IMAGEGEN_API_KEY", ""),
+			BaseURL:   env("AURIFY_IMAGEGEN_URL", ""),
+			AccountID: env("AURIFY_IMAGEGEN_ACCOUNT_ID", ""),
+			Model:     env("AURIFY_IMAGEGEN_MODEL", "@cf/leonardoai/lucid-origin"),
+			APIKey:    env("AURIFY_IMAGEGEN_API_KEY", ""),
 		},
 		CORSOrigins:  splitList(env("AURIFY_CORS_ORIGINS", "http://localhost:5173")),
 		AppBaseURL:   env("AURIFY_APP_BASE_URL", "http://localhost:5173"),
