@@ -1,13 +1,14 @@
 // Package imagegen renders a prompt into cover art over the OpenAI images API.
 //
 // As with promptgen, the API shape is why there is one adapter rather than one
-// per vendor: Together AI, OpenAI and others all serve
+// per vendor: Gemini, OpenAI and Together all serve
 // `POST {baseURL}/images/generations`, so changing provider is a change of base
 // URL, model and key (see docs/adr/0016-generation-providers.md).
 //
-// The default is Together AI's free FLUX.1 [schnell] endpoint. It replaced
-// Cloudflare Workers AI, whose safety classifier refused about a quarter of
-// perfectly ordinary abstract-art prompts with no way to opt out.
+// The default is Gemini through its OpenAI-compatibility layer, whose free tier
+// is 500 images a day with no card. It replaced Cloudflare Workers AI, whose
+// safety classifier refused about a quarter of perfectly ordinary abstract-art
+// prompts with no way to opt out.
 //
 // With no API key configured the client renders a local placeholder, so a
 // checkout with no credentials still completes a generation.
@@ -27,10 +28,17 @@ import (
 	"github.com/phillipjad/aurify/backend/internal/domain"
 )
 
-// steps is the number of diffusion steps requested. FLUX.1 [schnell] is
-// distilled for very few steps and rejects more than 4; the API's own default of
-// 20 is meant for other models and would fail.
-const steps = 4
+const (
+	// size keeps covers square. Providers that do not take it ignore it.
+	size = "1024x1024"
+
+	// steps is meaningless to Gemini, which silently ignores unknown parameters,
+	// and required by the diffusion models behind Together and fal: FLUX.1
+	// [schnell] is distilled for very few steps and rejects more than 4, while
+	// those APIs default to 20. Sent so pointing at one of them needs no code
+	// change.
+	steps = 4
+)
 
 // Client is an OpenAI-compatible image-generation client.
 type Client struct {
@@ -57,6 +65,7 @@ func New(baseURL, model, apiKey string) *Client {
 type generateRequest struct {
 	Model          string `json:"model"`
 	Prompt         string `json:"prompt"`
+	Size           string `json:"size"`
 	Steps          int    `json:"steps"`
 	N              int    `json:"n"`
 	ResponseFormat string `json:"response_format"`
@@ -79,14 +88,18 @@ func (c *Client) GenerateImage(ctx context.Context, prompt string) (domain.Gener
 		return placeholderImage(prompt), nil
 	}
 
-	// base64 rather than a URL: providers hand back links that expire within the
-	// hour, and the bytes have to reach ports.ImageStore either way.
+	// Inline bytes rather than a URL: providers hand back links that expire
+	// within the hour, and the bytes have to reach ports.ImageStore either way.
+	//
+	// "b64_json" is OpenAI's own spelling, which Gemini follows. Together spells
+	// the same thing "base64", the one place these APIs disagree.
 	body, err := json.Marshal(generateRequest{
 		Model:          c.model,
 		Prompt:         prompt,
+		Size:           size,
 		Steps:          steps,
 		N:              1,
-		ResponseFormat: "base64",
+		ResponseFormat: "b64_json",
 	})
 	if err != nil {
 		return domain.GeneratedImage{}, err

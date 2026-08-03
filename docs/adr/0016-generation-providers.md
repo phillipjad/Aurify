@@ -33,20 +33,29 @@ containerized model would fall back to CPU. `docker-compose.yml` gains
 reach it.
 
 **Image generation speaks the OpenAI images API**, `POST
-{baseURL}/images/generations`, for the same reason. The default is Together AI's
-free FLUX.1 [schnell] endpoint; OpenAI's own image models are a change of URL,
-model and key.
+{baseURL}/images/generations`, for the same reason. The default is Gemini
+through its OpenAI-compatibility layer, whose free tier is 500 images a day with
+no card and no expiry; OpenAI and Together are a change of URL, model and key.
 
-Cloudflare Workers AI was tried first, for its 10,000 free neurons a day against
-57.6 per image. It was abandoned: its safety classifier refused 2 of 8 measured
-generations with "Input prompt contains NSFW content", on text like "Deep indigo
-nebula swirls engulfing bursts of radiant gold, creating an unsettling beauty".
-The refusal tracks wording rather than content, so the same playlist passes on a
-retry. There is no parameter to disable or tune it, the request to add one has
-been open since October 2024, and reports include the single word "hamburger"
-being refused. A provider that rejects a quarter of ordinary prompts is not one
-to build on, and its bespoke request shape was the only thing keeping this
-adapter from being as portable as promptgen.
+Two providers were tried and rejected first, which is why the portability
+mattered.
+
+**Cloudflare Workers AI**, for its 10,000 free neurons a day against 57.6 per
+image. Its safety classifier refused 2 of 8 measured generations with "Input
+prompt contains NSFW content", on text like "Deep indigo nebula swirls engulfing
+bursts of radiant gold, creating an unsettling beauty". The refusal tracks
+wording rather than content, so the same playlist passes on a retry. There is no
+parameter to disable or tune it, the request to add one has been open since
+October 2024, and public reports include the single word "hamburger" being
+refused. A provider that rejects a quarter of ordinary prompts is not one to
+build on. Its bespoke request shape was also the only thing keeping this adapter
+from being as portable as promptgen, so replacing it fixed both problems.
+
+**Together AI**, which serves this exact endpoint with free FLUX.1 [schnell].
+Its free tier now requires a $5 deposit, which defeats the point of proving the
+pipeline before committing money. It remains one variable away. Note that
+Together spells `response_format` as `"base64"` where OpenAI and Gemini use
+`"b64_json"`, the one place these APIs disagree.
 
 **`ImageGenerator` returns bytes, not a URL.** Image APIs return the image
 itself, or a link that expires within the hour. A new `ports.ImageStore` decides
@@ -59,12 +68,13 @@ because a bucket requires a cloud account before the pipeline can be run at all.
 image bytes, and `bytes` is `STORAGE EXTERNAL` because JPEG will not compress
 further.
 
-The ceiling is real and closer than expected. Measured over nine generations,
-FLUX.1 [schnell] returns 1024x1024 JPEGs averaging **935KB** (841KB to 1094KB),
-not the ~150KB assumed when this was drafted. Neon's free tier of 0.5GB is
-therefore about 530 covers, and a paid tier moves that but does not change the
-shape. Moving to a bucket is a second `ports.ImageStore`, which is why the port
-returns the URL rather than having callers build one.
+The ceiling is real and closer than expected. Over nine generations, FLUX.1
+[schnell] via Cloudflare returned 1024x1024 JPEGs averaging **935KB** (841KB to
+1094KB), not the ~150KB assumed when this was drafted, putting Neon's free 0.5GB
+at roughly 530 covers. That figure is per-provider and Gemini's has not been
+measured, but the order of magnitude is what matters: about a megabyte a cover,
+not a tenth of one. Moving to a bucket is a second `ports.ImageStore`, which is
+why the port returns the URL rather than having callers build one.
 
 **`GET /api/v1/covers/{id}/image` is anonymous.** An `<img>` tag loading
 cross-origin, the app on `:5173` and the API on `:8080`, does not send

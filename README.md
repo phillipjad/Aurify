@@ -102,7 +102,7 @@ Toolchain versions: Go 1.26.3 · Node 24.16.0 · pnpm 11.5.0 · PostgreSQL 17.
   "not implemented" ([`backend/internal/platform/dsp`](backend/internal/platform/dsp), [ADR 0005](docs/adr/0005-dsp-provider-abstraction.md)).
 - **Prompt + image generation** — built. Prompts come from any OpenAI-compatible
   text model (Ollama locally by default), images from any OpenAI-compatible
-  image provider (Together AI's free FLUX.1 [schnell] by default), and
+  image provider (Gemini's free tier by default), and
   both fall back to deterministic placeholders when unconfigured
   ([`backend/internal/platform/llm`](backend/internal/platform/llm),
   [ADR 0016](docs/adr/0016-generation-providers.md)). Covers still look alike

@@ -49,9 +49,9 @@ type PromptGenConfig struct {
 	APIKey string
 }
 
-// ImageGenConfig points at any OpenAI-compatible images provider: Together AI
-// by default, or OpenAI's own image models unchanged. An empty APIKey selects
-// the locally rendered placeholder image.
+// ImageGenConfig points at any OpenAI-compatible images provider: Gemini by
+// default, through its OpenAI-compatibility layer, or OpenAI and Together
+// unchanged. An empty APIKey selects the locally rendered placeholder image.
 type ImageGenConfig struct {
 	BaseURL string
 	Model   string
@@ -117,9 +117,12 @@ func Load() Config {
 			APIKey:  env("AURIFY_PROMPTGEN_API_KEY", ""),
 		},
 		ImageGen: ImageGenConfig{
-			BaseURL: env("AURIFY_IMAGEGEN_URL", "https://api.together.ai/v1"),
-			Model:   env("AURIFY_IMAGEGEN_MODEL", "black-forest-labs/FLUX.1-schnell-Free"),
-			APIKey:  env("AURIFY_IMAGEGEN_API_KEY", ""),
+			BaseURL: env(
+				"AURIFY_IMAGEGEN_URL",
+				"https://generativelanguage.googleapis.com/v1beta/openai",
+			),
+			Model:  env("AURIFY_IMAGEGEN_MODEL", "gemini-2.5-flash-image"),
+			APIKey: env("AURIFY_IMAGEGEN_API_KEY", ""),
 		},
 		CORSOrigins:  splitList(env("AURIFY_CORS_ORIGINS", "http://localhost:5173")),
 		AppBaseURL:   env("AURIFY_APP_BASE_URL", "http://localhost:5173"),

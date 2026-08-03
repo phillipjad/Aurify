@@ -44,7 +44,7 @@ func okBody(raw []byte) string {
 func TestRendersAnImage(t *testing.T) {
 	server, path, captured := serve(t, http.StatusOK, okBody(jpegBytes))
 
-	client := New(server.URL, "black-forest-labs/FLUX.1-schnell-Free", "tok")
+	client := New(server.URL, "gemini-2.5-flash-image", "tok")
 	img, err := client.GenerateImage(context.Background(), "a violet field")
 	if err != nil {
 		t.Fatalf("GenerateImage: %v", err)
@@ -56,20 +56,25 @@ func TestRendersAnImage(t *testing.T) {
 	if *path != "/images/generations" {
 		t.Errorf("posted to %q, want /images/generations", *path)
 	}
-	if captured.Model != "black-forest-labs/FLUX.1-schnell-Free" {
+	if captured.Model != "gemini-2.5-flash-image" {
 		t.Errorf("model = %q", captured.Model)
 	}
 	if captured.Prompt != "a violet field" {
 		t.Errorf("prompt = %q", captured.Prompt)
 	}
-	// The API defaults to 20, which FLUX.1 [schnell] rejects outright, so
-	// sending this explicitly is what makes the call work at all.
+	// Album art is square. Providers that do not take this ignore it.
+	if captured.Size != "1024x1024" {
+		t.Errorf("size = %q, want 1024x1024", captured.Size)
+	}
+	// Ignored by Gemini, but the diffusion providers default to 20 and FLUX.1
+	// [schnell] rejects more than 4, so sending it keeps them reachable.
 	if captured.Steps != 4 {
 		t.Errorf("steps = %d, want 4", captured.Steps)
 	}
-	// A URL would expire within the hour, and the bytes have to be stored.
-	if captured.ResponseFormat != "base64" {
-		t.Errorf("response_format = %q, want base64", captured.ResponseFormat)
+	// OpenAI's own spelling, which Gemini follows. A URL would expire within the
+	// hour, and the bytes have to be stored regardless.
+	if captured.ResponseFormat != "b64_json" {
+		t.Errorf("response_format = %q, want b64_json", captured.ResponseFormat)
 	}
 }
 
