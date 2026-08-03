@@ -43,11 +43,18 @@ itself, or a link that expires within the hour. A new `ports.ImageStore` decides
 where it lives and returns the URL that serves it.
 
 **Generated images are stored in PostgreSQL, not GCS.** ADR 0014 chose a
-public-read bucket. That is still the right answer at volume, but it requires a
-cloud account before the pipeline can be run at all, and at roughly 150KB per
-JPEG the volume does not justify one yet. `cover_images` is a table of its own so
-the gallery's list query never reads image bytes, and `bytes` is
-`STORAGE EXTERNAL` because JPEG and PNG will not compress further.
+public-read bucket; this defers that until there is a deployment to put it in,
+because a bucket requires a cloud account before the pipeline can be run at all.
+`cover_images` is a table of its own so the gallery's list query never reads
+image bytes, and `bytes` is `STORAGE EXTERNAL` because JPEG will not compress
+further.
+
+The ceiling is real and closer than expected. Measured over nine generations,
+FLUX.1 [schnell] returns 1024x1024 JPEGs averaging **935KB** (841KB to 1094KB),
+not the ~150KB assumed when this was drafted. Neon's free tier of 0.5GB is
+therefore about 530 covers, and a paid tier moves that but does not change the
+shape. Moving to a bucket is a second `ports.ImageStore`, which is why the port
+returns the URL rather than having callers build one.
 
 **`GET /api/v1/covers/{id}/image` is anonymous.** An `<img>` tag loading
 cross-origin, the app on `:5173` and the API on `:8080`, does not send
@@ -66,9 +73,16 @@ covers the route serving without a session.
   prompt, rather than a link to `placehold.co`. The bytes have to reach the
   store either way, and a remote URL meant development covers stopped rendering
   without a network.
-- Storage grows with covers rather than sitting on a bucket. The upgrade path is
-  a second `ports.ImageStore` implementation, which is why the port returns the
-  URL rather than having callers build one.
+- **Workers AI refuses roughly a quarter of prompts as unsafe, wrongly.** Two of
+  eight measured generations failed with "Input prompt contains NSFW content" on
+  descriptions like "Deep indigo nebula swirls engulfing bursts of radiant gold,
+  creating an unsettling beauty". It is not the playlist: the same playlist
+  succeeds on a retry, because the text model writes a different prompt each
+  time. The generation fails outright today, which is a visible error for the
+  user roughly one run in four.
+- The prompt is recorded on the cover before the image is requested, so a
+  refusal keeps the text that caused it. Assigning it afterwards discarded
+  exactly the evidence needed to diagnose one.
 - Covers still look alike, because the analysis feeding the prompt is
   near-constant for YouTube Music
   ([issue #68](https://github.com/phillipjad/Aurify/issues/68)). Real models do

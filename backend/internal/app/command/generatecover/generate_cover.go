@@ -132,6 +132,12 @@ func (h *Handler) Handle(ctx context.Context, cmd Command) (string, error) {
 	if err != nil {
 		return cover.ID, h.fail(ctx, cover, err)
 	}
+	// Recorded before it is used, so a failure downstream keeps it. Image
+	// providers reject prompts (Workers AI answers a safety refusal for some
+	// perfectly ordinary ones), and the prompt is the only thing that explains
+	// why; assigning it after the call discarded exactly the evidence needed.
+	cover.Prompt = prompt
+
 	image, err := h.images.GenerateImage(ctx, prompt)
 	if err != nil {
 		return cover.ID, h.fail(ctx, cover, err)
@@ -141,7 +147,6 @@ func (h *Handler) Handle(ctx context.Context, cmd Command) (string, error) {
 		return cover.ID, h.fail(ctx, cover, err)
 	}
 
-	cover.Prompt = prompt
 	cover.ImageURL = imageURL
 	cover.Status = domain.CoverStatusReady
 	if err := h.covers.Save(ctx, cover); err != nil {

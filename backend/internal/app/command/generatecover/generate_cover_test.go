@@ -240,6 +240,37 @@ func TestTheStoredImageIsWhatTheCoverPointsAt(t *testing.T) {
 	}
 }
 
+// When the image provider refuses a prompt, that prompt is the only thing that
+// explains the refusal. It used to be assigned after the image call, so a
+// failure persisted an empty string and the evidence was gone.
+func TestAFailedImageStillRecordsThePrompt(t *testing.T) {
+	provider := &fakeProvider{playlist: domain.Playlist{ID: "PL1"}}
+	handler, covers, _ := newHandler(provider)
+	handler.images = refusingImages{}
+
+	if _, err := handler.Handle(context.Background(), Command{
+		UserID:     "user-1",
+		Platform:   domain.PlatformYouTubeMusic,
+		PlaylistID: "PL1",
+	}); err == nil {
+		t.Fatal("expected the generation to fail")
+	}
+
+	last := covers.saved[len(covers.saved)-1]
+	if last.Status != domain.CoverStatusFailed {
+		t.Errorf("status = %q, want failed", last.Status)
+	}
+	if last.Prompt != "a prompt" {
+		t.Errorf("prompt = %q, want it kept so the refusal can be diagnosed", last.Prompt)
+	}
+}
+
+type refusingImages struct{}
+
+func (refusingImages) GenerateImage(context.Context, string) (domain.GeneratedImage, error) {
+	return domain.GeneratedImage{}, errors.New("imagegen: Input prompt contains NSFW content")
+}
+
 // A cover that reaches "ready" with no retrievable image is worse than a visible
 // failure, because the gallery renders it as a permanently broken tile.
 func TestAFailedStoreFailsTheCover(t *testing.T) {
