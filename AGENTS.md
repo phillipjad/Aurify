@@ -6,7 +6,8 @@ making changes.
 ## What Aurify is
 
 A PWA that generates abstract playlist/album covers by analyzing a playlist's
-audio features and lyric sentiment, then driving local LLM sidecars. See
+audio features and lyric sentiment, then driving a text model for the prompt and
+an image model for the cover ([ADR 0016](docs/adr/0016-generation-providers.md)). See
 [README.md](README.md) for the vision and [docs/adr/](docs/adr/) for the *why*
 behind the structure. **This is a scaffold**: prefer extending the existing
 shapes over inventing new ones.

@@ -32,6 +32,7 @@ import (
 	"github.com/phillipjad/aurify/backend/internal/app/lyrics"
 	"github.com/phillipjad/aurify/backend/internal/app/query"
 	"github.com/phillipjad/aurify/backend/internal/app/query/getcover"
+	"github.com/phillipjad/aurify/backend/internal/app/query/getcoverimage"
 	"github.com/phillipjad/aurify/backend/internal/app/query/getuser"
 	"github.com/phillipjad/aurify/backend/internal/app/query/listcovers"
 	"github.com/phillipjad/aurify/backend/internal/app/query/listplaylists"
@@ -113,8 +114,13 @@ func run() error {
 	)
 	sentiment := nlp.NewAnalyzer()
 	engine := analysis.NewEngine()
-	prompts := promptgen.New(cfg.PromptGenURL)
-	images := imagegen.New(cfg.ImageGenURL)
+	prompts := promptgen.New(cfg.PromptGen.BaseURL, cfg.PromptGen.Model, cfg.PromptGen.APIKey)
+	images := imagegen.New(
+		cfg.ImageGen.BaseURL,
+		cfg.ImageGen.AccountID,
+		cfg.ImageGen.Model,
+		cfg.ImageGen.APIToken,
+	)
 
 	// --- authentication ---
 	signer, err := auth.NewSigner(signingKey, cfg.Auth.Issuer, cfg.Auth.Audience)
@@ -171,7 +177,7 @@ func run() error {
 			ConnectDSP: connectdsp.NewHandler(store.Users(), providers),
 			GenerateCover: generatecover.NewHandler(
 				connections, store.Covers(),
-				lyricsResolver, sentiment, engine, prompts, images,
+				lyricsResolver, sentiment, engine, prompts, images, store.CoverImages(),
 			),
 			DeleteCover: deletecover.NewHandler(store.Covers()),
 
@@ -193,6 +199,7 @@ func run() error {
 		Queries: &query.Bus{
 			ListPlaylists: listplaylists.NewHandler(connections),
 			GetCover:      getcover.NewHandler(store.Covers()),
+			GetCoverImage: getcoverimage.NewHandler(store.CoverImages()),
 			ListCovers:    listcovers.NewHandler(store.Covers()),
 			GetUser:       getuser.NewHandler(store.Users()),
 		},

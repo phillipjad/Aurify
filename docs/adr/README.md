@@ -19,6 +19,8 @@ lightweight [MADR](https://adr.github.io/madr/)-style records.
 | [0012](0012-account-lockout-policy.md) | Warn-then-block lockout on the (IP, address) pair | Accepted |
 | [0013](0013-secrets-and-deployment.md) | Secrets in Secret Manager, injected as env vars on Cloud Run | Accepted |
 | [0014](0014-hosted-generation-apis.md) | Hosted APIs for prompt + image generation, called from the API | Accepted |
+| [0015](0015-lyrics-cache-and-failure-policy.md) | Lyrics cache, bounded concurrency, and a skip-don't-retry failure policy | Accepted |
+| [0016](0016-generation-providers.md) | Generation providers: an OpenAI-compatible base URL, and images in PostgreSQL | Accepted |
 
 ## Adding a new ADR
 

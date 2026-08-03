@@ -31,6 +31,13 @@ type Cover struct {
 	UpdatedAt    pgtype.Timestamptz
 }
 
+type CoverImage struct {
+	CoverID     string
+	Bytes       []byte
+	ContentType string
+	CreatedAt   pgtype.Timestamptz
+}
+
 type DspConnection struct {
 	UserID         string
 	Platform       string

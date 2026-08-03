@@ -35,6 +35,7 @@ type Querier interface {
 	DeleteCredentialByUser(ctx context.Context, userID string) error
 	DeleteEmailTokensByUserPurpose(ctx context.Context, arg DeleteEmailTokensByUserPurposeParams) error
 	DeleteRefreshTokensBySession(ctx context.Context, sessionID string) error
+	FindCoverImage(ctx context.Context, coverID string) (FindCoverImageRow, error)
 	// One round trip for a whole playlist. Looking these up one key at a time is
 	// what this table exists to avoid: a 194-track playlist would otherwise open
 	// 194 conversations with the database before doing any work.
@@ -59,6 +60,9 @@ type Querier interface {
 	MarkRefreshTokenUsed(ctx context.Context, arg MarkRefreshTokenUsedParams) (int64, error)
 	RevokeSession(ctx context.Context, arg RevokeSessionParams) error
 	RevokeSessionsByUser(ctx context.Context, arg RevokeSessionsByUserParams) error
+	// Upsert, so regenerating a cover replaces its image rather than failing on the
+	// primary key.
+	SaveCoverImage(ctx context.Context, arg SaveCoverImageParams) error
 	// Batched upsert, so a generation writes once however many misses it had.
 	// ON CONFLICT overwrites rather than skipping, which is what lets a negative
 	// entry become a positive one when lrclib later gains the track.

@@ -181,13 +181,26 @@ type AnalysisEngine interface {
 }
 
 // PromptGenerator turns a PlaylistAnalysis into an image-generation prompt. It
-// is backed by a local LLM sidecar.
+// is backed by a text model reached over the OpenAI chat-completions API.
 type PromptGenerator interface {
 	GeneratePrompt(ctx context.Context, analysis domain.PlaylistAnalysis) (string, error)
 }
 
-// ImageGenerator turns a prompt into a stored image and returns its URL. It is
-// backed by a local image-generation LLM sidecar.
+// ImageGenerator renders a prompt into image bytes.
+//
+// It returns bytes rather than a URL because image providers return the image
+// itself, or a link that expires within the hour. Deciding where it lives is
+// ImageStore's job (see docs/adr/0016-generation-providers.md).
 type ImageGenerator interface {
-	GenerateImage(ctx context.Context, prompt string) (imageURL string, err error)
+	GenerateImage(ctx context.Context, prompt string) (domain.GeneratedImage, error)
+}
+
+// ImageStore holds generated cover art. It is the seam between storing bytes in
+// PostgreSQL, which is what happens today, and putting them in a bucket later.
+type ImageStore interface {
+	// Put stores the image and returns the stable URL that will serve it. The
+	// store owns that URL because only it knows where the bytes ended up.
+	Put(ctx context.Context, coverID string, image domain.GeneratedImage) (url string, err error)
+	// Find returns the stored image, or domain.ErrNotFound.
+	Find(ctx context.Context, coverID string) (domain.GeneratedImage, error)
 }

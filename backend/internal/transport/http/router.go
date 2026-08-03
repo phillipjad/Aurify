@@ -313,6 +313,18 @@ func NewRouter(deps Deps) (*mux.Router, error) {
 			WithOKResponse(dto.CoverResponse{}).
 			WithResponse(404, mux.ProblemDetails{})
 
+		// Anonymous on purpose: an <img> tag loading this cross-origin sends no
+		// credentials, so an authenticated route would never render. The id is a
+		// UUIDv4, which is the same unguessable-name trade ADR 0014 accepted for
+		// its public bucket. See the handler for the full reasoning.
+		api.GET("/covers/{id}/image", covers.Image).
+			AllowAnonymous().
+			WithOperationID("getCoverImage").
+			WithSummary("Serve a generated cover's image bytes").
+			WithPathParam("id", "Cover id", "0f8fad5b-d9cb-469f-a165-70867728950e").
+			WithResponse(200, nil).
+			WithResponse(404, mux.ProblemDetails{})
+
 		api.DELETE("/covers/{id}", covers.Delete).
 			WithOperationID("deleteCover").
 			WithSummary("Delete a generated cover").

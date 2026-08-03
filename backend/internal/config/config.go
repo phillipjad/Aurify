@@ -16,12 +16,10 @@ type Config struct {
 	HTTPAddr      string
 	DatabaseURL   string
 	LRCLibBaseURL string
-	// PromptGenURL and ImageGenURL point at the local LLM sidecars. They are
-	// intentionally empty by default; see docs/adr/0006-llm-sidecars.md.
-	PromptGenURL string
-	ImageGenURL  string
-	CORSOrigins  []string
-	DSP          DSPConfig
+	PromptGen     PromptGenConfig
+	ImageGen      ImageGenConfig
+	CORSOrigins   []string
+	DSP           DSPConfig
 	// AppBaseURL is the public origin of the web app. It is what verification
 	// and password-reset links are built against, so it must be the address the
 	// user's browser can actually reach.
@@ -38,6 +36,26 @@ type Config struct {
 	// (see docs/adr/0011-authentication-and-sessions.md). Empty credentials mean
 	// the feature is simply off.
 	Google OAuthConfig
+}
+
+// PromptGenConfig points at any OpenAI-compatible chat-completions provider:
+// Ollama on localhost, or Groq, OpenRouter, Cerebras and OpenAI unchanged. An
+// empty BaseURL selects the built-in placeholder prompt, which is what a
+// checkout with no model configured runs on.
+type PromptGenConfig struct {
+	BaseURL string
+	Model   string
+	// APIKey is empty for Ollama, which wants no credential.
+	APIKey string
+}
+
+// ImageGenConfig points at Cloudflare Workers AI. An empty AccountID or APIToken
+// selects the locally rendered placeholder image.
+type ImageGenConfig struct {
+	BaseURL   string
+	AccountID string
+	Model     string
+	APIToken  string
 }
 
 // AuthConfig holds the session and token settings.
@@ -93,11 +111,20 @@ func Load() Config {
 			"postgres://aurify:aurify@localhost:5432/aurify?sslmode=disable",
 		),
 		LRCLibBaseURL: env("AURIFY_LRCLIB_URL", "https://lrclib.net"),
-		PromptGenURL:  env("AURIFY_PROMPTGEN_URL", ""),
-		ImageGenURL:   env("AURIFY_IMAGEGEN_URL", ""),
-		CORSOrigins:   splitList(env("AURIFY_CORS_ORIGINS", "http://localhost:5173")),
-		AppBaseURL:    env("AURIFY_APP_BASE_URL", "http://localhost:5173"),
-		SupportEmail:  env("AURIFY_SUPPORT_EMAIL", "support@aurify.local"),
+		PromptGen: PromptGenConfig{
+			BaseURL: env("AURIFY_PROMPTGEN_URL", ""),
+			Model:   env("AURIFY_PROMPTGEN_MODEL", "gemma3:4b"),
+			APIKey:  env("AURIFY_PROMPTGEN_API_KEY", ""),
+		},
+		ImageGen: ImageGenConfig{
+			BaseURL:   env("AURIFY_IMAGEGEN_URL", "https://api.cloudflare.com/client/v4"),
+			AccountID: env("AURIFY_IMAGEGEN_ACCOUNT_ID", ""),
+			Model:     env("AURIFY_IMAGEGEN_MODEL", "@cf/black-forest-labs/flux-1-schnell"),
+			APIToken:  env("AURIFY_IMAGEGEN_API_TOKEN", ""),
+		},
+		CORSOrigins:  splitList(env("AURIFY_CORS_ORIGINS", "http://localhost:5173")),
+		AppBaseURL:   env("AURIFY_APP_BASE_URL", "http://localhost:5173"),
+		SupportEmail: env("AURIFY_SUPPORT_EMAIL", "support@aurify.local"),
 		Auth: AuthConfig{
 			SigningKeySeed: env("AURIFY_AUTH_SIGNING_KEY", ""),
 			Issuer:         env("AURIFY_AUTH_ISSUER", "aurify"),

@@ -30,6 +30,7 @@ type Store struct {
 	emailTokens *EmailTokenRepository
 	authBlocks  *AuthBlockRepository
 	lyrics      *LyricsRepository
+	coverImages *CoverImageRepository
 }
 
 // Connect dials PostgreSQL, verifies the connection, brings the schema up to
@@ -69,6 +70,7 @@ func Connect(ctx context.Context, dsn string, tokenKey []byte) (*Store, error) {
 		emailTokens: &EmailTokenRepository{q: queries},
 		authBlocks:  &AuthBlockRepository{q: queries},
 		lyrics:      &LyricsRepository{q: queries},
+		coverImages: &CoverImageRepository{q: queries},
 	}, nil
 }
 
@@ -129,3 +131,6 @@ func (s *Store) Lyrics() *LyricsRepository { return s.lyrics }
 
 // AuthBlocks returns the permanent authentication lockout repository.
 func (s *Store) AuthBlocks() *AuthBlockRepository { return s.authBlocks }
+
+// CoverImages returns the generated-image store.
+func (s *Store) CoverImages() *CoverImageRepository { return s.coverImages }

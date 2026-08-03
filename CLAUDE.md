@@ -21,8 +21,8 @@ quick start are in **[README.md](README.md)**.
   Keep all `fgrzl/mux` code in `internal/transport/http`.
 - **Frontend** (`frontend/`): reads in `src/lib/api/queries.ts`, writes in
   `src/lib/api/commands.ts`, all fetches via `src/lib/api/client.ts`.
-- Things marked `SCAFFOLD:` / `TODO:` are deliberately unfinished (DSP network
-  calls, LLM sidecars, auth). Grep for them.
+- Things marked `SCAFFOLD:` / `TODO:` are deliberately unfinished (Spotify and
+  Apple Music network calls, lyric sentiment). Grep for them.
 
 ## Before you finish
 

@@ -7,10 +7,11 @@
 #   ./start_container.sh -dm postgres mailpit   # dependencies only
 #   ./start_container.sh -mb                    # the whole stack, rebuilt
 #
-# The two LLM sidecars are placeholders: the services are not built yet
-# (see docs/adr/0006-llm-sidecars.md). The backend falls back to deterministic
-# placeholders when AURIFY_PROMPTGEN_URL / AURIFY_IMAGEGEN_URL are unset, so you
-# do not need these to run the API.
+# There are no model services here. Prompt generation talks to Ollama running
+# natively on the host, since Docker on macOS cannot reach Metal, and image
+# generation calls Cloudflare Workers AI. With neither configured the backend
+# renders deterministic placeholders, so the API runs with no setup at all.
+# See docs/adr/0016-generation-providers.md.
 
 services:
   backend:
@@ -46,6 +47,12 @@ services:
     environment:
       AURIFY_DATABASE_URL: postgres://aurify:aurify@postgres:5432/aurify?sslmode=disable
       AURIFY_HTTP_ADDR: :8080
+    extra_hosts:
+      # So AURIFY_PROMPTGEN_URL can name host.docker.internal to reach Ollama,
+      # which runs natively on the host rather than as a service here: Docker on
+      # macOS cannot reach Metal, so a containerized model would fall back to
+      # CPU. Docker Desktop provides this name already; Linux does not.
+      - 'host.docker.internal:host-gateway'
     ports:
       - '8080:8080'
     depends_on:
@@ -99,16 +106,6 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
-
-  # --- Placeholders for future work (commented out until the sidecars exist) ---
-  #
-  # promptgen:
-  #   build: ./sidecars/promptgen        # POST /generate {analysis} -> {prompt}
-  #   ports: ['9101:9101']
-  #
-  # imagegen:
-  #   build: ./sidecars/imagegen         # POST /generate {prompt}   -> {imageUrl}
-  #   ports: ['9102:9102']
 
 volumes:
   # `pg-data` is a named volume, but the local driver's bind options pin its

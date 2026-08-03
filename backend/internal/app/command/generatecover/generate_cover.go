@@ -29,6 +29,7 @@ type Handler struct {
 	analysis    ports.AnalysisEngine
 	prompts     ports.PromptGenerator
 	images      ports.ImageGenerator
+	imageStore  ports.ImageStore
 }
 
 // NewHandler constructs a GenerateCover handler with all of its dependencies.
@@ -40,6 +41,7 @@ func NewHandler(
 	analysis ports.AnalysisEngine,
 	prompts ports.PromptGenerator,
 	images ports.ImageGenerator,
+	imageStore ports.ImageStore,
 ) *Handler {
 	return &Handler{
 		connections: connections,
@@ -49,6 +51,7 @@ func NewHandler(
 		analysis:    analysis,
 		prompts:     prompts,
 		images:      images,
+		imageStore:  imageStore,
 	}
 }
 
@@ -122,12 +125,18 @@ func (h *Handler) Handle(ctx context.Context, cmd Command) (string, error) {
 		return cover.ID, err
 	}
 
-	// 4. Prompt -> image via the local LLM sidecars.
+	// 4. Analysis -> prompt -> image, then store the bytes. The generator returns
+	//    the image itself because that is what image APIs hand back; deciding
+	//    where it lives is the store's job.
 	prompt, err := h.prompts.GeneratePrompt(ctx, result)
 	if err != nil {
 		return cover.ID, h.fail(ctx, cover, err)
 	}
-	imageURL, err := h.images.GenerateImage(ctx, prompt)
+	image, err := h.images.GenerateImage(ctx, prompt)
+	if err != nil {
+		return cover.ID, h.fail(ctx, cover, err)
+	}
+	imageURL, err := h.imageStore.Put(ctx, cover.ID, image)
 	if err != nil {
 		return cover.ID, h.fail(ctx, cover, err)
 	}

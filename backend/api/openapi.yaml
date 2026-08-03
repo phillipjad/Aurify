@@ -468,6 +468,35 @@ paths:
                 status: 0
                 detail: ""
                 instance: null
+  /api/v1/covers/{id}/image:
+    get:
+      tags:
+        - aurify
+      summary: Serve a generated cover's image bytes
+      operationId: getCoverImage
+      parameters:
+        - name: id
+          in: path
+          description: Cover id
+          required: true
+          schema:
+            type: string
+          example: 0f8fad5b-d9cb-469f-a165-70867728950e
+      responses:
+        "200":
+          description: Success
+        "404":
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+              example:
+                type: ""
+                title: ""
+                status: 0
+                detail: ""
+                instance: null
   /api/v1/playlists:
     get:
       tags:
