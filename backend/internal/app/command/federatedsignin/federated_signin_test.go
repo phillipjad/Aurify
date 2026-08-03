@@ -1,11 +1,7 @@
 package federatedsignin
 
 import (
-	"context"
 	"errors"
-	"net/url"
-	"os"
-	"strings"
 	"testing"
 	"time"
 
@@ -14,8 +10,8 @@ import (
 	"github.com/phillipjad/aurify/backend/internal/app/sessions"
 	"github.com/phillipjad/aurify/backend/internal/domain"
 	"github.com/phillipjad/aurify/backend/internal/platform/auth"
-	"github.com/phillipjad/aurify/backend/internal/platform/crypto"
 	"github.com/phillipjad/aurify/backend/internal/storage/postgres"
+	"github.com/phillipjad/aurify/backend/internal/storage/postgres/pgtest"
 )
 
 // These tests run against a real PostgreSQL rather than in-memory doubles.
@@ -31,90 +27,18 @@ import (
 // ends up in the database, so a double that cannot disagree with the schema
 // cannot test it.
 
-// testDBSuffix is required at the end of the test database's name.
-//
-// These tests truncate every table in the schema, so pointing them at a
-// database someone is actually using destroys it, silently and instantly. That
-// is not hypothetical: this suite was first run against the local development
-// database and wiped it. Requiring the name to declare itself disposable makes
-// the mistake impossible to make by accident.
-const testDBSuffix = "_test"
-
-// testDSN is the database these tests run against. Without it they skip rather
-// than fail, so `go test ./...` still works on a machine with no database. CI
-// sets it, which is what keeps them honest.
-//
-// A DSN that is set but unsafe is a failure, not a skip: skipping would turn a
-// misconfigured CI into a suite that silently tests nothing.
-func testDSN(t *testing.T) string {
-	t.Helper()
-	dsn := os.Getenv("AURIFY_TEST_DATABASE_URL")
-	if dsn == "" {
-		t.Skip("AURIFY_TEST_DATABASE_URL is not set, skipping the PostgreSQL integration tests")
-	}
-
-	u, err := url.Parse(dsn)
-	if err != nil {
-		t.Fatalf("AURIFY_TEST_DATABASE_URL is not a valid URL: %v", err)
-	}
-	name := strings.TrimPrefix(u.Path, "/")
-	if !strings.HasSuffix(name, testDBSuffix) {
-		// The DSN is deliberately not echoed back: it carries a password, and
-		// this message can end up in CI logs.
-		t.Fatalf(
-			"refusing to run: AURIFY_TEST_DATABASE_URL points at database %q, which does not end in %q.\n"+
-				"These tests TRUNCATE every table in the schema, so they must not be aimed at a database "+
-				"anyone is using. Create a disposable one and point the variable at it:\n"+
-				"  createdb %[1]s%[2]s\n"+
-				"then change the database name in AURIFY_TEST_DATABASE_URL to %[1]s%[2]s",
-			name, testDBSuffix,
-		)
-	}
-	return dsn
-}
-
 type fixture struct {
 	h     *Handler
 	store *postgres.Store
 	db    *pgx.Conn
 }
 
-// newFixture connects to PostgreSQL, applies the migrations and empties every
-// table, so each test starts from a known schema and no rows.
+// newFixture resets the schema through the shared harness, which also holds the
+// lock that keeps this package from truncating while another integration package
+// is mid-test.
 func newFixture(t *testing.T) *fixture {
 	t.Helper()
-	dsn := testDSN(t)
-	ctx := t.Context()
-
-	// Connect runs the goose migrations, so the schema under test is the real
-	// one rather than something the test hand-rolled.
-	store, err := postgres.Connect(ctx, dsn, crypto.DeriveKey([]byte("integration-test-seed")))
-	if err != nil {
-		t.Fatalf("connect to %s: %v", dsn, err)
-	}
-	t.Cleanup(store.Close)
-
-	db, err := pgx.Connect(ctx, dsn)
-	if err != nil {
-		t.Fatalf("open assertion connection: %v", err)
-	}
-	t.Cleanup(func() { _ = db.Close(context.WithoutCancel(ctx)) })
-
-	// Truncate everything except goose's bookkeeping. Enumerating the tables
-	// here would rot the moment a migration adds one.
-	if _, err := db.Exec(ctx, `
-		DO $$
-		DECLARE r record;
-		BEGIN
-			FOR r IN
-				SELECT tablename FROM pg_tables
-				WHERE schemaname = 'public' AND tablename <> 'goose_db_version'
-			LOOP
-				EXECUTE 'TRUNCATE TABLE ' || quote_ident(r.tablename) || ' CASCADE';
-			END LOOP;
-		END $$;`); err != nil {
-		t.Fatalf("reset schema: %v", err)
-	}
+	store, db := pgtest.Reset(t)
 
 	seed, err := auth.GenerateKeySeed()
 	if err != nil {

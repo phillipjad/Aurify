@@ -1,12 +1,15 @@
 package handlers
 
 import (
+	"net/http"
+
 	"github.com/fgrzl/mux"
 
 	"github.com/phillipjad/aurify/backend/internal/app"
 	"github.com/phillipjad/aurify/backend/internal/app/command/deletecover"
 	"github.com/phillipjad/aurify/backend/internal/app/command/generatecover"
 	"github.com/phillipjad/aurify/backend/internal/app/query/getcover"
+	"github.com/phillipjad/aurify/backend/internal/app/query/getcoverimage"
 	"github.com/phillipjad/aurify/backend/internal/app/query/listcovers"
 	"github.com/phillipjad/aurify/backend/internal/domain"
 	"github.com/phillipjad/aurify/backend/internal/transport/http/dto"
@@ -72,6 +75,48 @@ func (h *Covers) Get(c mux.RouteContext) {
 		return
 	}
 	c.OK(dto.NewCoverResponse(cover))
+}
+
+// Image serves the bytes behind a cover's imageUrl (query).
+// GET /api/v1/covers/{id}/image
+//
+// This route is anonymous, and deliberately so. It is what an <img> tag fetches,
+// and a tag loading cross-origin (the app on :5173, the API on :8080) does not
+// send credentials, so an authenticated route simply would not render. Cover ids
+// are UUIDv4, which is the unguessable-name trade
+// docs/adr/0014-hosted-generation-apis.md already accepted for its public
+// bucket.
+//
+// Because the route is AllowAnonymous, mux skips the authentication middleware
+// entirely and currentUser(c) would be empty even for a signed-in caller. Do not
+// add an ownership check here expecting it to work.
+func (h *Covers) Image(c mux.RouteContext) {
+	id, ok := c.Params().String("id")
+	if !ok {
+		c.BadRequest("missing id", "path parameter 'id' is required")
+		return
+	}
+
+	image, err := h.app.Queries.GetCoverImage.Handle(c, getcoverimage.Query{CoverID: id})
+	if err != nil {
+		respondError(c, err)
+		return
+	}
+
+	w := c.Response()
+	w.Header().Set("Content-Type", image.ContentType)
+	// The bytes for a given id never change: regenerating a playlist creates a
+	// new cover with a new id.
+	w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(image.Bytes)
+
+	// Content-Length is deliberately not set here. The router compresses
+	// responses, so the bytes on the wire are not len(image.Bytes), and a
+	// hand-set length made every browser abort the image with
+	// ERR_CONTENT_LENGTH_MISMATCH while curl fetched it happily: curl does not
+	// ask for gzip by default, browsers always do. Whatever writes the body last
+	// is what knows how long it is.
 }
 
 // Delete removes one of the current user's covers (command).

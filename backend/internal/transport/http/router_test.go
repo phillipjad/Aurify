@@ -1,10 +1,12 @@
 package http
 
 import (
+	"bytes"
 	"context"
 	"crypto/ed25519"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -12,6 +14,7 @@ import (
 	"github.com/phillipjad/aurify/backend/internal/app"
 	"github.com/phillipjad/aurify/backend/internal/app/command"
 	"github.com/phillipjad/aurify/backend/internal/app/query"
+	"github.com/phillipjad/aurify/backend/internal/app/query/getcoverimage"
 	"github.com/phillipjad/aurify/backend/internal/domain"
 	"github.com/phillipjad/aurify/backend/internal/platform/auth"
 	"github.com/phillipjad/aurify/backend/internal/platform/dsp"
@@ -43,6 +46,25 @@ func (fakeDSP) ListTracks(context.Context, domain.DSPConnection, string) ([]doma
 	return nil, nil
 }
 
+// knownCoverID is the only cover the fake image store knows about.
+const knownCoverID = "0f8fad5b-d9cb-469f-a165-70867728950e"
+
+var knownCoverBytes = []byte{0x89, 'P', 'N', 'G', 0x00, 0xFF}
+
+// storedImage is a fake ports.ImageStore holding exactly one image.
+type storedImage struct{}
+
+func (storedImage) Put(context.Context, string, domain.GeneratedImage) (string, error) {
+	return "", nil
+}
+
+func (storedImage) Find(_ context.Context, coverID string) (domain.GeneratedImage, error) {
+	if coverID != knownCoverID {
+		return domain.GeneratedImage{}, domain.ErrNotFound
+	}
+	return domain.GeneratedImage{Bytes: knownCoverBytes, ContentType: "image/png"}, nil
+}
+
 // newTestRouter builds the real router, so route configuration is under test
 // rather than stubbed. It returns the router and a signed access token for
 // "user-1".
@@ -72,7 +94,12 @@ func newTestRouter(t *testing.T) (http.Handler, string) {
 	}
 
 	router, err := NewRouter(Deps{
-		Application:  &app.App{Commands: &command.Bus{}, Queries: &query.Bus{}},
+		Application: &app.App{
+			Commands: &command.Bus{},
+			Queries: &query.Bus{
+				GetCoverImage: getcoverimage.NewHandler(storedImage{}),
+			},
+		},
 		Providers:    dsp.NewRegistry(fakeDSP{}),
 		Version:      "test",
 		Verifier:     verifier,
@@ -123,5 +150,72 @@ func TestDSPLoginRejectsAnonymousCallers(t *testing.T) {
 
 	if rec.Code != http.StatusUnauthorized {
 		t.Fatalf("status = %d, want %d", rec.Code, http.StatusUnauthorized)
+	}
+}
+
+// The image route must serve an anonymous caller. An <img> tag fetching this
+// cross-origin (app on :5173, API on :8080) sends no credentials, so requiring a
+// session would mean every cover in the gallery renders as a broken image.
+func TestCoverImageServesAnonymousCallers(t *testing.T) {
+	router, _ := newTestRouter(t)
+
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, httptest.NewRequest(
+		http.MethodGet, "/api/v1/covers/"+knownCoverID+"/image", nil))
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 (body: %s)", rec.Code, rec.Body.String())
+	}
+	if got := rec.Body.Bytes(); !bytes.Equal(got, knownCoverBytes) {
+		t.Errorf("body = %x, want the stored bytes %x", got, knownCoverBytes)
+	}
+	// Without this the browser guesses, and a sniffed type is what turns a valid
+	// image into a download prompt.
+	if got := rec.Header().Get("Content-Type"); got != "image/png" {
+		t.Errorf("Content-Type = %q, want image/png", got)
+	}
+}
+
+// A cover with no stored image is a 404, not a 500: it is an ordinary state
+// while a generation is still running.
+func TestCoverImageIsNotFoundWhenAbsent(t *testing.T) {
+	router, _ := newTestRouter(t)
+
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, httptest.NewRequest(
+		http.MethodGet, "/api/v1/covers/11111111-2222-3333-4444-555555555555/image", nil))
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want 404 (body: %s)", rec.Code, rec.Body.String())
+	}
+}
+
+// Browsers always send Accept-Encoding: gzip and the router compresses, so a
+// hand-set Content-Length describes the uncompressed body and never matches the
+// bytes on the wire. Chrome aborts that with ERR_CONTENT_LENGTH_MISMATCH, and
+// every cover in the gallery renders broken; curl hides it, because curl does
+// not ask for compression by default.
+func TestCoverImageLengthMatchesTheCompressedBody(t *testing.T) {
+	router, _ := newTestRouter(t)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/covers/"+knownCoverID+"/image", nil)
+	req.Header.Set("Accept-Encoding", "gzip")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	declared := rec.Header().Get("Content-Length")
+	if declared == "" {
+		return // Nothing claimed, so nothing to contradict.
+	}
+	want, err := strconv.Atoi(declared)
+	if err != nil {
+		t.Fatalf("Content-Length = %q, not a number", declared)
+	}
+	if got := rec.Body.Len(); got != want {
+		t.Errorf("Content-Length says %d but the body is %d bytes (encoding %q)",
+			want, got, rec.Header().Get("Content-Encoding"))
 	}
 }

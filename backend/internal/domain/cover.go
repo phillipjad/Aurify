@@ -31,3 +31,13 @@ type Cover struct {
 	CreatedAt    time.Time
 	UpdatedAt    time.Time
 }
+
+// GeneratedImage is the rendered cover art before it has been stored anywhere.
+//
+// ContentType travels with the bytes because it is the provider that decides it:
+// some image APIs return JPEG and others PNG, and the route that later serves the
+// bytes has nothing else to go on.
+type GeneratedImage struct {
+	Bytes       []byte
+	ContentType string
+}

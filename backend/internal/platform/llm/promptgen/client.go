@@ -1,10 +1,14 @@
-// Package promptgen talks to the local prompt-generation LLM sidecar, which
-// turns a PlaylistAnalysis into an image-generation prompt.
+// Package promptgen turns a PlaylistAnalysis into an image-generation prompt by
+// calling a text model over the OpenAI chat-completions API.
 //
-// SCAFFOLD: the sidecar service itself is intentionally not built yet (see
-// docs/adr/0006-llm-sidecars.md). When AURIFY_PROMPTGEN_URL is unset the client
-// returns a deterministic placeholder prompt so the end-to-end pipeline stays
-// runnable during development.
+// That API shape is the reason there is one adapter rather than one per vendor:
+// Ollama serves it on localhost, and so do Groq, OpenRouter, Cerebras and OpenAI
+// itself, so moving between a local model and a hosted one is a change of base
+// URL rather than of code (see docs/adr/0016-generation-providers.md).
+//
+// When AURIFY_PROMPTGEN_URL is unset the client returns a deterministic
+// placeholder prompt, so a checkout with no model configured still produces
+// covers end to end.
 package promptgen
 
 import (
@@ -20,29 +24,89 @@ import (
 	"github.com/phillipjad/aurify/backend/internal/domain"
 )
 
-// Client is an HTTP client for the prompt-generation sidecar.
+// Client is an OpenAI-compatible chat-completions client.
 type Client struct {
 	baseURL string
+	model   string
+	apiKey  string
 	client  *http.Client
 }
 
 var _ ports.PromptGenerator = (*Client)(nil)
 
 // New constructs a prompt-generation client. An empty baseURL enables the
-// local placeholder behavior.
-func New(baseURL string) *Client {
+// placeholder behavior. apiKey may be empty: Ollama requires no credential, and
+// the header is omitted rather than sent blank so it cannot be mistaken for one.
+func New(baseURL, model, apiKey string) *Client {
 	return &Client{
 		baseURL: strings.TrimRight(baseURL, "/"),
+		model:   model,
+		apiKey:  apiKey,
 		client:  &http.Client{Timeout: 60 * time.Second},
 	}
 }
 
-type generateRequest struct {
-	Analysis domain.PlaylistAnalysis `json:"analysis"`
+// systemPrompt fixes the output contract. The response is used verbatim as the
+// image model's input, so anything conversational around it would be rendered.
+//
+// It deliberately does not name a house style. An earlier version asked for
+// "composition, texture, light and color", which reliably produced painterly
+// impasto for every playlist: the wording, not the music, was choosing the look.
+// What the cover looks like comes from the visual language in the user message,
+// which is derived from the palette.
+const systemPrompt = `You write prompts for an image generation model that ` +
+	`produces abstract album cover art.
+
+You are given a playlist's color palette and a visual language, both weighted. ` +
+	`Reply with exactly one image prompt that blends them in roughly those ` +
+	`proportions: a dimension at 50% should dominate the image, one at 10% should ` +
+	`be a trace. Do not pick a single style and ignore the rest, and do not fall ` +
+	`back on a default look of your own.
+
+Reply with the prompt itself and nothing else: no preamble, no explanation, no ` +
+	`quotation marks, no markdown. Never ask for text, lettering or words to ` +
+	`appear in the image. Keep it under 80 words.`
+
+// visualLanguage maps a palette dimension to the look it contributes.
+//
+// The keys are the dimension names in internal/analysis/weights.go. Style is
+// driven by the same weights as color, so the two cannot disagree, and a
+// playlist that is 60% melancholic gets a cover that is 60% that atmosphere
+// rather than a painterly one with purple in it.
+//
+// ponytail: an unknown dimension is skipped rather than failing. Adding one in
+// weights.go without adding it here quietly loses its contribution to the look;
+// the palette still carries its color.
+var visualLanguage = map[string]string{
+	"energetic":     "sharp angular fragments, kinetic diagonals, hard edges",
+	"danceable":     "repeating rhythmic geometry, pattern and pulse",
+	"euphoric":      "radiant blooming light, soft bursts, high key",
+	"organic":       "natural grain, fibre and weathered surfaces",
+	"introspective": "sparse minimal geometry, wide negative space, stillness",
+	"melancholic":   "soft diffuse washes, heavy atmosphere, low light",
+	"intimate":      "close fine detail, delicate line work, small scale",
 }
 
-type generateResponse struct {
-	Prompt string `json:"prompt"`
+type chatMessage struct {
+	Role    string `json:"role"`
+	Content string `json:"content"`
+}
+
+type chatRequest struct {
+	Model    string        `json:"model"`
+	Messages []chatMessage `json:"messages"`
+	Stream   bool          `json:"stream"`
+}
+
+type chatResponse struct {
+	Choices []struct {
+		Message chatMessage `json:"message"`
+	} `json:"choices"`
+	// Error is the OpenAI-shaped error body, which every compatible provider
+	// returns with a far more useful message than the status code alone.
+	Error *struct {
+		Message string `json:"message"`
+	} `json:"error"`
 }
 
 // GeneratePrompt returns an image prompt for the analysis.
@@ -51,34 +115,115 @@ func (c *Client) GeneratePrompt(ctx context.Context, analysis domain.PlaylistAna
 		return placeholderPrompt(analysis), nil
 	}
 
-	body, err := json.Marshal(generateRequest{Analysis: analysis})
+	body, err := json.Marshal(chatRequest{
+		Model: c.model,
+		Messages: []chatMessage{
+			{Role: "system", Content: systemPrompt},
+			{Role: "user", Content: describeAnalysis(analysis)},
+		},
+		Stream: false,
+	})
 	if err != nil {
 		return "", err
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/generate", bytes.NewReader(body))
+
+	req, err := http.NewRequestWithContext(
+		ctx, http.MethodPost, c.baseURL+"/chat/completions", bytes.NewReader(body),
+	)
 	if err != nil {
 		return "", err
 	}
 	req.Header.Set("Content-Type", "application/json")
+	if c.apiKey != "" {
+		req.Header.Set("Authorization", "Bearer "+c.apiKey)
+	}
 
 	resp, err := c.client.Do(req)
 	if err != nil {
 		return "", err
 	}
 	defer func() { _ = resp.Body.Close() }()
+
+	// Decoded before the status is checked, because the body is where providers
+	// explain a 400.
+	var out chatResponse
+	decodeErr := json.NewDecoder(resp.Body).Decode(&out)
+	if out.Error != nil && out.Error.Message != "" {
+		return "", fmt.Errorf("promptgen: %s", out.Error.Message)
+	}
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("promptgen: sidecar returned status %d", resp.StatusCode)
+		return "", fmt.Errorf("promptgen: provider returned status %d", resp.StatusCode)
+	}
+	if decodeErr != nil {
+		return "", decodeErr
+	}
+	if len(out.Choices) == 0 {
+		return "", fmt.Errorf("promptgen: provider returned no choices")
 	}
 
-	var out generateResponse
-	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
-		return "", err
+	prompt := strings.TrimSpace(stripThinking(out.Choices[0].Message.Content))
+	if prompt == "" {
+		return "", fmt.Errorf("promptgen: provider returned an empty prompt")
 	}
-	return out.Prompt, nil
+	return prompt, nil
+}
+
+// stripThinking removes a leading reasoning block. Reasoning models emit one
+// inline whenever the provider does not split it into its own field, and it
+// would otherwise be handed to the image model as part of the prompt.
+func stripThinking(s string) string {
+	trimmed := strings.TrimSpace(s)
+	if !strings.HasPrefix(trimmed, "<think>") {
+		return s
+	}
+	if _, after, ok := strings.Cut(trimmed, "</think>"); ok {
+		return after
+	}
+	// An unterminated block means the model spent its whole budget thinking;
+	// there is no prompt in there to salvage.
+	return ""
+}
+
+// describeAnalysis renders the analysis as the plain text the model reasons
+// over. Weights are percentages because they read as relative emphasis, which is
+// what they are, where three decimal places read as false precision.
+func describeAnalysis(a domain.PlaylistAnalysis) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "A playlist of %d tracks.\n\nPalette, most dominant first:\n", a.TrackCount)
+	for _, c := range a.Palette {
+		if c.Weight < 0.01 {
+			continue
+		}
+		fmt.Fprintf(&b, "- %s, %s, %.0f%%\n", c.Dimension, c.HexColor, c.Weight*100)
+	}
+
+	// The same weights again, as look rather than color. Emitted as its own
+	// section so the model is asked to blend two aligned things rather than to
+	// infer a style from hex codes.
+	b.WriteString("\nVisual language, blend in these proportions:\n")
+	for _, c := range a.Palette {
+		if c.Weight < 0.01 {
+			continue
+		}
+		if language, ok := visualLanguage[c.Dimension]; ok {
+			fmt.Fprintf(&b, "- %.0f%% %s\n", c.Weight*100, language)
+		}
+	}
+
+	if a.MeanSentiment.HasLyrics {
+		fmt.Fprintf(&b,
+			"\nMean lyric sentiment: polarity %.2f on a scale of -1 (bleak) to 1 (joyful), "+
+				"subjectivity %.2f on a scale of 0 (detached) to 1 (personal).\n",
+			a.MeanSentiment.Polarity, a.MeanSentiment.Subjectivity,
+		)
+	} else {
+		b.WriteString("\nNo lyrics were available for these tracks.\n")
+	}
+	return b.String()
 }
 
 // placeholderPrompt builds a deterministic prompt from the dominant palette
-// dimensions and their colors. It mirrors the shape of a real sidecar's output.
+// dimensions and their colors, for when no model is configured.
 func placeholderPrompt(a domain.PlaylistAnalysis) string {
 	var b strings.Builder
 	b.WriteString("Abstract album cover: a pleasing amalgamation of geometric shapes, ")

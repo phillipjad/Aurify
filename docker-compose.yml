@@ -7,10 +7,8 @@
 #   ./start_container.sh -dm postgres mailpit   # dependencies only
 #   ./start_container.sh -mb                    # the whole stack, rebuilt
 #
-# The two LLM sidecars are placeholders: the services are not built yet
-# (see docs/adr/0006-llm-sidecars.md). The backend falls back to deterministic
-# placeholders when AURIFY_PROMPTGEN_URL / AURIFY_IMAGEGEN_URL are unset, so you
-# do not need these to run the API.
+# No model services: prompts come from Ollama on the host, images from Cloudflare.
+# See docs/environment-variables.md.
 
 services:
   backend:
@@ -46,6 +44,9 @@ services:
     environment:
       AURIFY_DATABASE_URL: postgres://aurify:aurify@postgres:5432/aurify?sslmode=disable
       AURIFY_HTTP_ADDR: :8080
+    # So AURIFY_PROMPTGEN_URL can reach Ollama on the host. Linux needs this.
+    extra_hosts:
+      - 'host.docker.internal:host-gateway'
     ports:
       - '8080:8080'
     depends_on:
@@ -99,16 +100,6 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
-
-  # --- Placeholders for future work (commented out until the sidecars exist) ---
-  #
-  # promptgen:
-  #   build: ./sidecars/promptgen        # POST /generate {analysis} -> {prompt}
-  #   ports: ['9101:9101']
-  #
-  # imagegen:
-  #   build: ./sidecars/imagegen         # POST /generate {prompt}   -> {imageUrl}
-  #   ports: ['9102:9102']
 
 volumes:
   # `pg-data` is a named volume, but the local driver's bind options pin its

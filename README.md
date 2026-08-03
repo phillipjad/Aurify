@@ -47,6 +47,7 @@ aurify/
 ├── frontend/           # React 19 PWA (Vite+, TanStack, Tailwind)
 ├── deploy/             # OpenTofu: app/ (Cloud Run + secrets) and database/ (Neon)
 ├── docs/adr/           # Architecture Decision Records
+├── docs/environment-variables.md  # every setting the API reads
 ├── scripts/            # dev-setup.sh — generates the local backend/.env.dev
 ├── docker-compose.yml  # PostgreSQL + Mailpit (local SMTP capture)
 ├── start_container.sh  # runs the whole stack in Docker
@@ -100,10 +101,10 @@ Toolchain versions: Go 1.26.3 · Node 24.16.0 · pnpm 11.5.0 · PostgreSQL 17.
 
 - **DSP integrations** — interfaces + registry are real; network calls return
   "not implemented" ([`backend/internal/platform/dsp`](backend/internal/platform/dsp), [ADR 0005](docs/adr/0005-dsp-provider-abstraction.md)).
-- **Prompt + image generation** — the ports are real and fall back to
-  deterministic placeholders; the hosted-API adapters aren't written yet
-  ([`backend/internal/platform/llm`](backend/internal/platform/llm), [ADR 0014](docs/adr/0014-hosted-generation-apis.md),
-  which supersedes the local-sidecar plan in [ADR 0006](docs/adr/0006-llm-sidecars.md)).
+- **Prompt + image generation** — built; placeholders when unconfigured
+  ([`backend/internal/platform/llm`](backend/internal/platform/llm),
+  [ADR 0016](docs/adr/0016-generation-providers.md)). Covers still look alike
+  until the analysis improves ([#68](https://github.com/phillipjad/Aurify/issues/68)).
 - **Admin tooling for lockouts** — a permanently blocked `(IP, address)` pair
   can currently only be cleared by an operator deleting the row
   ([ADR 0012](docs/adr/0012-account-lockout-policy.md)). Authentication itself
