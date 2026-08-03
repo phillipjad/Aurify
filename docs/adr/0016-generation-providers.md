@@ -56,9 +56,25 @@ unsettling beauty". The refusal tracks wording rather than content, so the same
 playlist passes on a retry. There is no parameter to disable or tune it, the
 request to add one has been open since October 2024, and public reports include
 the single word "hamburger" being refused. That error, code 3030, is documented
-only against the FLUX endpoints, so the same account and allowance work through
-`@cf/leonardo/lucid-origin` instead. Measured on the two playlists FLUX refused:
-**8 generations, 0 refusals**, against FLUX's 2 in 8.
+only against the FLUX endpoints. Measured on the two playlists FLUX refused, a
+non-FLUX model produced **8 generations, 0 refusals**, against FLUX's 2 in 8.
+
+**Cost then decided which non-FLUX model**, and the spread is three orders of
+magnitude. Per Workers AI's own model API:
+
+| Model | Price | 1024x1024 images/day on the free allowance |
+|---|---|---|
+| `stable-diffusion-xl-lightning` | $0 per step | unmetered |
+| `stable-diffusion-xl-base-1.0` | $0 per step | unmetered |
+| `flux-1-schnell` | $0.0000528 per 512x512 tile | ~170, but refuses prompts |
+| `phoenix-1.0` | $0.00583 per tile | ~5 |
+| `lucid-origin` | $0.007 per tile | ~4 |
+
+`lucid-origin` was tried first on the assumption that newer meant better, and ten
+generations flattened an entire day's 10,000 neurons. The Stability models are
+the only ones both unfiltered and usable at zero cost, so
+`stable-diffusion-xl-lightning` is the default. Note the cap gates all inference
+once exceeded, including models priced at $0.
 
 The account id is configured on its own and the endpoint is assembled in code.
 Everything but the account and model is fixed, so asking for the whole URL would
@@ -68,8 +84,9 @@ an afternoon to a trailing character.
 Workers AI answers in two shapes depending on the model: newer ones wrap base64
 in Cloudflare's JSON envelope, the Stable Diffusion ones stream the image. The
 adapter switches on the response content type rather than the model name, so
-trying another model stays a configuration change. That matters more than usual
-here, since model-shopping is how this provider was made usable.
+trying another model stays a configuration change. That earned itself twice over:
+model-shopping on refusal rate and then on price is how this provider was made
+usable at all.
 
 **`ImageGenerator` returns bytes, not a URL.** Image APIs return the image
 itself, or a link that expires within the hour. A new `ports.ImageStore` decides
@@ -120,6 +137,11 @@ covers the route serving without a session.
   result: Chrome aborts with `ERR_CONTENT_LENGTH_MISMATCH` while curl fetches it
   happily, because curl does not ask for gzip by default. A router test asserts
   the declared length against the compressed body.
+- The prompt carries a weighted **visual language** derived from the same palette
+  dimensions as the colors, so style and color cannot disagree and a dominant
+  dimension dominates the look. It replaced a system prompt that asked for
+  "composition, texture, light and color", which made every cover painterly
+  regardless of input: the wording, not the music, was choosing the style.
 - Covers still look alike, because the analysis feeding the prompt is
   near-constant for YouTube Music
   ([issue #68](https://github.com/phillipjad/Aurify/issues/68)). Real models do

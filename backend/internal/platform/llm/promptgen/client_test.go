@@ -210,3 +210,62 @@ func TestDescribesAPlaylistWithoutLyrics(t *testing.T) {
 		t.Errorf("a neutral zero should not be reported as a measurement:\n%s", got)
 	}
 }
+
+// Style is derived from the palette weights rather than chosen by the model, so
+// a dominant dimension must reach the prompt as a dominant look. Without this
+// the model falls back on a house style and every cover looks alike regardless
+// of the analysis.
+func TestVisualLanguageIsWeightedByTheSameDimensions(t *testing.T) {
+	a := domain.PlaylistAnalysis{
+		TrackCount: 9,
+		Palette: []domain.ColorWeight{
+			{Dimension: "introspective", HexColor: "#4F86C6", Weight: 0.7},
+			{Dimension: "energetic", HexColor: "#FF5A36", Weight: 0.3},
+		},
+	}
+
+	got := describeAnalysis(a)
+	for _, want := range []string{
+		"70% sparse minimal geometry",
+		"30% sharp angular fragments",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("missing %q:\n%s", want, got)
+		}
+	}
+	// The dominant dimension has to come first, since the model is asked to
+	// blend "in these proportions" and reads the order as emphasis.
+	if strings.Index(got, "sparse minimal") > strings.Index(got, "sharp angular") {
+		t.Errorf("the dominant dimension is listed second:\n%s", got)
+	}
+}
+
+// Every dimension the analysis engine can produce needs a look, or its weight
+// silently contributes color without contributing style.
+func TestEveryPaletteDimensionHasAVisualLanguage(t *testing.T) {
+	// Mirrors internal/analysis/weights.go. Duplicated rather than imported: an
+	// adapter reaching into the analysis engine would invert the dependency rule.
+	for _, dimension := range []string{
+		"energetic", "danceable", "euphoric", "organic",
+		"introspective", "melancholic", "intimate",
+	} {
+		if _, ok := visualLanguage[dimension]; !ok {
+			t.Errorf("dimension %q has no visual language", dimension)
+		}
+	}
+}
+
+// A negligible dimension is noise in an 80-word prompt, and the palette lists
+// all seven every time.
+func TestNegligibleDimensionsAreOmitted(t *testing.T) {
+	a := domain.PlaylistAnalysis{
+		Palette: []domain.ColorWeight{
+			{Dimension: "melancholic", HexColor: "#5C4D7D", Weight: 0.995},
+			{Dimension: "danceable", HexColor: "#FFB23E", Weight: 0.005},
+		},
+	}
+
+	if got := describeAnalysis(a); strings.Contains(got, "rhythmic geometry") {
+		t.Errorf("a 0.5%% dimension reached the prompt:\n%s", got)
+	}
+}

@@ -125,7 +125,7 @@ func Load() Config {
 		ImageGen: ImageGenConfig{
 			BaseURL:   env("AURIFY_IMAGEGEN_URL", ""),
 			AccountID: env("AURIFY_IMAGEGEN_ACCOUNT_ID", ""),
-			Model:     env("AURIFY_IMAGEGEN_MODEL", "@cf/leonardo/lucid-origin"),
+			Model:     env("AURIFY_IMAGEGEN_MODEL", "@cf/bytedance/stable-diffusion-xl-lightning"),
 			APIKey:    env("AURIFY_IMAGEGEN_API_KEY", ""),
 		},
 		CORSOrigins:  splitList(env("AURIFY_CORS_ORIGINS", "http://localhost:5173")),

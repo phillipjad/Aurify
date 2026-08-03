@@ -48,16 +48,44 @@ func New(baseURL, model, apiKey string) *Client {
 
 // systemPrompt fixes the output contract. The response is used verbatim as the
 // image model's input, so anything conversational around it would be rendered.
+//
+// It deliberately does not name a house style. An earlier version asked for
+// "composition, texture, light and color", which reliably produced painterly
+// impasto for every playlist: the wording, not the music, was choosing the look.
+// What the cover looks like comes from the visual language in the user message,
+// which is derived from the palette.
 const systemPrompt = `You write prompts for an image generation model that ` +
 	`produces abstract album cover art.
 
-Given a description of a playlist's mood and color palette, reply with exactly ` +
-	`one image prompt. Describe composition, texture, light and color. Use the ` +
-	`palette's colors, weighted by how dominant they are.
+You are given a playlist's color palette and a visual language, both weighted. ` +
+	`Reply with exactly one image prompt that blends them in roughly those ` +
+	`proportions: a dimension at 50% should dominate the image, one at 10% should ` +
+	`be a trace. Do not pick a single style and ignore the rest, and do not fall ` +
+	`back on a default look of your own.
 
 Reply with the prompt itself and nothing else: no preamble, no explanation, no ` +
 	`quotation marks, no markdown. Never ask for text, lettering or words to ` +
 	`appear in the image. Keep it under 80 words.`
+
+// visualLanguage maps a palette dimension to the look it contributes.
+//
+// The keys are the dimension names in internal/analysis/weights.go. Style is
+// driven by the same weights as color, so the two cannot disagree, and a
+// playlist that is 60% melancholic gets a cover that is 60% that atmosphere
+// rather than a painterly one with purple in it.
+//
+// ponytail: an unknown dimension is skipped rather than failing. Adding one in
+// weights.go without adding it here quietly loses its contribution to the look;
+// the palette still carries its color.
+var visualLanguage = map[string]string{
+	"energetic":     "sharp angular fragments, kinetic diagonals, hard edges",
+	"danceable":     "repeating rhythmic geometry, pattern and pulse",
+	"euphoric":      "radiant blooming light, soft bursts, high key",
+	"organic":       "natural grain, fibre and weathered surfaces",
+	"introspective": "sparse minimal geometry, wide negative space, stillness",
+	"melancholic":   "soft diffuse washes, heavy atmosphere, low light",
+	"intimate":      "close fine detail, delicate line work, small scale",
+}
 
 type chatMessage struct {
 	Role    string `json:"role"`
@@ -167,6 +195,19 @@ func describeAnalysis(a domain.PlaylistAnalysis) string {
 			continue
 		}
 		fmt.Fprintf(&b, "- %s, %s, %.0f%%\n", c.Dimension, c.HexColor, c.Weight*100)
+	}
+
+	// The same weights again, as look rather than color. Emitted as its own
+	// section so the model is asked to blend two aligned things rather than to
+	// infer a style from hex codes.
+	b.WriteString("\nVisual language, blend in these proportions:\n")
+	for _, c := range a.Palette {
+		if c.Weight < 0.01 {
+			continue
+		}
+		if language, ok := visualLanguage[c.Dimension]; ok {
+			fmt.Fprintf(&b, "- %.0f%% %s\n", c.Weight*100, language)
+		}
 	}
 
 	if a.MeanSentiment.HasLyrics {
