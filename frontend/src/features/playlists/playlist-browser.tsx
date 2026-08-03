@@ -20,6 +20,7 @@ import { PlatformPicker } from './platform-picker'
 import {
   connectErrorMessage,
   DEFAULT_PLATFORM,
+  PLATFORMS,
   platformLabel,
   readLastPlatform,
   rememberLastPlatform,
@@ -47,11 +48,21 @@ export function PlaylistBrowser() {
   const urlSearch = typeof params.q === 'string' ? params.q : ''
   const sort = toPlaylistSort(params.sort) ?? 'name'
 
+  const session = useSession()
+
+  // A platform the user has actually linked, preferred over the hardcoded
+  // default. Without this someone who has connected only YouTube Music opens the
+  // page on Spotify and is told to "Connect Spotify" — which reads as the
+  // connection having failed, when the session knew about it the whole time. It
+  // bites on any device with no remembered preference: a new browser, cleared
+  // storage, or a private window.
+  const firstConnected = PLATFORMS.find((p) => session.data?.connections?.includes(p))
+
   // Resolution order matters. An explicit platform in the URL wins, so a shared
   // link shows what it says; then the platform a callback just connected; then
   // whatever was used last, which is what makes the header's Playlists link
-  // return somewhere useful; then the default.
-  const platform = toPlatform(params.platform) ?? connected ?? readLastPlatform() ?? DEFAULT_PLATFORM
+  // return somewhere useful; then anything connected; then the default.
+  const platform = toPlatform(params.platform) ?? connected ?? readLastPlatform() ?? firstConnected ?? DEFAULT_PLATFORM
 
   // The search box keeps its own copy so typing stays instant. The URL gets the
   // settled term, since navigating on every keystroke would put a history entry
@@ -72,14 +83,19 @@ export function PlaylistBrowser() {
 
   // Remembered on every resolved value, not just on a click, so a deep link or a
   // returning OAuth callback also becomes the thing to come back to.
+  //
+  // Not while the session is still loading, though: the resolution above falls
+  // back to Spotify until the connection list arrives, and writing that would
+  // make the remembered value beat the connected one on the very next read,
+  // permanently pinning the user to a platform they never chose.
   useEffect(() => {
+    if (session.isPending) return
     rememberLastPlatform(platform)
-  }, [platform])
+  }, [platform, session.isPending])
 
   const playlists = usePlaylists({ platform, search: urlSearch, sort })
   const generate = useGenerateCover()
   const generationFor = useCoverGenerations()
-  const session = useSession()
 
   const activeLabel = platformLabel(platform)
   // The session reports which platforms are linked, so the button can say so
