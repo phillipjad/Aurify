@@ -226,6 +226,16 @@ func (p *Provider) fetchPlaylistByID(
 	return mapPlaylist(resp.Items[0]), nil
 }
 
+// GetPlaylist reads a single playlist by id.
+func (p *Provider) GetPlaylist(
+	ctx context.Context,
+	conn domain.DSPConnection,
+	playlistID string,
+) (domain.Playlist, error) {
+	ctx = p.withHTTPClient(ctx)
+	return p.fetchPlaylistByID(ctx, p.authedClient(ctx, conn), playlistID)
+}
+
 // ListTracks returns the normalized tracks of a playlist. Durations require a
 // second videos.list call since playlistItems.list does not expose them.
 func (p *Provider) ListTracks(

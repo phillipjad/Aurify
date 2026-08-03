@@ -63,12 +63,25 @@ func (h *Handler) Handle(ctx context.Context, cmd Command) (string, error) {
 		return "", err
 	}
 
+	// The name is what the gallery labels a cover with, and it is read here rather
+	// than taken from the request: the API declares it required on the response, so
+	// whether a cover is identifiable should not depend on the caller supplying it.
+	//
+	// Best effort on purpose. A cover with no label is a poor outcome; failing a
+	// generation the user asked for because a label could not be fetched is a worse
+	// one.
+	playlistName := ""
+	if playlist, perr := provider.GetPlaylist(ctx, conn, cmd.PlaylistID); perr == nil {
+		playlistName = playlist.Name
+	}
+
 	cover := &domain.Cover{
-		UserID:     cmd.UserID,
-		Platform:   cmd.Platform,
-		PlaylistID: cmd.PlaylistID,
-		Status:     domain.CoverStatusAnalyzing,
-		CreatedAt:  time.Now().UTC(),
+		UserID:       cmd.UserID,
+		Platform:     cmd.Platform,
+		PlaylistID:   cmd.PlaylistID,
+		PlaylistName: playlistName,
+		Status:       domain.CoverStatusAnalyzing,
+		CreatedAt:    time.Now().UTC(),
 	}
 	if err := h.covers.Save(ctx, cover); err != nil {
 		return "", err

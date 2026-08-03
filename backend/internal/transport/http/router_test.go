@@ -33,6 +33,9 @@ func (fakeDSP) RefreshConnection(
 ) (domain.DSPConnection, bool, error) {
 	return conn, false, nil
 }
+func (fakeDSP) GetPlaylist(context.Context, domain.DSPConnection, string) (domain.Playlist, error) {
+	return domain.Playlist{}, nil
+}
 func (fakeDSP) ListPlaylists(context.Context, domain.DSPConnection) ([]domain.Playlist, error) {
 	return nil, nil
 }

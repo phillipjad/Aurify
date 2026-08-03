@@ -12,7 +12,7 @@ import { Card } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useSession } from '@/lib/api/auth'
 import { isApiError } from '@/lib/api/client'
-import { connectDsp, useGenerateCover } from '@/lib/api/commands'
+import { connectDsp, useCoverGenerations, useGenerateCover, type CoverGeneration } from '@/lib/api/commands'
 import { usePlaylists, type PlaylistSort } from '@/lib/api/queries'
 import { useDebouncedValue } from '@/lib/use-debounced-value'
 import type { Platform, Playlist } from '@/lib/api/types'
@@ -78,6 +78,7 @@ export function PlaylistBrowser() {
 
   const playlists = usePlaylists({ platform, search: urlSearch, sort })
   const generate = useGenerateCover()
+  const generationFor = useCoverGenerations()
   const session = useSession()
 
   const activeLabel = platformLabel(platform)
@@ -145,11 +146,6 @@ export function PlaylistBrowser() {
   function selectSort(next: PlaylistSort) {
     void navigate({ to: '/playlists', search: (prev) => ({ ...prev, sort: next }), replace: true })
   }
-
-  // The mutation is shared across the list, so derive per-row state from the
-  // variables it was last called with. Without this, one in-flight generation
-  // would disable every row's button with no sign of which one is running.
-  const inFlightId = generate.isPending ? generate.variables?.playlistId : undefined
 
   // No platform comparison needed any more. The callback redirects with the
   // platform it was for, that value is the selection, and switching away strips
@@ -267,14 +263,11 @@ export function PlaylistBrowser() {
                     >
                       <PlaylistRow
                         playlist={playlist}
-                        generating={inFlightId === playlist.id}
-                        // Only the row that was acted on reports the outcome.
-                        error={
-                          generate.isError && generate.variables?.playlistId === playlist.id
-                            ? generate.error
-                            : undefined
-                        }
-                        succeeded={generate.isSuccess && generate.variables?.playlistId === playlist.id}
+                        // Each row reads its own generation, so several can run at
+                        // once and report separately. Derived from the mutation
+                        // cache rather than one shared hook result, which only ever
+                        // described the most recent click.
+                        generation={generationFor(playlist.id)}
                         onGenerate={() => generate.mutate({ platform, playlistId: playlist.id })}
                       />
                     </li>
@@ -306,9 +299,7 @@ export function PlaylistBrowser() {
 
 interface PlaylistRowProps {
   playlist: Playlist
-  generating: boolean
-  error?: unknown
-  succeeded: boolean
+  generation: CoverGeneration
   onGenerate: () => void
 }
 
@@ -316,7 +307,11 @@ interface PlaylistRowProps {
  * One row's content. The surrounding <li> belongs to the windowed list, which has
  * to position it absolutely, so this renders the card and nothing structural.
  */
-function PlaylistRow({ playlist, generating, error, succeeded, onGenerate }: PlaylistRowProps) {
+function PlaylistRow({ playlist, generation, onGenerate }: PlaylistRowProps) {
+  const generating = generation.status === 'pending'
+  const error = generation.status === 'error' ? generation.error : undefined
+  const succeeded = generation.status === 'success'
+
   return (
     <>
       <Card className="flex flex-wrap items-center gap-4 p-3 sm:flex-nowrap">

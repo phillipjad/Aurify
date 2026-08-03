@@ -39,6 +39,14 @@ func (p *fakeProvider) RefreshConnection(
 	return p.refreshed, true, nil
 }
 
+func (p *fakeProvider) GetPlaylist(
+	_ context.Context,
+	_ domain.DSPConnection,
+	_ string,
+) (domain.Playlist, error) {
+	return domain.Playlist{}, nil
+}
+
 func (p *fakeProvider) ListPlaylists(context.Context, domain.DSPConnection) ([]domain.Playlist, error) {
 	return nil, nil
 }
