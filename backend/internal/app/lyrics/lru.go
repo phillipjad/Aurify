@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"compress/flate"
 	"container/list"
+	"errors"
 	"io"
 	"sync"
 	"time"
@@ -136,15 +137,31 @@ func (c *memoryCache) put(entry domain.CachedLyrics) {
 	}
 }
 
+// Codecs are pooled because constructing one is far more expensive than using
+// it: a flate writer allocates its whole compression window up front, which
+// benchmarked at 816KB per call. At one call per cache write that is over a
+// hundred megabytes of garbage for a single large playlist, to compress about a
+// hundred kilobytes of text.
+var (
+	deflaters = sync.Pool{New: func() any {
+		w, _ := flate.NewWriter(io.Discard, flate.DefaultCompression)
+		return w
+	}}
+	inflaters = sync.Pool{New: func() any {
+		return flate.NewReader(bytes.NewReader(nil))
+	}}
+)
+
 func deflate(text string) ([]byte, error) {
 	var buf bytes.Buffer
-	w, err := flate.NewWriter(&buf, flate.DefaultCompression)
-	if err != nil {
-		return nil, err
-	}
+	w, _ := deflaters.Get().(*flate.Writer)
+	defer deflaters.Put(w)
+
+	w.Reset(&buf)
 	if _, err := io.WriteString(w, text); err != nil {
 		return nil, err
 	}
+	// Close flushes; the writer stays reusable afterwards through Reset.
 	if err := w.Close(); err != nil {
 		return nil, err
 	}
@@ -152,8 +169,16 @@ func deflate(text string) ([]byte, error) {
 }
 
 func inflate(compressed []byte) (string, error) {
-	r := flate.NewReader(bytes.NewReader(compressed))
-	defer func() { _ = r.Close() }()
+	r, _ := inflaters.Get().(io.ReadCloser)
+	defer inflaters.Put(r)
+
+	resetter, ok := r.(flate.Resetter)
+	if !ok {
+		return "", errors.New("lyrics: flate reader is not resettable")
+	}
+	if err := resetter.Reset(bytes.NewReader(compressed), nil); err != nil {
+		return "", err
+	}
 	out, err := io.ReadAll(r)
 	if err != nil {
 		return "", err
