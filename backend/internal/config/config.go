@@ -49,13 +49,13 @@ type PromptGenConfig struct {
 	APIKey string
 }
 
-// ImageGenConfig points at Cloudflare Workers AI. An empty AccountID or APIToken
-// selects the locally rendered placeholder image.
+// ImageGenConfig points at any OpenAI-compatible images provider: Together AI
+// by default, or OpenAI's own image models unchanged. An empty APIKey selects
+// the locally rendered placeholder image.
 type ImageGenConfig struct {
-	BaseURL   string
-	AccountID string
-	Model     string
-	APIToken  string
+	BaseURL string
+	Model   string
+	APIKey  string
 }
 
 // AuthConfig holds the session and token settings.
@@ -117,10 +117,9 @@ func Load() Config {
 			APIKey:  env("AURIFY_PROMPTGEN_API_KEY", ""),
 		},
 		ImageGen: ImageGenConfig{
-			BaseURL:   env("AURIFY_IMAGEGEN_URL", "https://api.cloudflare.com/client/v4"),
-			AccountID: env("AURIFY_IMAGEGEN_ACCOUNT_ID", ""),
-			Model:     env("AURIFY_IMAGEGEN_MODEL", "@cf/black-forest-labs/flux-1-schnell"),
-			APIToken:  env("AURIFY_IMAGEGEN_API_TOKEN", ""),
+			BaseURL: env("AURIFY_IMAGEGEN_URL", "https://api.together.ai/v1"),
+			Model:   env("AURIFY_IMAGEGEN_MODEL", "black-forest-labs/FLUX.1-schnell-Free"),
+			APIKey:  env("AURIFY_IMAGEGEN_API_KEY", ""),
 		},
 		CORSOrigins:  splitList(env("AURIFY_CORS_ORIGINS", "http://localhost:5173")),
 		AppBaseURL:   env("AURIFY_APP_BASE_URL", "http://localhost:5173"),

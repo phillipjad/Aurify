@@ -115,12 +115,7 @@ func run() error {
 	sentiment := nlp.NewAnalyzer()
 	engine := analysis.NewEngine()
 	prompts := promptgen.New(cfg.PromptGen.BaseURL, cfg.PromptGen.Model, cfg.PromptGen.APIKey)
-	images := imagegen.New(
-		cfg.ImageGen.BaseURL,
-		cfg.ImageGen.AccountID,
-		cfg.ImageGen.Model,
-		cfg.ImageGen.APIToken,
-	)
+	images := imagegen.New(cfg.ImageGen.BaseURL, cfg.ImageGen.Model, cfg.ImageGen.APIKey)
 
 	// --- authentication ---
 	signer, err := auth.NewSigner(signingKey, cfg.Auth.Issuer, cfg.Auth.Audience)

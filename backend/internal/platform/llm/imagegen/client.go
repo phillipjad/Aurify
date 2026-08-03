@@ -1,13 +1,15 @@
-// Package imagegen renders a prompt into cover art using Cloudflare Workers AI.
+// Package imagegen renders a prompt into cover art over the OpenAI images API.
 //
-// Workers AI was chosen for its free allowance rather than its API: 10,000
-// neurons a day, against 57.6 for one FLUX.1 [schnell] image at four steps, is
-// roughly 170 images a day at no cost. Its request shape is Cloudflare's own
-// rather than OpenAI's, so unlike promptgen this adapter is provider-specific;
-// another provider means a sibling adapter behind ports.ImageGenerator (see
-// docs/adr/0016-generation-providers.md).
+// As with promptgen, the API shape is why there is one adapter rather than one
+// per vendor: Together AI, OpenAI and others all serve
+// `POST {baseURL}/images/generations`, so changing provider is a change of base
+// URL, model and key (see docs/adr/0016-generation-providers.md).
 //
-// With no account configured the client renders a local placeholder, so a
+// The default is Together AI's free FLUX.1 [schnell] endpoint. It replaced
+// Cloudflare Workers AI, whose safety classifier refused about a quarter of
+// perfectly ordinary abstract-art prompts with no way to opt out.
+//
+// With no API key configured the client renders a local placeholder, so a
 // checkout with no credentials still completes a generation.
 package imagegen
 
@@ -26,69 +28,78 @@ import (
 )
 
 // steps is the number of diffusion steps requested. FLUX.1 [schnell] is
-// distilled for very few steps and the model caps this at 8; at 4 the image is
-// good and costs 57.6 neurons rather than 96.
+// distilled for very few steps and rejects more than 4; the API's own default of
+// 20 is meant for other models and would fail.
 const steps = 4
 
-// Client is a Workers AI client.
+// Client is an OpenAI-compatible image-generation client.
 type Client struct {
-	baseURL   string
-	accountID string
-	model     string
-	apiToken  string
-	client    *http.Client
+	baseURL string
+	model   string
+	apiKey  string
+	client  *http.Client
 }
 
 var _ ports.ImageGenerator = (*Client)(nil)
 
-// New constructs an image-generation client. An empty accountID or apiToken
-// enables the placeholder behavior, since neither is usable without the other.
-func New(baseURL, accountID, model, apiToken string) *Client {
+// New constructs an image-generation client. An empty apiKey enables the
+// placeholder behavior: no image API is usable without one, so it is the single
+// switch between "configured" and "not".
+func New(baseURL, model, apiKey string) *Client {
 	return &Client{
-		baseURL:   strings.TrimRight(baseURL, "/"),
-		accountID: accountID,
-		model:     model,
-		apiToken:  apiToken,
-		client:    &http.Client{Timeout: 120 * time.Second},
+		baseURL: strings.TrimRight(baseURL, "/"),
+		model:   model,
+		apiKey:  apiKey,
+		client:  &http.Client{Timeout: 120 * time.Second},
 	}
 }
 
 type generateRequest struct {
-	Prompt string `json:"prompt"`
-	Steps  int    `json:"steps"`
+	Model          string `json:"model"`
+	Prompt         string `json:"prompt"`
+	Steps          int    `json:"steps"`
+	N              int    `json:"n"`
+	ResponseFormat string `json:"response_format"`
 }
 
-// generateResponse is Cloudflare's envelope, which reports failure in the body
-// rather than only in the status line.
 type generateResponse struct {
-	Result struct {
-		Image string `json:"image"`
-	} `json:"result"`
-	Success bool `json:"success"`
-	Errors  []struct {
-		Code    int    `json:"code"`
+	Data []struct {
+		B64JSON string `json:"b64_json"`
+	} `json:"data"`
+	// Error is the OpenAI-shaped error body, which carries a far more useful
+	// message than the status code alone.
+	Error *struct {
 		Message string `json:"message"`
-	} `json:"errors"`
+	} `json:"error"`
 }
 
 // GenerateImage renders the prompt and returns the image bytes.
 func (c *Client) GenerateImage(ctx context.Context, prompt string) (domain.GeneratedImage, error) {
-	if c.accountID == "" || c.apiToken == "" {
+	if c.apiKey == "" {
 		return placeholderImage(prompt), nil
 	}
 
-	body, err := json.Marshal(generateRequest{Prompt: prompt, Steps: steps})
+	// base64 rather than a URL: providers hand back links that expire within the
+	// hour, and the bytes have to reach ports.ImageStore either way.
+	body, err := json.Marshal(generateRequest{
+		Model:          c.model,
+		Prompt:         prompt,
+		Steps:          steps,
+		N:              1,
+		ResponseFormat: "base64",
+	})
 	if err != nil {
 		return domain.GeneratedImage{}, err
 	}
 
-	endpoint := fmt.Sprintf("%s/accounts/%s/ai/run/%s", c.baseURL, c.accountID, c.model)
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(
+		ctx, http.MethodPost, c.baseURL+"/images/generations", bytes.NewReader(body),
+	)
 	if err != nil {
 		return domain.GeneratedImage{}, err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+c.apiToken)
+	req.Header.Set("Authorization", "Bearer "+c.apiKey)
 
 	resp, err := c.client.Do(req)
 	if err != nil {
@@ -96,13 +107,12 @@ func (c *Client) GenerateImage(ctx context.Context, prompt string) (domain.Gener
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	// Decoded before the status is checked: Cloudflare explains a rejection in
-	// the errors array, and "status 400" on its own does not say whether the
-	// token, the account or the prompt was the problem.
+	// Decoded before the status is checked, because the body is where a provider
+	// explains a rejection.
 	var out generateResponse
 	decodeErr := json.NewDecoder(resp.Body).Decode(&out)
-	if len(out.Errors) > 0 {
-		return domain.GeneratedImage{}, fmt.Errorf("imagegen: %s", out.Errors[0].Message)
+	if out.Error != nil && out.Error.Message != "" {
+		return domain.GeneratedImage{}, fmt.Errorf("imagegen: %s", out.Error.Message)
 	}
 	if resp.StatusCode != http.StatusOK {
 		return domain.GeneratedImage{}, fmt.Errorf("imagegen: provider returned status %d", resp.StatusCode)
@@ -110,11 +120,11 @@ func (c *Client) GenerateImage(ctx context.Context, prompt string) (domain.Gener
 	if decodeErr != nil {
 		return domain.GeneratedImage{}, decodeErr
 	}
-	if !out.Success {
-		return domain.GeneratedImage{}, fmt.Errorf("imagegen: provider reported failure without an error")
+	if len(out.Data) == 0 {
+		return domain.GeneratedImage{}, fmt.Errorf("imagegen: provider returned no image")
 	}
 
-	raw, err := base64.StdEncoding.DecodeString(out.Result.Image)
+	raw, err := base64.StdEncoding.DecodeString(out.Data[0].B64JSON)
 	if err != nil {
 		return domain.GeneratedImage{}, fmt.Errorf("imagegen: decoding the image: %w", err)
 	}
@@ -122,5 +132,7 @@ func (c *Client) GenerateImage(ctx context.Context, prompt string) (domain.Gener
 		return domain.GeneratedImage{}, fmt.Errorf("imagegen: provider returned no image")
 	}
 
-	return domain.GeneratedImage{Bytes: raw, ContentType: "image/jpeg"}, nil
+	// Sniffed rather than assumed: the content type is stored and later served
+	// verbatim, and providers differ on whether FLUX comes back as JPEG or PNG.
+	return domain.GeneratedImage{Bytes: raw, ContentType: http.DetectContentType(raw)}, nil
 }

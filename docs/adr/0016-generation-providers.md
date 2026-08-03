@@ -32,11 +32,21 @@ containerized model would fall back to CPU. `docker-compose.yml` gains
 `extra_hosts: host.docker.internal:host-gateway` so the containerized API can
 reach it.
 
-**Image generation calls Cloudflare Workers AI.** Chosen for its free allowance,
-not its API: 10,000 neurons a day against `4 tiles x 4.8 + 4 steps x 9.6 = 57.6`
-neurons for one FLUX.1 [schnell] image, so roughly 170 images a day at no cost.
-Its request shape is Cloudflare's own, so unlike promptgen this adapter is
-provider-specific and another provider means a sibling adapter behind the port.
+**Image generation speaks the OpenAI images API**, `POST
+{baseURL}/images/generations`, for the same reason. The default is Together AI's
+free FLUX.1 [schnell] endpoint; OpenAI's own image models are a change of URL,
+model and key.
+
+Cloudflare Workers AI was tried first, for its 10,000 free neurons a day against
+57.6 per image. It was abandoned: its safety classifier refused 2 of 8 measured
+generations with "Input prompt contains NSFW content", on text like "Deep indigo
+nebula swirls engulfing bursts of radiant gold, creating an unsettling beauty".
+The refusal tracks wording rather than content, so the same playlist passes on a
+retry. There is no parameter to disable or tune it, the request to add one has
+been open since October 2024, and reports include the single word "hamburger"
+being refused. A provider that rejects a quarter of ordinary prompts is not one
+to build on, and its bespoke request shape was the only thing keeping this
+adapter from being as portable as promptgen.
 
 **`ImageGenerator` returns bytes, not a URL.** Image APIs return the image
 itself, or a link that expires within the hour. A new `ports.ImageStore` decides
@@ -73,13 +83,12 @@ covers the route serving without a session.
   prompt, rather than a link to `placehold.co`. The bytes have to reach the
   store either way, and a remote URL meant development covers stopped rendering
   without a network.
-- **Workers AI refuses roughly a quarter of prompts as unsafe, wrongly.** Two of
-  eight measured generations failed with "Input prompt contains NSFW content" on
-  descriptions like "Deep indigo nebula swirls engulfing bursts of radiant gold,
-  creating an unsettling beauty". It is not the playlist: the same playlist
-  succeeds on a retry, because the text model writes a different prompt each
-  time. The generation fails outright today, which is a visible error for the
-  user roughly one run in four.
+- Both adapters now take the same three settings, a base URL, a model and a key,
+  which is the whole portability claim made concrete.
+- A refused prompt still fails the generation. There is no retry: with a
+  provider that does not refuse ordinary prompts there is nothing to retry, and
+  adding one would have hidden exactly the signal that made Cloudflare's
+  behaviour measurable.
 - The prompt is recorded on the cover before the image is requested, so a
   refusal keeps the text that caused it. Assigning it afterwards discarded
   exactly the evidence needed to diagnose one.

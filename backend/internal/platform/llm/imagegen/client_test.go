@@ -13,9 +13,10 @@ import (
 	"testing"
 )
 
-// jpegBytes stands in for a rendered image. The adapter never parses it, so its
-// only requirement is that it survives the round trip byte for byte.
-var jpegBytes = []byte{0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10, 'J', 'F', 'I', 'F', 0x00}
+// jpegBytes stands in for a rendered image. The adapter never parses it beyond
+// sniffing the type, so its requirements are that it survives the round trip
+// byte for byte and that its magic number is real.
+var jpegBytes = append([]byte{0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10, 'J', 'F', 'I', 'F'}, make([]byte, 600)...)
 
 func serve(t *testing.T, status int, body string) (*httptest.Server, *string, *generateRequest) {
 	t.Helper()
@@ -33,50 +34,81 @@ func serve(t *testing.T, status int, body string) (*httptest.Server, *string, *g
 	return server, &path, &captured
 }
 
-func TestRendersAnImage(t *testing.T) {
-	body, _ := json.Marshal(map[string]any{
-		"result":  map[string]string{"image": base64.StdEncoding.EncodeToString(jpegBytes)},
-		"success": true,
-		"errors":  []any{},
+func okBody(raw []byte) string {
+	b, _ := json.Marshal(map[string]any{
+		"data": []map[string]any{{"index": 0, "b64_json": base64.StdEncoding.EncodeToString(raw)}},
 	})
-	server, path, captured := serve(t, http.StatusOK, string(body))
+	return string(b)
+}
 
-	client := New(server.URL, "acct-1", "@cf/black-forest-labs/flux-1-schnell", "tok")
+func TestRendersAnImage(t *testing.T) {
+	server, path, captured := serve(t, http.StatusOK, okBody(jpegBytes))
+
+	client := New(server.URL, "black-forest-labs/FLUX.1-schnell-Free", "tok")
 	img, err := client.GenerateImage(context.Background(), "a violet field")
 	if err != nil {
 		t.Fatalf("GenerateImage: %v", err)
 	}
 
 	if !bytes.Equal(img.Bytes, jpegBytes) {
-		t.Errorf("bytes = %x, want %x", img.Bytes, jpegBytes)
+		t.Errorf("bytes round-tripped wrong: got %d bytes, want %d", len(img.Bytes), len(jpegBytes))
 	}
-	if img.ContentType != "image/jpeg" {
-		t.Errorf("content type = %q, want image/jpeg", img.ContentType)
+	if *path != "/images/generations" {
+		t.Errorf("posted to %q, want /images/generations", *path)
 	}
-	if want := "/accounts/acct-1/ai/run/@cf/black-forest-labs/flux-1-schnell"; *path != want {
-		t.Errorf("posted to %q, want %q", *path, want)
+	if captured.Model != "black-forest-labs/FLUX.1-schnell-Free" {
+		t.Errorf("model = %q", captured.Model)
 	}
 	if captured.Prompt != "a violet field" {
 		t.Errorf("prompt = %q", captured.Prompt)
 	}
-	// Above 8 the model rejects the request; below 4 the image degrades. Either
-	// way the neuron cost is what this number controls.
+	// The API defaults to 20, which FLUX.1 [schnell] rejects outright, so
+	// sending this explicitly is what makes the call work at all.
 	if captured.Steps != 4 {
 		t.Errorf("steps = %d, want 4", captured.Steps)
 	}
+	// A URL would expire within the hour, and the bytes have to be stored.
+	if captured.ResponseFormat != "base64" {
+		t.Errorf("response_format = %q, want base64", captured.ResponseFormat)
+	}
 }
 
-func TestSendsTheToken(t *testing.T) {
+// The content type is stored and later served verbatim, so getting it from the
+// bytes rather than a constant is what keeps a PNG from being served as JPEG
+// when a provider or model changes.
+func TestContentTypeComesFromTheBytes(t *testing.T) {
+	pngBytes := append([]byte{0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A}, make([]byte, 600)...)
+
+	for _, tc := range []struct {
+		name string
+		raw  []byte
+		want string
+	}{
+		{"jpeg", jpegBytes, "image/jpeg"},
+		{"png", pngBytes, "image/png"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			server, _, _ := serve(t, http.StatusOK, okBody(tc.raw))
+			img, err := New(server.URL, "m", "tok").GenerateImage(context.Background(), "x")
+			if err != nil {
+				t.Fatalf("GenerateImage: %v", err)
+			}
+			if img.ContentType != tc.want {
+				t.Errorf("content type = %q, want %q", img.ContentType, tc.want)
+			}
+		})
+	}
+}
+
+func TestSendsTheKey(t *testing.T) {
 	var got string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		got = r.Header.Get("Authorization")
-		_, _ = io.WriteString(w, `{"result":{"image":"`+
-			base64.StdEncoding.EncodeToString(jpegBytes)+`"},"success":true}`)
+		_, _ = io.WriteString(w, okBody(jpegBytes))
 	}))
 	defer server.Close()
 
-	if _, err := New(server.URL, "acct-1", "m", "tok").
-		GenerateImage(context.Background(), "x"); err != nil {
+	if _, err := New(server.URL, "m", "tok").GenerateImage(context.Background(), "x"); err != nil {
 		t.Fatalf("GenerateImage: %v", err)
 	}
 	if got != "Bearer tok" {
@@ -92,18 +124,18 @@ func TestReportsProviderFailures(t *testing.T) {
 		want   string
 	}{
 		{
-			// Cloudflare returns 200 with success=false often enough that
-			// trusting the status line would swallow the failure entirely.
-			name:   "a failure inside a 200 is still a failure",
-			status: http.StatusOK,
-			body:   `{"success":false,"errors":[{"code":10000,"message":"Authentication error"}]}`,
-			want:   "Authentication error",
+			// The provider's message is the only thing that distinguishes a bad
+			// key from a bad model from a refused prompt.
+			name:   "the error body wins over the status code",
+			status: http.StatusUnauthorized,
+			body:   `{"error":{"message":"Invalid API key provided"}}`,
+			want:   "Invalid API key provided",
 		},
 		{
-			name:   "the message beats the status code",
+			name:   "a content refusal is surfaced as written",
 			status: http.StatusBadRequest,
-			body:   `{"success":false,"errors":[{"code":7003,"message":"Could not route to account"}]}`,
-			want:   "Could not route to account",
+			body:   `{"error":{"message":"Your request was rejected by our safety system"}}`,
+			want:   "rejected by our safety system",
 		},
 		{
 			name:   "a bare status is still reported",
@@ -112,30 +144,23 @@ func TestReportsProviderFailures(t *testing.T) {
 			want:   "status 503",
 		},
 		{
-			name:   "success=false with no explanation",
+			name:   "an empty data array is not a result",
 			status: http.StatusOK,
-			body:   `{"success":false,"errors":[]}`,
-			want:   "failure without an error",
+			body:   `{"data":[]}`,
+			want:   "no image",
 		},
 		{
 			// Storing undecodable bytes would produce a cover that 200s and
-			// renders nothing, which is far harder to diagnose than a failure.
+			// renders nothing, which is harder to diagnose than a failure.
 			name:   "malformed base64 fails rather than storing garbage",
 			status: http.StatusOK,
-			body:   `{"success":true,"result":{"image":"!!!not base64!!!"}}`,
+			body:   `{"data":[{"b64_json":"!!!not base64!!!"}]}`,
 			want:   "decoding the image",
-		},
-		{
-			name:   "an empty image is not a result",
-			status: http.StatusOK,
-			body:   `{"success":true,"result":{"image":""}}`,
-			want:   "no image",
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			server, _, _ := serve(t, tc.status, tc.body)
-			_, err := New(server.URL, "acct-1", "m", "tok").
-				GenerateImage(context.Background(), "x")
+			_, err := New(server.URL, "m", "tok").GenerateImage(context.Background(), "x")
 			if err == nil {
 				t.Fatal("expected an error")
 			}
@@ -146,31 +171,25 @@ func TestReportsProviderFailures(t *testing.T) {
 	}
 }
 
-// Missing credentials are a supported mode, not a failure: a checkout with no
-// Cloudflare account still has to complete a generation.
-func TestMissingCredentialsRenderALocalPlaceholder(t *testing.T) {
-	for _, tc := range []struct{ name, account, token string }{
-		{"no account", "", "tok"},
-		{"no token", "acct-1", ""},
-		{"neither", "", ""},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			// A live URL proves the network is not reached rather than merely
-			// unreachable.
-			server, _, _ := serve(t, http.StatusOK, `{"success":true}`)
+// A missing key is a supported mode, not a failure: a checkout with no provider
+// account still has to complete a generation.
+func TestMissingKeyRendersALocalPlaceholder(t *testing.T) {
+	// A live URL proves the network is not reached rather than merely
+	// unreachable.
+	server, path, _ := serve(t, http.StatusOK, okBody(jpegBytes))
 
-			img, err := New(server.URL, tc.account, "m", tc.token).
-				GenerateImage(context.Background(), "a violet field")
-			if err != nil {
-				t.Fatalf("GenerateImage: %v", err)
-			}
-			if img.ContentType != "image/png" {
-				t.Errorf("content type = %q, want image/png", img.ContentType)
-			}
-			if _, err := png.Decode(bytes.NewReader(img.Bytes)); err != nil {
-				t.Errorf("the placeholder is not a decodable PNG: %v", err)
-			}
-		})
+	img, err := New(server.URL, "m", "").GenerateImage(context.Background(), "a violet field")
+	if err != nil {
+		t.Fatalf("GenerateImage: %v", err)
+	}
+	if *path != "" {
+		t.Errorf("the provider was called at %q despite having no key", *path)
+	}
+	if img.ContentType != "image/png" {
+		t.Errorf("content type = %q, want image/png", img.ContentType)
+	}
+	if _, err := png.Decode(bytes.NewReader(img.Bytes)); err != nil {
+		t.Errorf("the placeholder is not a decodable PNG: %v", err)
 	}
 }
 
@@ -182,8 +201,6 @@ func TestThePlaceholderVariesWithThePrompt(t *testing.T) {
 	if !bytes.Equal(first.Bytes, again.Bytes) {
 		t.Error("the same prompt should render the same placeholder")
 	}
-	// Otherwise every cover in the gallery is identical and a stale one is
-	// impossible to spot while iterating.
 	if bytes.Equal(first.Bytes, other.Bytes) {
 		t.Error("different prompts should render different placeholders")
 	}

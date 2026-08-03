@@ -35,8 +35,8 @@ type Cover struct {
 // GeneratedImage is the rendered cover art before it has been stored anywhere.
 //
 // ContentType travels with the bytes because it is the provider that decides it:
-// Workers AI returns JPEG, other image APIs return PNG, and the route that later
-// serves the bytes has nothing else to go on.
+// some image APIs return JPEG and others PNG, and the route that later serves the
+// bytes has nothing else to go on.
 type GeneratedImage struct {
 	Bytes       []byte
 	ContentType string
