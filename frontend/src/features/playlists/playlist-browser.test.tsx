@@ -440,13 +440,30 @@ describe('PlaylistBrowser', () => {
     expect(screen.getByRole('button', { name: 'Reconnect' })).toBeInTheDocument()
   })
 
-  it('still offers to connect a platform that is not linked', async () => {
+  // The session already knows which platforms are linked, so landing on one the
+  // user has never connected and being told to "Connect Spotify" reads as the
+  // connection having failed. Bites on any device with no remembered preference.
+  it('opens on a connected platform when nothing else picks one', async () => {
     mockFetch.mockImplementation((path: string) =>
       path.startsWith('/auth/session')
         ? Promise.resolve({ userId: 'u1', email: 'a@b.test', connections: ['youtube_music'] })
         : Promise.resolve([]),
     )
     renderWithProviders(<PlaylistBrowser />)
+
+    expect(await screen.findByText(/youtube music connected/i)).toBeInTheDocument()
+    expect(await screen.findByRole('radio', { name: 'YouTube Music' })).toHaveAttribute('aria-checked', 'true')
+  })
+
+  // An explicit choice still wins over a connected one, so the picker keeps
+  // working for a platform the user is about to link.
+  it('still offers to connect a platform that is not linked', async () => {
+    mockFetch.mockImplementation((path: string) =>
+      path.startsWith('/auth/session')
+        ? Promise.resolve({ userId: 'u1', email: 'a@b.test', connections: ['youtube_music'] })
+        : Promise.resolve([]),
+    )
+    renderWithProviders(<PlaylistBrowser />, { path: '/playlists?platform=spotify' })
 
     expect(await screen.findByRole('button', { name: 'Connect Spotify' })).toBeInTheDocument()
     expect(screen.queryByText(/spotify connected/i)).not.toBeInTheDocument()
