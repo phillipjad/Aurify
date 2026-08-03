@@ -6,6 +6,7 @@ import (
 	"crypto/ed25519"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -186,5 +187,35 @@ func TestCoverImageIsNotFoundWhenAbsent(t *testing.T) {
 
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("status = %d, want 404 (body: %s)", rec.Code, rec.Body.String())
+	}
+}
+
+// Browsers always send Accept-Encoding: gzip and the router compresses, so a
+// hand-set Content-Length describes the uncompressed body and never matches the
+// bytes on the wire. Chrome aborts that with ERR_CONTENT_LENGTH_MISMATCH, and
+// every cover in the gallery renders broken; curl hides it, because curl does
+// not ask for compression by default.
+func TestCoverImageLengthMatchesTheCompressedBody(t *testing.T) {
+	router, _ := newTestRouter(t)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/covers/"+knownCoverID+"/image", nil)
+	req.Header.Set("Accept-Encoding", "gzip")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	declared := rec.Header().Get("Content-Length")
+	if declared == "" {
+		return // Nothing claimed, so nothing to contradict.
+	}
+	want, err := strconv.Atoi(declared)
+	if err != nil {
+		t.Fatalf("Content-Length = %q, not a number", declared)
+	}
+	if got := rec.Body.Len(); got != want {
+		t.Errorf("Content-Length says %d but the body is %d bytes (encoding %q)",
+			want, got, rec.Header().Get("Content-Encoding"))
 	}
 }

@@ -2,7 +2,6 @@ package handlers
 
 import (
 	"net/http"
-	"strconv"
 
 	"github.com/fgrzl/mux"
 
@@ -106,12 +105,18 @@ func (h *Covers) Image(c mux.RouteContext) {
 
 	w := c.Response()
 	w.Header().Set("Content-Type", image.ContentType)
-	w.Header().Set("Content-Length", strconv.Itoa(len(image.Bytes)))
 	// The bytes for a given id never change: regenerating a playlist creates a
 	// new cover with a new id.
 	w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(image.Bytes)
+
+	// Content-Length is deliberately not set here. The router compresses
+	// responses, so the bytes on the wire are not len(image.Bytes), and a
+	// hand-set length made every browser abort the image with
+	// ERR_CONTENT_LENGTH_MISMATCH while curl fetched it happily: curl does not
+	// ask for gzip by default, browsers always do. Whatever writes the body last
+	// is what knows how long it is.
 }
 
 // Delete removes one of the current user's covers (command).

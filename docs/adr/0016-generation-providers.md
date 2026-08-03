@@ -57,7 +57,8 @@ playlist passes on a retry. There is no parameter to disable or tune it, the
 request to add one has been open since October 2024, and public reports include
 the single word "hamburger" being refused. That error, code 3030, is documented
 only against the FLUX endpoints, so the same account and allowance work through
-`@cf/leonardoai/lucid-origin` instead.
+`@cf/leonardo/lucid-origin` instead. Measured on the two playlists FLUX refused:
+**8 generations, 0 refusals**, against FLUX's 2 in 8.
 
 The account id is configured on its own and the endpoint is assembled in code.
 Everything but the account and model is fixed, so asking for the whole URL would
@@ -81,13 +82,11 @@ because a bucket requires a cloud account before the pipeline can be run at all.
 image bytes, and `bytes` is `STORAGE EXTERNAL` because JPEG will not compress
 further.
 
-The ceiling is real and closer than expected. Over nine generations, FLUX.1
-[schnell] via Cloudflare returned 1024x1024 JPEGs averaging **935KB** (841KB to
-1094KB), not the ~150KB assumed when this was drafted, putting Neon's free 0.5GB
-at roughly 530 covers. That figure is per-model and the chosen one has not been
-measured, but the order of magnitude is what matters: about a megabyte a cover,
-not a tenth of one. Moving to a bucket is a second `ports.ImageStore`, which is
-why the port returns the URL rather than having callers build one.
+The ceiling is real and closer than expected. Over 18 generations these models
+return 1024x1024 JPEGs averaging **829KB** (585KB to 1094KB), not the ~150KB
+assumed when this was drafted. That puts Neon's free 0.5GB at roughly 600 covers.
+Moving to a bucket is a second `ports.ImageStore`, which is why the port returns
+the URL rather than having callers build one.
 
 **`GET /api/v1/covers/{id}/image` is anonymous.** An `<img>` tag loading
 cross-origin, the app on `:5173` and the API on `:8080`, does not send
@@ -116,6 +115,11 @@ covers the route serving without a session.
 - The prompt is recorded on the cover before the image is requested, so a
   refusal keeps the text that caused it. Assigning it afterwards discarded
   exactly the evidence needed to diagnose one.
+- The image route must not set `Content-Length`. The router compresses, so a
+  hand-set length describes the uncompressed body and no browser can load the
+  result: Chrome aborts with `ERR_CONTENT_LENGTH_MISMATCH` while curl fetches it
+  happily, because curl does not ask for gzip by default. A router test asserts
+  the declared length against the compressed body.
 - Covers still look alike, because the analysis feeding the prompt is
   near-constant for YouTube Music
   ([issue #68](https://github.com/phillipjad/Aurify/issues/68)). Real models do

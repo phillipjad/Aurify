@@ -50,7 +50,7 @@ func envelope(raw []byte) string {
 func TestRendersAnImage(t *testing.T) {
 	server, path, captured := serve(t, http.StatusOK, "application/json", envelope(jpegBytes))
 
-	client := New(server.URL, "acct-1", "@cf/leonardoai/lucid-origin", "tok")
+	client := New(server.URL, "acct-1", "@cf/leonardo/lucid-origin", "tok")
 	img, err := client.GenerateImage(context.Background(), "a violet field")
 	if err != nil {
 		t.Fatalf("GenerateImage: %v", err)
@@ -61,7 +61,7 @@ func TestRendersAnImage(t *testing.T) {
 	}
 	// The account and model are both path segments assembled here rather than
 	// configured, so a wrong join asks the wrong endpoint entirely.
-	if want := "/accounts/acct-1/ai/run/@cf/leonardoai/lucid-origin"; *path != want {
+	if want := "/accounts/acct-1/ai/run/@cf/leonardo/lucid-origin"; *path != want {
 		t.Errorf("posted to %q, want %q", *path, want)
 	}
 	if captured.Prompt != "a violet field" {
@@ -237,8 +237,8 @@ func TestThePlaceholderVariesWithThePrompt(t *testing.T) {
 // The endpoint is assembled from the account id rather than configured whole,
 // so this is the only place a mistake in Cloudflare's URL layout can hide.
 func TestDefaultBaseURLBuildsTheRealEndpoint(t *testing.T) {
-	got := New("", "acct-1", "@cf/leonardoai/lucid-origin", "tok").endpoint()
-	want := "https://api.cloudflare.com/client/v4/accounts/acct-1/ai/run/@cf/leonardoai/lucid-origin"
+	got := New("", "acct-1", "@cf/leonardo/lucid-origin", "tok").endpoint()
+	want := "https://api.cloudflare.com/client/v4/accounts/acct-1/ai/run/@cf/leonardo/lucid-origin"
 	if got != want {
 		t.Errorf("endpoint = %q, want %q", got, want)
 	}
