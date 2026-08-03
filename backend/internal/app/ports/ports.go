@@ -149,6 +149,21 @@ type LyricsClient interface {
 	Fetch(ctx context.Context, track domain.Track) (string, error)
 }
 
+// LyricsRepository remembers lyric lookups so the same track is fetched from the
+// provider once rather than once per playlist per run.
+//
+// Both methods are deliberately batched. A generation resolves a whole playlist
+// at a time, and per-track queries would put hundreds of round trips in front of
+// work that needs two.
+type LyricsRepository interface {
+	// FindMany returns the entries that exist, keyed by track key. Keys with no
+	// entry are simply absent; a miss is not an error.
+	FindMany(ctx context.Context, keys []string) (map[string]domain.CachedLyrics, error)
+	// SaveMany upserts entries, so a negative result can later become a positive
+	// one without a separate delete.
+	SaveMany(ctx context.Context, entries []domain.CachedLyrics) error
+}
+
 // SentimentAnalyzer performs NLP sentiment analysis over lyric text.
 type SentimentAnalyzer interface {
 	Analyze(ctx context.Context, lyrics string) (domain.Sentiment, error)

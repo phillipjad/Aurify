@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/phillipjad/aurify/backend/internal/app/dspconn"
+	"github.com/phillipjad/aurify/backend/internal/app/lyrics"
 	"github.com/phillipjad/aurify/backend/internal/app/ports"
 	"github.com/phillipjad/aurify/backend/internal/domain"
 )
@@ -92,6 +93,16 @@ type fakeLyrics struct{}
 
 func (fakeLyrics) Fetch(context.Context, domain.Track) (string, error) { return "some words", nil }
 
+// The pipeline now takes a resolver rather than a bare client, since caching and
+// batching a whole playlist has to happen above a single-track interface. This
+// store keeps nothing, so every lookup reaches fakeLyrics.
+type nullLyricsStore struct{}
+
+func (nullLyricsStore) FindMany(context.Context, []string) (map[string]domain.CachedLyrics, error) {
+	return map[string]domain.CachedLyrics{}, nil
+}
+func (nullLyricsStore) SaveMany(context.Context, []domain.CachedLyrics) error { return nil }
+
 type fakeSentiment struct{}
 
 func (fakeSentiment) Analyze(context.Context, string) (domain.Sentiment, error) {
@@ -132,7 +143,7 @@ func newHandler(provider *fakeProvider) (*Handler, *fakeCovers) {
 	handler := NewHandler(
 		dspconn.NewResolver(users, fakeRegistry{provider: provider}),
 		covers,
-		fakeLyrics{},
+		lyrics.NewResolver(nullLyricsStore{}, fakeLyrics{}),
 		fakeSentiment{},
 		fakeAnalysis{},
 		fakePrompts{},

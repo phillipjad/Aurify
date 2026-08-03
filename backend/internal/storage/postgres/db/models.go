@@ -50,6 +50,13 @@ type EmailToken struct {
 	CreatedAt  pgtype.Timestamptz
 }
 
+type LyricsCache struct {
+	TrackKey  string
+	Lyrics    string
+	Found     bool
+	FetchedAt pgtype.Timestamptz
+}
+
 type RefreshToken struct {
 	TokenHash []byte
 	SessionID string

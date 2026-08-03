@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/phillipjad/aurify/backend/internal/app/dspconn"
+	"github.com/phillipjad/aurify/backend/internal/app/lyrics"
 	"github.com/phillipjad/aurify/backend/internal/app/ports"
 	"github.com/phillipjad/aurify/backend/internal/domain"
 )
@@ -23,7 +24,7 @@ type Command struct {
 type Handler struct {
 	connections *dspconn.Resolver
 	covers      ports.CoverRepository
-	lyrics      ports.LyricsClient
+	lyrics      *lyrics.Resolver
 	sentiment   ports.SentimentAnalyzer
 	analysis    ports.AnalysisEngine
 	prompts     ports.PromptGenerator
@@ -34,7 +35,7 @@ type Handler struct {
 func NewHandler(
 	connections *dspconn.Resolver,
 	covers ports.CoverRepository,
-	lyrics ports.LyricsClient,
+	lyricsResolver *lyrics.Resolver,
 	sentiment ports.SentimentAnalyzer,
 	analysis ports.AnalysisEngine,
 	prompts ports.PromptGenerator,
@@ -43,7 +44,7 @@ func NewHandler(
 	return &Handler{
 		connections: connections,
 		covers:      covers,
-		lyrics:      lyrics,
+		lyrics:      lyricsResolver,
 		sentiment:   sentiment,
 		analysis:    analysis,
 		prompts:     prompts,
@@ -95,18 +96,19 @@ func (h *Handler) Handle(ctx context.Context, cmd Command) (string, error) {
 
 	// 2. Lyric sentiment per track. Lyrics are best-effort: a missing lyric set
 	//    contributes a neutral sentiment rather than failing the whole job.
-	sentiments := make([]domain.Sentiment, 0, len(tracks))
-	for _, track := range tracks {
-		lyrics, lerr := h.lyrics.Fetch(ctx, track)
-		if lerr != nil {
-			sentiments = append(sentiments, domain.Sentiment{})
-			continue
-		}
-		s, serr := h.sentiment.Analyze(ctx, lyrics)
+	//
+	//    The resolver handles caching, batching and bounded concurrency, and
+	//    never fails, so what comes back is index-aligned with tracks with empty
+	//    strings where nothing was found. The sentiment pass stays sequential:
+	//    it is local CPU work measured in microseconds, not a network call.
+	lyrics := h.lyrics.Resolve(ctx, tracks)
+	sentiments := make([]domain.Sentiment, len(tracks))
+	for i, text := range lyrics {
+		s, serr := h.sentiment.Analyze(ctx, text)
 		if serr != nil {
 			return cover.ID, h.fail(ctx, cover, serr)
 		}
-		sentiments = append(sentiments, s)
+		sentiments[i] = s
 	}
 
 	// 3. Aggregate features + sentiment into a normalized, weighted palette.
