@@ -65,6 +65,20 @@ describe('CoverGallery', () => {
     expect(screen.getByRole('heading', { name: 'Morning Coffee' })).toBeInTheDocument()
   })
 
+  it('puts the grid in its own scroll container, so the page does not scroll', async () => {
+    mockFetch.mockResolvedValue([READY_COVER])
+    renderWithProviders(<CoverGallery />)
+    await screen.findByRole('heading', { name: 'Morning Coffee' })
+
+    // The filters sit outside it and stay put; the grid moves inside it. The
+    // shell's own scroller is <main>, so this has to be a different element.
+    const scrollers = [...document.querySelectorAll('[data-scroll-container]')]
+    const gridScroller = scrollers.find((el) => el.id !== 'main')
+    expect(gridScroller).toBeDefined()
+    expect(gridScroller).toContainElement(screen.getByRole('list', { name: 'Covers' }))
+    expect(gridScroller).not.toContainElement(screen.getByRole('group', { name: 'Filter covers by status' }))
+  })
+
   it('renders the status in plain language', async () => {
     mockFetch.mockResolvedValue([READY_COVER])
     renderWithProviders(<CoverGallery />)
