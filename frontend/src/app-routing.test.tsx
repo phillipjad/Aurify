@@ -76,6 +76,21 @@ describe('app routing', () => {
     expect(document.getElementById('main')).toHaveFocus()
   })
 
+  it('remounts the route wrapper on navigation so the entrance replays', async () => {
+    renderApp(['/'])
+    await screen.findByRole('heading', { name: /cover art that captures the vibe/i })
+    const before = document.querySelector('.route-enter')
+
+    await userEvent.click(await screen.findByRole('link', { name: 'Playlists' }))
+    await screen.findByRole('heading', { name: 'Your playlists' })
+
+    // A CSS animation only replays on a fresh element, which is what the
+    // pathname key buys. Drop the key and this node would be reused.
+    const after = document.querySelector('.route-enter')
+    expect(after).toBeInTheDocument()
+    expect(after).not.toBe(before)
+  })
+
   it('renders the covers page with its empty state and CTA link', async () => {
     renderApp(['/covers'])
 

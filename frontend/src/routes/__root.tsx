@@ -32,7 +32,8 @@ const footerLinkClass = [
 
 function RootLayout() {
   const mainRef = useRef<HTMLElement>(null)
-  const announcement = useRouteAnnouncement(mainRef)
+  const pathname = useRouterState({ select: (state) => state.location.pathname })
+  const announcement = useRouteAnnouncement(pathname, mainRef)
 
   return (
     <div className="flex min-h-dvh flex-col">
@@ -70,7 +71,12 @@ function RootLayout() {
         tabIndex={-1}
         className="mx-auto w-full max-w-5xl flex-1 px-4 py-10 focus:outline-none"
       >
-        <Outlet />
+        {/* Keyed on the path so every navigation replays the entrance. Search
+            params are deliberately excluded: the playlists view keeps its state
+            in the query string, and filtering should not flash the whole page. */}
+        <div key={pathname} className="route-enter">
+          <Outlet />
+        </div>
       </main>
 
       <SiteFooter />
@@ -146,8 +152,7 @@ function SiteFooter() {
  * new page. Skipped on first paint so we neither steal focus on load nor
  * announce a page the user just opened directly.
  */
-function useRouteAnnouncement(mainRef: RefObject<HTMLElement | null>): string {
-  const pathname = useRouterState({ select: (state) => state.location.pathname })
+function useRouteAnnouncement(pathname: string, mainRef: RefObject<HTMLElement | null>): string {
   const [message, setMessage] = useState('')
   const firstRender = useRef(true)
 
