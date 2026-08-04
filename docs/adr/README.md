@@ -21,6 +21,7 @@ lightweight [MADR](https://adr.github.io/madr/)-style records.
 | [0014](0014-hosted-generation-apis.md) | Hosted APIs for prompt + image generation, called from the API | Accepted |
 | [0015](0015-lyrics-cache-and-failure-policy.md) | Lyrics cache, bounded concurrency, and a skip-don't-retry failure policy | Accepted |
 | [0016](0016-generation-providers.md) | Generation providers: an OpenAI-compatible base URL, and images in PostgreSQL | Accepted |
+| [0017](0017-bounded-app-shell.md) | The app shell is bounded to the viewport, with `<main>` as the only scroll container | Accepted |
 
 ## Adding a new ADR
 

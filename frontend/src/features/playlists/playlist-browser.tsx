@@ -1,7 +1,9 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { AlertTriangle, Check, ListMusic, RefreshCw, SearchX, Unplug } from 'lucide-react'
 import { Link, useNavigate, useSearch } from '@tanstack/react-router'
-import { useWindowVirtualizer } from '@tanstack/react-virtual'
+import { useVirtualizer } from '@tanstack/react-virtual'
+
+import { getAppScrollElement, useScrollMargin } from '@/lib/app-scroll'
 
 import { EmptyState } from '@/components/empty-state'
 import { ImageWithFallback } from '@/components/image-with-fallback'
@@ -114,33 +116,25 @@ export function PlaylistBrowser() {
   // --- windowing ---
   //
   // Rows are rendered only around the viewport, so the DOM stays a fixed size no
-  // matter how many pages have been loaded. The window virtualizer is used rather
-  // than an element one deliberately: an inner scroll container would give the
-  // page two scrollbars and strand the footer, and the list is meant to flow with
-  // the document.
+  // matter how many pages have been loaded. The scroll container is the app
+  // shell's <main>, not the window: the shell is bounded to the viewport so the
+  // document itself never scrolls (see lib/app-scroll.ts).
   const listRef = useRef<HTMLDivElement>(null)
-  const [listTop, setListTop] = useState(0)
+  const scrollMargin = useScrollMargin(listRef)
 
-  const virtualizer = useWindowVirtualizer({
+  const virtualizer = useVirtualizer({
     count: items.length,
+    getScrollElement: getAppScrollElement,
     estimateSize: () => ROW_ESTIMATE,
     // A few rows of slack above and below, so scrolling reveals rendered rows
     // rather than blank space that fills in a frame later.
     overscan: 6,
-    scrollMargin: listTop,
+    scrollMargin,
     // Rows have variable height (a name can wrap to two lines, a description is
     // optional), so real measurements replace the estimate. Falling back to the
     // estimate when layout reports zero keeps this working where there is no
     // layout at all, which is every test environment.
     measureElement: (el) => el.getBoundingClientRect().height || ROW_ESTIMATE,
-  })
-
-  // The list starts partway down the document and the toolbar above it changes
-  // height, so its offset is re-read after every render and only written when it
-  // actually moved.
-  useLayoutEffect(() => {
-    const next = listRef.current?.offsetTop ?? 0
-    if (next !== listTop) setListTop(next)
   })
 
   function selectPlatform(next: Platform) {
@@ -275,7 +269,7 @@ export function PlaylistBrowser() {
                       aria-setsize={items.length}
                       aria-posinset={row.index + 1}
                       className="absolute inset-x-0 top-0 pb-2"
-                      style={{ transform: `translateY(${row.start - listTop}px)` }}
+                      style={{ transform: `translateY(${row.start - scrollMargin}px)` }}
                     >
                       <PlaylistRow
                         playlist={playlist}

@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState, type RefObject } from 'react'
-import { ArrowRight, Lock } from 'lucide-react'
 import type { QueryClient } from '@tanstack/react-query'
 import { createRootRouteWithContext, Link, Outlet, useRouterState } from '@tanstack/react-router'
 
@@ -32,10 +31,15 @@ const footerLinkClass = [
 
 function RootLayout() {
   const mainRef = useRef<HTMLElement>(null)
-  const announcement = useRouteAnnouncement(mainRef)
+  const pathname = useRouterState({ select: (state) => state.location.pathname })
+  const announcement = useRouteAnnouncement(pathname, mainRef)
 
   return (
-    <div className="flex min-h-dvh flex-col">
+    // The shell is bounded to the viewport, not merely at least as tall as it:
+    // grid rows of auto / minmax(0, 1fr) / auto, where the 0 minimum is what
+    // lets the middle row shrink and scroll instead of pushing the footer down
+    // the document. See docs/adr/0017-bounded-app-shell.md.
+    <div className="grid h-dvh grid-rows-[auto_minmax(0,1fr)_auto]">
       <a
         href="#main"
         className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-[var(--z-toast)] focus:rounded-md focus:bg-card focus:px-4 focus:py-2 focus:text-sm focus:font-medium focus:shadow-md focus:ring-2 focus:ring-ring"
@@ -43,7 +47,10 @@ function RootLayout() {
         Skip to content
       </a>
 
-      <header className="sticky top-0 z-[var(--z-sticky)] border-b border-border/60 bg-background/80 backdrop-blur-md">
+      {/* No longer sticky, and no longer blurred: it is a grid row that never
+          scrolls, so there is nothing to stick to and nothing passing behind
+          it. The translucency stays so the aurora still tints it. */}
+      <header className="border-b border-border/60 bg-background/80">
         <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-y-2 px-4 py-3">
           <Link
             to="/"
@@ -64,13 +71,30 @@ function RootLayout() {
           </nav>
         </div>
       </header>
+      {/* The shell's default scroll container (see lib/app-scroll.ts). The width
+          cap moves inside it so the scrollbar rides the viewport edge rather
+          than the content column. data-scroll-container carries the shared
+          scrollbar styling, including the reserved gutter (see styles.css). */}
       <main
         id="main"
         ref={mainRef}
         tabIndex={-1}
-        className="mx-auto w-full max-w-5xl flex-1 px-4 py-10 focus:outline-none"
+        data-scroll-container
+        className="grid grid-rows-[auto] overflow-y-auto [&:has([data-fills-shell])]:grid-rows-[minmax(0,1fr)] focus:outline-none"
       >
-        <Outlet />
+        {/* Keyed on the path so every navigation replays the entrance. Search
+            params are deliberately excluded: the playlists view keeps its state
+            in the query string, and filtering should not flash the whole page.
+
+            The row is content-sized by default, so an ordinary page is as tall
+            as it needs and main scrolls. A route that scrolls a region of
+            itself marks its root with data-fills-shell, and the :has() above
+            switches the row to exactly one screen: that definite height is what
+            gives the route's flex-1 something real to divide. Declared by the
+            route rather than listed here, so this file needs no route table. */}
+        <div key={pathname} className="route-enter mx-auto flex w-full max-w-5xl flex-col px-4 py-10">
+          <Outlet />
+        </div>
       </main>
 
       <SiteFooter />
@@ -84,59 +108,33 @@ function RootLayout() {
   )
 }
 
+/**
+ * A single status bar, because in a bounded shell the footer is on screen on
+ * every route and every pixel it takes is one the content never gets back. The
+ * security pitch that used to live here moved to the page it linked to, and
+ * that page is now reachable straight from these links.
+ */
 function SiteFooter() {
-  const onSecurityPage = useRouterState({ select: (state) => state.location.pathname === '/security' })
-
   return (
     <footer className="border-t border-border/60">
-      <div className="mx-auto w-full max-w-5xl px-4 py-10">
-        {/* Redundant on the security page itself, so collapse it there. Kept
-            mounted (not conditionally rendered) so it can animate out as well as
-            in — the grid 0fr↔1fr trick animates height:auto, and `inert` keeps
-            the collapsed link out of tab order and the a11y tree. */}
-        <div
-          className="grid transition-[grid-template-rows,opacity] duration-300 ease-out motion-reduce:transition-none"
-          style={{ gridTemplateRows: onSecurityPage ? '0fr' : '1fr', opacity: onSecurityPage ? 0 : 1 }}
-          inert={onSecurityPage || undefined}
-        >
-          <div className="overflow-hidden">
-            <div className="mb-6 max-w-2xl space-y-2 border-b border-border/60 pb-6">
-              <h2 className="text-lg">
-                <Link
-                  to="/security"
-                  className="group inline-flex items-center gap-2 rounded font-display font-semibold tracking-tight text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-                >
-                  <Lock aria-hidden="true" className="size-4 text-primary" />
-                  <span className="underline decoration-transparent decoration-2 underline-offset-4 transition-colors group-hover:decoration-primary">
-                    Security is a focus here, not a vibe
-                  </span>
-                  <ArrowRight
-                    aria-hidden="true"
-                    className="size-4 text-primary transition-transform group-hover:translate-x-0.5"
-                  />
-                </Link>
-              </h2>
-              <p className="text-pretty text-sm text-muted-foreground">
-                Spotify, Apple Music, and YouTube Music sign-ins happen through their own platforms. Aurify receives a
-                safe, ephemeral, minimally scoped access token, never your password.
-              </p>
-            </div>
-          </div>
-        </div>
-
-        <nav aria-label="Footer" className="flex flex-wrap items-center gap-x-6 gap-y-2">
-          <Link to="/about" className={footerLinkClass}>
-            About
-          </Link>
-          <Link to="/privacy" className={footerLinkClass}>
-            Privacy Policy
-          </Link>
-          <Link to="/contact" className={footerLinkClass}>
-            Contact
-          </Link>
-          <span className="ml-auto text-sm text-muted-foreground">© {new Date().getFullYear()} Aurify</span>
-        </nav>
-      </div>
+      <nav
+        aria-label="Footer"
+        className="mx-auto flex w-full max-w-5xl flex-wrap items-center gap-x-5 gap-y-1 px-4 py-2.5"
+      >
+        <Link to="/about" className={footerLinkClass}>
+          About
+        </Link>
+        <Link to="/privacy" className={footerLinkClass}>
+          Privacy
+        </Link>
+        <Link to="/security" className={footerLinkClass}>
+          Security
+        </Link>
+        <Link to="/contact" className={footerLinkClass}>
+          Contact
+        </Link>
+        <span className="ml-auto text-sm text-muted-foreground">&copy; {new Date().getFullYear()} Aurify</span>
+      </nav>
     </footer>
   )
 }
@@ -146,8 +144,7 @@ function SiteFooter() {
  * new page. Skipped on first paint so we neither steal focus on load nor
  * announce a page the user just opened directly.
  */
-function useRouteAnnouncement(mainRef: RefObject<HTMLElement | null>): string {
-  const pathname = useRouterState({ select: (state) => state.location.pathname })
+function useRouteAnnouncement(pathname: string, mainRef: RefObject<HTMLElement | null>): string {
   const [message, setMessage] = useState('')
   const firstRender = useRef(true)
 
@@ -156,6 +153,10 @@ function useRouteAnnouncement(mainRef: RefObject<HTMLElement | null>): string {
       firstRender.current = false
       return
     }
+    // The scroll position belongs to <main> now, and an element keeps its
+    // scrollTop across a route change. Without this, leaving a scrolled list
+    // drops you into the middle of the next page.
+    mainRef.current?.scrollTo({ top: 0 })
     mainRef.current?.focus()
     setMessage(`${pageName(pathname)}, Aurify`)
   }, [pathname, mainRef])

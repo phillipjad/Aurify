@@ -156,6 +156,71 @@ body {
   text-rendering: optimizeLegibility;
 }
 
+/* ---- Scroll containers ---------------------------------------------------
+   Every scroll container in the app is marked `data-scroll-container`, so the
+   scrollbar is defined once here instead of per surface. Adding the attribute
+   is the whole contract: a new scrolling region inherits the gutter, the
+   colours and the shape without repeating a utility string.
+
+   The thumb is derived from --muted-foreground rather than given its own pair
+   of light/dark values, so it follows the theme that is already defined. */
+[data-scroll-container] {
+  --scrollbar-thumb: color-mix(in oklab, var(--muted-foreground) 35%, transparent);
+  --scrollbar-thumb-hover: color-mix(in oklab, var(--muted-foreground) 60%, transparent);
+
+  /* Reserve the track whether or not this surface currently overflows. Without
+     it, moving between a route that scrolls and one that does not changes the
+     content width, which re-wraps every balanced heading mid-transition. */
+  scrollbar-gutter: stable;
+}
+
+@supports (scrollbar-color: auto) {
+  [data-scroll-container] {
+    scrollbar-width: thin;
+    /* Transparent track: the thumb is the only mark, so the scrollbar reads as
+       part of the surface rather than as a channel cut into it. */
+    scrollbar-color: var(--scrollbar-thumb) transparent;
+  }
+
+  [data-scroll-container]:hover {
+    scrollbar-color: var(--scrollbar-thumb-hover) transparent;
+  }
+}
+
+/* Safari before 18.2 has no scrollbar-color. It gets the WebKit pseudo-elements
+   instead, which also buy an explicitly rounded thumb. Deliberately in a
+   negative feature query rather than alongside: Chrome ignores these entirely
+   once scrollbar-color is set, so specifying both would leave dead rules that
+   look like they are doing something. */
+@supports not (scrollbar-color: auto) {
+  [data-scroll-container]::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  [data-scroll-container]::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  /* A transparent border clipped to the content box insets the thumb from the
+     edge, which is what keeps a pill shape from reading as a square block
+     jammed against the rounded content beside it. */
+  [data-scroll-container]::-webkit-scrollbar-thumb {
+    background-color: var(--scrollbar-thumb);
+    background-clip: content-box;
+    border: 3px solid transparent;
+    border-radius: var(--radius);
+  }
+
+  [data-scroll-container]:hover::-webkit-scrollbar-thumb {
+    background-color: var(--scrollbar-thumb-hover);
+  }
+
+  [data-scroll-container]::-webkit-scrollbar-corner {
+    background: transparent;
+  }
+}
+
 /* Aurora glow: soft radial pools of the brand hues in the corners, using
    color-mix over the base so the effect adapts to light/dark automatically.
    Painted on a fixed pseudo-element rather than via `background-attachment:
@@ -180,6 +245,26 @@ body::before {
       transparent 62%
     );
   background-repeat: no-repeat;
+}
+
+/* Route entrance. Without it a navigation replaces the page in a single frame,
+   and because every route renders its <PageHeader> at identical coordinates,
+   the heading and subheading read as a jump cut rather than a page change.
+
+   A keyframe rather than the View Transition API: this animates in every
+   browser (startViewTransition is still missing in some), and the reduced-motion
+   block below neutralises it for free, since ::view-transition-* pseudo-elements
+   are out of reach of a `*` selector. The animation only fades in, so at the
+   0.01ms the block forces, it lands on the element's natural state. */
+@keyframes route-enter {
+  from {
+    opacity: 0;
+    transform: translateY(0.375rem);
+  }
+}
+
+.route-enter {
+  animation: route-enter 200ms ease-out;
 }
 
 /* Reduced motion: kill decorative movement and transitions rather than letting

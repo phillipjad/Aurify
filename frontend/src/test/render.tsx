@@ -3,6 +3,8 @@ import { render } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { RouterProvider, createMemoryHistory, createRootRoute, createRoute, createRouter } from '@tanstack/react-router'
 
+import { APP_SCROLL_ID } from '@/lib/app-scroll'
+
 /**
  * Render a feature component with the providers it needs in the real app:
  * a QueryClient and a router.
@@ -21,7 +23,16 @@ export function renderWithProviders(ui: ReactElement, options?: { path?: string 
     defaultOptions: { queries: { retry: false } },
   })
 
-  const rootRoute = createRootRoute({ component: () => ui })
+  // Feature components are rendered without the root layout, so the app's scroll
+  // container has to be stood up here: the virtualized list and grid measure
+  // against it by id (see lib/app-scroll.ts) and render nothing without it.
+  const rootRoute = createRootRoute({
+    component: () => (
+      <main id={APP_SCROLL_ID} data-scroll-container className="overflow-y-auto">
+        {ui}
+      </main>
+    ),
+  })
   const stubRoutes = ['/', '/playlists', '/covers', '/covers/$coverId', '/sign-in', '/sign-up'].map((path) =>
     createRoute({ getParentRoute: () => rootRoute, path, component: () => null }),
   )

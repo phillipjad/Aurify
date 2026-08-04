@@ -1,7 +1,7 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type RefObject } from 'react'
 import { AlertTriangle, ImageOff, RefreshCw, Sparkles } from 'lucide-react'
 import { Link } from '@tanstack/react-router'
-import { useWindowVirtualizer } from '@tanstack/react-virtual'
+import { useVirtualizer } from '@tanstack/react-virtual'
 
 import { EmptyState } from '@/components/empty-state'
 import { LoadMore } from '@/components/load-more'
@@ -25,6 +25,14 @@ const GRID = 'grid gap-4 sm:grid-cols-2 lg:grid-cols-3'
  * replace it once rows are measured.
  */
 const ROW_ESTIMATE = 360
+
+/**
+ * The gap between rows, in pixels, matching the `pb-4` each row carries. The
+ * last row does not carry it, so the estimate has to know the same rule: the
+ * virtualizer reserves space from the estimate, and reserving a gap that the
+ * final row never renders leaves dead scroll under the last cover.
+ */
+const ROW_GAP = 16
 
 /**
  * The breakpoints GRID switches on, read through matchMedia so the column count
@@ -79,6 +87,7 @@ export function CoverGallery() {
   const [filter, setFilter] = useState<CoverFilter>('all')
   const columns = useGridColumns()
   const covers = useCovers(filter)
+  const scrollerRef = useRef<HTMLDivElement>(null)
 
   if (covers.isError) {
     return (
@@ -128,23 +137,29 @@ export function CoverGallery() {
   }
 
   return (
-    <div className="space-y-4" aria-busy={covers.isFetching || undefined}>
+    <div className="flex min-h-0 flex-1 flex-col gap-4" aria-busy={covers.isFetching || undefined}>
       <FilterBar value={filter} onChange={setFilter} />
 
-      {items.length > 0 ? (
-        <WindowedCoverGrid items={items} columns={columns} />
-      ) : (
-        <p className="py-6 text-center text-sm text-muted-foreground">
-          No {FILTERS.find((f) => f.id === filter)?.label.toLowerCase()} covers.
-        </p>
-      )}
+      {/* The grid scrolls, not the page: the title and the filters stay put
+          while the covers move under them. data-scroll-container brings the
+          shared scrollbar with it, reserved gutter included, so switching
+          filters between a full grid and a short one cannot resize the tiles. */}
+      <div ref={scrollerRef} data-scroll-container className="min-h-0 flex-1 overflow-y-auto">
+        {items.length > 0 ? (
+          <WindowedCoverGrid items={items} columns={columns} scrollerRef={scrollerRef} />
+        ) : (
+          <p className="py-6 text-center text-sm text-muted-foreground">
+            No {FILTERS.find((f) => f.id === filter)?.label.toLowerCase()} covers.
+          </p>
+        )}
 
-      <LoadMore
-        label="Load more covers"
-        hasNextPage={covers.hasNextPage}
-        isFetchingNextPage={covers.isFetchingNextPage}
-        fetchNextPage={() => void covers.fetchNextPage()}
-      />
+        <LoadMore
+          label="Load more covers"
+          hasNextPage={covers.hasNextPage}
+          isFetchingNextPage={covers.isFetchingNextPage}
+          fetchNextPage={() => void covers.fetchNextPage()}
+        />
+      </div>
     </div>
   )
 }
@@ -203,37 +218,60 @@ function dedupeById(covers: Cover[]): Cover[] {
  * instead. aria-setsize and aria-posinset supply the position that a partially
  * rendered list cannot.
  */
-function WindowedCoverGrid({ items, columns }: { items: Cover[]; columns: number }) {
-  const gridRef = useRef<HTMLDivElement>(null)
-  const [gridTop, setGridTop] = useState(0)
+function WindowedCoverGrid({
+  items,
+  columns,
+  scrollerRef,
+}: {
+  items: Cover[]
+  columns: number
+  scrollerRef: RefObject<HTMLDivElement | null>
+}) {
   const rowCount = Math.ceil(items.length / columns)
 
-  const virtualizer = useWindowVirtualizer({
+  // Every row in a given layout is the same height: a square thumbnail plus a
+  // meta block of fixed structure. So the first real measurement is the right
+  // estimate for every row still below the fold, and adopting it is what stops
+  // the scroll target from moving. With a constant estimate, each row that
+  // scrolled into view corrected itself and grew the total, which walked the
+  // bottom of the list away as you approached it: jumping to the end left the
+  // last row cut off by exactly the accumulated error.
+  const [rowHeight, setRowHeight] = useState(ROW_ESTIMATE)
+
+  // The grid has its own scroll container (the gallery owns the element, since
+  // the Load more button shares it). No scrollMargin: rows are measured from the
+  // top of that container, which is where the grid starts.
+  const virtualizer = useVirtualizer({
     count: rowCount,
-    estimateSize: () => ROW_ESTIMATE,
+    getScrollElement: () => scrollerRef.current,
+    estimateSize: (index) => (index === rowCount - 1 ? rowHeight - ROW_GAP : rowHeight),
     // Rows are tall, so a couple either side is plenty of slack.
     overscan: 2,
-    scrollMargin: gridTop,
     // Falling back to the estimate keeps this sane where there is no layout to
     // measure, which is every test environment.
-    measureElement: (el) => el.getBoundingClientRect().height || ROW_ESTIMATE,
+    measureElement: (el) => el.getBoundingClientRect().height || rowHeight,
   })
 
-  // The grid sits below a filter bar whose height changes, so its offset is
-  // re-read after each render and written only when it actually moved.
-  useLayoutEffect(() => {
-    const next = gridRef.current?.offsetTop ?? 0
-    if (next !== gridTop) setGridTop(next)
-  })
+  // Any row but the last: that one carries no bottom padding, so taking the
+  // estimate from it would under-reserve every row above.
+  const measured = virtualizer.getVirtualItems().find((item) => item.index < rowCount - 1)?.size
+
+  // Sub-pixel drift is not worth a re-render; a real layout change is.
+  useEffect(() => {
+    if (measured && Math.abs(measured - rowHeight) > 1) setRowHeight(measured)
+  }, [measured, rowHeight])
 
   // A breakpoint change repacks every row, so previous measurements describe a
-  // layout that no longer exists.
+  // layout that no longer exists. A new rowHeight has to reset them too: the
+  // virtualizer caches what it has measured and does not revisit that cache
+  // when estimateSize changes, so without this the rows below the fold keep the
+  // stale estimate and the total keeps growing as you scroll into them.
   useEffect(() => {
     virtualizer.measure()
-  }, [columns, virtualizer])
+  }, [columns, rowHeight, virtualizer])
 
   return (
-    <div ref={gridRef}>
+    <div>
       {/* Named, because a tile contains its own palette list and an unnamed one
           is indistinguishable from it to a screen reader. */}
       <div role="list" aria-label="Covers" className="relative" style={{ height: virtualizer.getTotalSize() }}>
@@ -244,8 +282,12 @@ function WindowedCoverGrid({ items, columns }: { items: Cover[]; columns: number
               key={row.index}
               data-index={row.index}
               ref={virtualizer.measureElement}
-              className={cn(GRID, 'absolute inset-x-0 top-0 pb-4')}
-              style={{ transform: `translateY(${row.start - gridTop}px)` }}
+              // pb-4 stands in for the row gap that absolute positioning takes
+              // away. The last row has nothing to be spaced from, and keeping it
+              // there left a strip of empty scroll below the final cover for the
+              // scrollbar thumb to sit in.
+              className={cn(GRID, 'absolute inset-x-0 top-0', row.index < rowCount - 1 && 'pb-4')}
+              style={{ transform: `translateY(${row.start}px)` }}
             >
               {items.slice(first, first + columns).map((cover, offset) => (
                 <div key={cover.id} role="listitem" aria-setsize={items.length} aria-posinset={first + offset + 1}>
