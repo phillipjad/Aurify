@@ -4,7 +4,6 @@ import type { QueryClient } from '@tanstack/react-query'
 import { createRootRouteWithContext, Link, Outlet, useRouterState } from '@tanstack/react-router'
 
 import { AurifyLogo } from '@/components/aurify-logo'
-import { ThemeToggle } from '@/components/theme-toggle'
 import { UserMenu } from '@/features/auth/user-menu'
 
 // Context made available to every route (loaders, components).
@@ -62,7 +61,6 @@ function RootLayout() {
             </Link>
             <span className="mx-1 h-5 w-px bg-border" aria-hidden="true" />
             <UserMenu />
-            <ThemeToggle />
           </nav>
         </div>
       </header>
