@@ -1,6 +1,7 @@
 import { createFileRoute } from '@tanstack/react-router'
 
 import { SignInForm } from '@/features/auth/sign-in-form'
+import { redirectIfSignedIn } from '@/lib/auth-guard'
 
 interface SignInSearch {
   /** Where to go after signing in, set by the route guard. */
@@ -17,6 +18,9 @@ export const Route = createFileRoute('/sign-in')({
     redirect: typeof search.redirect === 'string' && isInternalPath(search.redirect) ? search.redirect : undefined,
     error: typeof search.error === 'string' ? search.error : undefined,
   }),
+  // Already signed in? Then this page has nothing to offer: go on to wherever
+  // the guard was sending them, or home.
+  beforeLoad: ({ context, search }) => redirectIfSignedIn(context.queryClient, search.redirect),
   component: SignInPage,
 })
 

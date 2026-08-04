@@ -26,3 +26,24 @@ export async function requireSession(queryClient: QueryClient, href: string) {
   }
   return session
 }
+
+/**
+ * The inverse guard: keep a signed-in user off the sign-in and sign-up pages.
+ *
+ * Landing on a sign-in form while already signed in is a dead end. The form
+ * would work, but the honest answer to "sign in" when you already are is to put
+ * you where you were going, so this redirects rather than explains.
+ *
+ * Deliberately not applied to the routes that arrive with a token in the URL
+ * (verify-email, reset-password): those are legitimate to open while signed in,
+ * and redirecting would strand a working link.
+ */
+export async function redirectIfSignedIn(queryClient: QueryClient, href?: string) {
+  const session = await queryClient.ensureQueryData(sessionQuery())
+  if (!session) return
+
+  // href is the destination the sign-in guard stashed, already validated as an
+  // in-app path by the route's validateSearch. Without one, home.
+  if (href) throw redirect({ href })
+  throw redirect({ to: '/' })
+}

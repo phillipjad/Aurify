@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest'
-import { render, screen, within } from '@testing-library/react'
+import { cleanup, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { RouterProvider, createMemoryHistory, createRouter } from '@tanstack/react-router'
@@ -129,6 +129,43 @@ describe('app routing', () => {
     // Claims exactly one screen so the grid scrolls, not the page (__root.tsx
     // keys its grid row off this attribute).
     expect(document.querySelector('[data-fills-shell]')).toBeInTheDocument()
+  })
+
+  it('sends a signed-in user away from sign-in and sign-up', async () => {
+    mockFetch.mockImplementation((path: string) =>
+      path.startsWith('/auth/session')
+        ? Promise.resolve({ userId: 'u1', email: 'ada@example.com' })
+        : Promise.resolve([]),
+    )
+
+    renderApp(['/sign-in'])
+    // Home, not the form: signing in again is not something to offer.
+    expect(await screen.findByRole('heading', { name: /cover art that captures the vibe/i })).toBeInTheDocument()
+    expect(screen.queryByLabelText('Email')).not.toBeInTheDocument()
+
+    cleanup()
+    renderApp(['/sign-up'])
+    expect(await screen.findByRole('heading', { name: /cover art that captures the vibe/i })).toBeInTheDocument()
+  })
+
+  it('honours the guard’s destination when a signed-in user hits sign-in', async () => {
+    mockFetch.mockImplementation((path: string) =>
+      path.startsWith('/auth/session')
+        ? Promise.resolve({ userId: 'u1', email: 'ada@example.com' })
+        : Promise.resolve([]),
+    )
+
+    // The guard stashes where you were headed; already being signed in should
+    // complete that trip rather than dump you on the home page.
+    renderApp(['/sign-in?redirect=%2Fplaylists'])
+    expect(await screen.findByRole('heading', { name: 'Your playlists' })).toBeInTheDocument()
+  })
+
+  it('still shows the sign-in form when signed out', async () => {
+    mockFetch.mockResolvedValue(null)
+    renderApp(['/sign-in'])
+
+    expect(await screen.findByRole('heading', { name: 'Sign in' })).toBeInTheDocument()
   })
 
   it('shows the not-found page for an unknown URL', async () => {
