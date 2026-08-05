@@ -7,6 +7,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/phillipjad/aurify/backend/internal/analysis"
 	"github.com/phillipjad/aurify/backend/internal/app/dspconn"
 	"github.com/phillipjad/aurify/backend/internal/app/lyrics"
 	"github.com/phillipjad/aurify/backend/internal/app/ports"
@@ -30,6 +31,10 @@ type Handler struct {
 	prompts     ports.PromptGenerator
 	images      ports.ImageGenerator
 	imageStore  ports.ImageStore
+	// features and estimator are both optional: nil means the pipeline behaves
+	// as it did before either existed.
+	features  ports.FeatureSource
+	estimator ports.FeatureEstimator
 }
 
 // NewHandler constructs a GenerateCover handler with all of its dependencies.
@@ -42,6 +47,8 @@ func NewHandler(
 	prompts ports.PromptGenerator,
 	images ports.ImageGenerator,
 	imageStore ports.ImageStore,
+	features ports.FeatureSource,
+	estimator ports.FeatureEstimator,
 ) *Handler {
 	return &Handler{
 		connections: connections,
@@ -52,6 +59,8 @@ func NewHandler(
 		prompts:     prompts,
 		images:      images,
 		imageStore:  imageStore,
+		features:    features,
+		estimator:   estimator,
 	}
 }
 
@@ -114,10 +123,36 @@ func (h *Handler) Handle(ctx context.Context, cmd Command) (string, error) {
 		sentiments[i] = s
 	}
 
-	// 3. Aggregate features + sentiment into a normalized, weighted palette.
+	// 3. Fill in acoustic features the DSP did not supply, which on YouTube
+	//    Music is all of them. Without this every playlist analyzes to the zero
+	//    value and five of the seven palette dimensions score exactly 0, so
+	//    every cover comes out the same (see docs/adr/0018-audio-features.md).
+	//
+	//    Best effort, like lyrics: unmatched tracks keep Present false and the
+	//    engine skips them exactly as it does today.
+	if h.features != nil {
+		for i, f := range h.features.Lookup(ctx, tracks) {
+			if f.Present && !tracks[i].Features.Present {
+				tracks[i].Features = f
+			}
+		}
+	}
+
+	// 4. Aggregate features + sentiment into a normalized, weighted palette.
 	result, err := h.analysis.Analyze(ctx, cmd.PlaylistID, tracks, sentiments)
 	if err != nil {
 		return cover.ID, h.fail(ctx, cover, err)
+	}
+
+	// Nothing matched, so the palette would be the constant one. Fall back to a
+	// guess from the track titles, which is worse than a measurement and far
+	// better than declaring the playlist silent.
+	if result.AnalyzedCount == 0 && h.estimator != nil {
+		if estimated, eerr := h.estimator.Estimate(ctx, tracks); eerr == nil && estimated.Present {
+			result.MeanFeatures = estimated
+			result.FeaturesEstimated = true
+			result.Palette = analysis.BuildPalette(result.MeanFeatures, result.MeanSentiment)
+		}
 	}
 	cover.Analysis = result
 	cover.Status = domain.CoverStatusGenerating
@@ -125,7 +160,7 @@ func (h *Handler) Handle(ctx context.Context, cmd Command) (string, error) {
 		return cover.ID, err
 	}
 
-	// 4. Analysis -> prompt -> image, then store the bytes. The generator returns
+	// 5. Analysis -> prompt -> image, then store the bytes. The generator returns
 	//    the image itself because that is what image APIs hand back; deciding
 	//    where it lives is the store's job.
 	prompt, err := h.prompts.GeneratePrompt(ctx, result)

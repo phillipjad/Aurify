@@ -5,6 +5,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/phillipjad/aurify/backend/internal/analysis"
 	"github.com/phillipjad/aurify/backend/internal/app/dspconn"
 	"github.com/phillipjad/aurify/backend/internal/app/lyrics"
 	"github.com/phillipjad/aurify/backend/internal/app/ports"
@@ -171,6 +172,8 @@ func newHandler(provider *fakeProvider) (*Handler, *fakeCovers, *fakeImageStore)
 		fakePrompts{},
 		fakeImages{},
 		images,
+		nil,
+		nil,
 	)
 	return handler, covers, images
 }
@@ -327,5 +330,169 @@ func TestGenerationSurvivesAFailedNameLookup(t *testing.T) {
 	}
 	if last.PlaylistName != "" {
 		t.Fatalf("name = %q, want it left empty when the lookup failed", last.PlaylistName)
+	}
+}
+
+// --- acoustic features (#68) ---
+
+// fakeFeatures answers with the same features for every track, or nothing.
+type fakeFeatures struct {
+	features domain.AudioFeatures
+	calls    int
+}
+
+func (f *fakeFeatures) Lookup(_ context.Context, tracks []domain.Track) []domain.AudioFeatures {
+	f.calls++
+	out := make([]domain.AudioFeatures, len(tracks))
+	for i := range out {
+		out[i] = f.features
+	}
+	return out
+}
+
+type fakeEstimator struct {
+	features domain.AudioFeatures
+	err      error
+	calls    int
+}
+
+func (e *fakeEstimator) Estimate(context.Context, []domain.Track) (domain.AudioFeatures, error) {
+	e.calls++
+	return e.features, e.err
+}
+
+// withFeatures builds a handler using the real analysis engine, so AnalyzedCount
+// and the palette are computed rather than stubbed. That is the whole point:
+// these tests are about what reaches the palette.
+func withFeatures(src ports.FeatureSource, est ports.FeatureEstimator) (*Handler, *fakeCovers) {
+	users := &fakeUsers{user: &domain.User{
+		ID: "user-1",
+		Connections: map[domain.DSPPlatform]domain.DSPConnection{
+			domain.PlatformYouTubeMusic: {Platform: domain.PlatformYouTubeMusic, AccessToken: "at"},
+		},
+	}}
+	covers := &fakeCovers{}
+	handler := NewHandler(
+		dspconn.NewResolver(users, fakeRegistry{provider: &fakeProvider{}}),
+		covers,
+		lyrics.NewResolver(nullLyricsStore{}, fakeLyrics{}),
+		fakeSentiment{},
+		analysis.NewEngine(),
+		fakePrompts{},
+		fakeImages{},
+		&fakeImageStore{},
+		src, est,
+	)
+	return handler, covers
+}
+
+func generate(t *testing.T, h *Handler) {
+	t.Helper()
+	if _, err := h.Handle(context.Background(), Command{
+		UserID: "user-1", Platform: domain.PlatformYouTubeMusic, PlaylistID: "PL1",
+	}); err != nil {
+		t.Fatalf("Handle: %v", err)
+	}
+}
+
+func dominant(a domain.PlaylistAnalysis) string {
+	if len(a.Palette) == 0 {
+		return ""
+	}
+	return a.Palette[0].Dimension
+}
+
+// The bug this change exists to fix: with no features every playlist analyzes to
+// the zero value, five of seven dimensions score 0, and melancholic always wins.
+func TestWithoutFeaturesThePaletteIsTheConstantOne(t *testing.T) {
+	handler, covers := withFeatures(nil, nil)
+	generate(t, handler)
+
+	got := covers.saved[len(covers.saved)-1].Analysis
+	if d := dominant(got); d != "melancholic" {
+		t.Fatalf("dominant dimension = %q, expected the known-constant %q", d, "melancholic")
+	}
+	if got.AnalyzedCount != 0 {
+		t.Errorf("AnalyzedCount = %d, want 0 when no track carries features", got.AnalyzedCount)
+	}
+}
+
+// Measured features must reach the palette and move it off that constant.
+func TestMeasuredFeaturesChangeThePalette(t *testing.T) {
+	src := &fakeFeatures{features: domain.AudioFeatures{
+		Danceability: 0.9, Energy: 0.85, Valence: 0.8, Acousticness: 0.1, Present: true,
+	}}
+	handler, covers := withFeatures(src, nil)
+	generate(t, handler)
+
+	got := covers.saved[len(covers.saved)-1].Analysis
+	if d := dominant(got); d == "melancholic" {
+		t.Errorf("an energetic, danceable, happy playlist still came out melancholic: %+v", got.Palette)
+	}
+	if got.AnalyzedCount == 0 {
+		t.Error("AnalyzedCount is 0 although every track was given features")
+	}
+	if got.FeaturesEstimated {
+		t.Error("measured features must not be recorded as estimated")
+	}
+}
+
+// The estimator is the fallback, not the plan: it must not run when real
+// features were found, or a guess would overwrite a measurement.
+func TestTheEstimatorIsSkippedWhenFeaturesWereMeasured(t *testing.T) {
+	src := &fakeFeatures{features: domain.AudioFeatures{Energy: 0.7, Present: true}}
+	est := &fakeEstimator{features: domain.AudioFeatures{Energy: 0.1, Present: true}}
+
+	handler, covers := withFeatures(src, est)
+	generate(t, handler)
+
+	if est.calls != 0 {
+		t.Errorf("the estimator ran %d times despite measured features", est.calls)
+	}
+	if got := covers.saved[len(covers.saved)-1].Analysis; got.MeanFeatures.Energy != 0.7 {
+		t.Errorf("energy = %.2f, want the measured 0.70", got.MeanFeatures.Energy)
+	}
+}
+
+// When nothing matched, the guess is better than declaring the playlist silent.
+func TestTheEstimatorFillsInWhenNothingMatched(t *testing.T) {
+	src := &fakeFeatures{features: domain.AudioFeatures{Present: false}}
+	est := &fakeEstimator{features: domain.AudioFeatures{
+		Danceability: 0.9, Energy: 0.85, Valence: 0.8, Present: true,
+	}}
+
+	handler, covers := withFeatures(src, est)
+	generate(t, handler)
+
+	got := covers.saved[len(covers.saved)-1].Analysis
+	if est.calls != 1 {
+		t.Errorf("the estimator ran %d times, want 1", est.calls)
+	}
+	if !got.FeaturesEstimated {
+		t.Error("an estimate must be recorded as one, or it is indistinguishable from a measurement")
+	}
+	if d := dominant(got); d == "melancholic" {
+		t.Errorf("the estimate did not reach the palette: %+v", got.Palette)
+	}
+	// AnalyzedCount counts measured tracks, so an estimate must not inflate it.
+	if got.AnalyzedCount != 0 {
+		t.Errorf("AnalyzedCount = %d, want 0: nothing was actually measured", got.AnalyzedCount)
+	}
+}
+
+// Both sources are best effort. Neither failing may cost the user their cover.
+func TestAFailingEstimatorStillProducesACover(t *testing.T) {
+	src := &fakeFeatures{features: domain.AudioFeatures{Present: false}}
+	est := &fakeEstimator{err: errors.New("ollama is not running")}
+
+	handler, covers := withFeatures(src, est)
+	generate(t, handler)
+
+	last := covers.saved[len(covers.saved)-1]
+	if last.Status != domain.CoverStatusReady {
+		t.Errorf("status = %q, want the generation to have completed anyway", last.Status)
+	}
+	if last.Analysis.FeaturesEstimated {
+		t.Error("a failed estimate was recorded as if it had worked")
 	}
 }

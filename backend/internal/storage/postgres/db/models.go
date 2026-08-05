@@ -83,6 +83,16 @@ type Session struct {
 	Ip         string
 }
 
+type TrackFeature struct {
+	TrackKey     string
+	Present      bool
+	Danceability float64
+	Acousticness float64
+	Energy       float64
+	Valence      float64
+	FetchedAt    pgtype.Timestamptz
+}
+
 type User struct {
 	ID            string
 	Email         string

@@ -45,7 +45,9 @@ import (
 	"github.com/phillipjad/aurify/backend/internal/platform/dsp/spotify"
 	"github.com/phillipjad/aurify/backend/internal/platform/dsp/youtubemusic"
 	"github.com/phillipjad/aurify/backend/internal/platform/email"
+	"github.com/phillipjad/aurify/backend/internal/platform/features/acousticbrainz"
 	"github.com/phillipjad/aurify/backend/internal/platform/identity/google"
+	llmfeatures "github.com/phillipjad/aurify/backend/internal/platform/llm/features"
 	"github.com/phillipjad/aurify/backend/internal/platform/llm/imagegen"
 	"github.com/phillipjad/aurify/backend/internal/platform/llm/promptgen"
 	"github.com/phillipjad/aurify/backend/internal/platform/lyrics/breaker"
@@ -115,6 +117,12 @@ func run() error {
 	sentiment := nlp.NewAnalyzer()
 	engine := analysis.NewEngine()
 	prompts := promptgen.New(cfg.PromptGen.BaseURL, cfg.PromptGen.Model, cfg.PromptGen.APIKey)
+	// Acoustic features for tracks the DSP left empty. AcousticBrainz first,
+	// since it is measured; the text model only when nothing matched at all.
+	trackFeatures := acousticbrainz.New(store.TrackFeatures(), version)
+	featureEstimator := llmfeatures.New(
+		cfg.PromptGen.BaseURL, cfg.PromptGen.Model, cfg.PromptGen.APIKey,
+	)
 	images := imagegen.New(
 		cfg.ImageGen.BaseURL,
 		cfg.ImageGen.AccountID,
@@ -178,6 +186,7 @@ func run() error {
 			GenerateCover: generatecover.NewHandler(
 				connections, store.Covers(),
 				lyricsResolver, sentiment, engine, prompts, images, store.CoverImages(),
+				trackFeatures, featureEstimator,
 			),
 			DeleteCover: deletecover.NewHandler(store.Covers()),
 

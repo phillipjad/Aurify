@@ -33,6 +33,34 @@ func (c CachedLyrics) Fresh(now time.Time) bool {
 	return now.Sub(c.FetchedAt) < NegativeLyricsTTL
 }
 
+// NegativeFeaturesTTL is how long "no features exist for this track" is trusted.
+//
+// Longer than the lyric equivalent because AcousticBrainz stopped collecting in
+// 2022: a track absent today will still be absent next month, and re-asking
+// costs a second of MusicBrainz rate limit each time. Not infinite, since the
+// match itself may improve as MusicBrainz gains releases.
+const NegativeFeaturesTTL = 90 * 24 * time.Hour
+
+// CachedFeatures is one remembered feature lookup.
+type CachedFeatures struct {
+	// Key is domain.LyricsKey(track): the same normalized "artist\ntitle" the
+	// lyric cache uses, so both caches agree on what counts as the same song.
+	Key string
+	// Features carries Present false for a track that could not be matched,
+	// which is a real answer worth storing rather than an absence of one.
+	Features  AudioFeatures
+	FetchedAt time.Time
+}
+
+// Fresh reports whether an entry may still be used. Measured features never
+// expire, because a recording's audio does not change.
+func (c CachedFeatures) Fresh(now time.Time) bool {
+	if c.Features.Present {
+		return true
+	}
+	return now.Sub(c.FetchedAt) < NegativeFeaturesTTL
+}
+
 // LyricsKey builds the cache key for a track.
 //
 // Case and spacing are normalized so trivially different spellings share an
