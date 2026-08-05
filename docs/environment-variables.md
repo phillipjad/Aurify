@@ -86,6 +86,13 @@ both unfiltered and usable on the free tier.
 `@cf/stabilityai/stable-diffusion-xl-base-1.0` is the same price if you want more
 steps and less speed.
 
+## Audio features
+
+No settings. Features come from AcousticBrainz via MusicBrainz, both free and
+unauthenticated, cached in `track_features`. When nothing in a playlist matches,
+the `AURIFY_PROMPTGEN_*` model above estimates them instead. See
+[ADR 0018](adr/0018-audio-features.md).
+
 ## DSP OAuth
 
 Obtain each from the provider's developer console.

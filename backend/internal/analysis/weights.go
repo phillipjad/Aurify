@@ -21,7 +21,13 @@ type dimension struct {
 
 var palette = []dimension{
 	{"energetic", "#FF5A36", func(f domain.AudioFeatures, _ domain.Sentiment) float64 {
-		return (f.Energy + f.Liveness) / 2
+		// Energy alone. This averaged in Liveness, but nothing Aurify can reach
+		// measures liveness: AcousticBrainz has no such classifier, so it stayed
+		// at zero and halved this dimension permanently. Danceable, scored from a
+		// single feature, then won every playlist regardless of the music.
+		// Averaging a real signal with a structural zero is not a compromise, it
+		// is a bug.
+		return f.Energy
 	}},
 	{"danceable", "#FFB23E", func(f domain.AudioFeatures, _ domain.Sentiment) float64 {
 		return f.Danceability

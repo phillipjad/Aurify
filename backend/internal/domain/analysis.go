@@ -19,12 +19,18 @@ type Sentiment struct {
 // derived color palette that drives cover generation. It is persisted as the
 // JSONB `analysis` column on covers.
 type PlaylistAnalysis struct {
-	PlaylistID    string        `json:"playlist_id"`
-	TrackCount    int           `json:"track_count"`
+	PlaylistID string `json:"playlist_id"`
+	TrackCount int    `json:"track_count"`
+	// AnalyzedCount is how many tracks carried real, measured features.
 	AnalyzedCount int           `json:"analyzed_count"`
 	MeanFeatures  AudioFeatures `json:"mean_features"`
 	MeanSentiment Sentiment     `json:"mean_sentiment"`
 	Palette       []ColorWeight `json:"palette"`
+	// FeaturesEstimated records that MeanFeatures was guessed from track titles
+	// rather than measured, which happens when no track could be matched to a
+	// features source. Kept so an estimate is never mistaken for a measurement
+	// later; omitempty so existing stored analyses are unaffected.
+	FeaturesEstimated bool `json:"features_estimated,omitempty"`
 }
 
 // ColorWeight maps an emotional/sonic dimension to a weighted color in the

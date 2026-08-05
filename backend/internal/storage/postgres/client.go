@@ -31,6 +31,7 @@ type Store struct {
 	authBlocks  *AuthBlockRepository
 	lyrics      *LyricsRepository
 	coverImages *CoverImageRepository
+	trackFeats  *TrackFeatureRepository
 }
 
 // Connect dials PostgreSQL, verifies the connection, brings the schema up to
@@ -71,6 +72,7 @@ func Connect(ctx context.Context, dsn string, tokenKey []byte) (*Store, error) {
 		authBlocks:  &AuthBlockRepository{q: queries},
 		lyrics:      &LyricsRepository{q: queries},
 		coverImages: &CoverImageRepository{q: queries},
+		trackFeats:  &TrackFeatureRepository{q: queries},
 	}, nil
 }
 
@@ -134,3 +136,6 @@ func (s *Store) AuthBlocks() *AuthBlockRepository { return s.authBlocks }
 
 // CoverImages returns the generated-image store.
 func (s *Store) CoverImages() *CoverImageRepository { return s.coverImages }
+
+// TrackFeatures returns the acoustic-feature cache.
+func (s *Store) TrackFeatures() *TrackFeatureRepository { return s.trackFeats }

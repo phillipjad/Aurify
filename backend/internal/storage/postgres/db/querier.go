@@ -40,6 +40,8 @@ type Querier interface {
 	// what this table exists to avoid: a 194-track playlist would otherwise open
 	// 194 conversations with the database before doing any work.
 	FindLyricsByKeys(ctx context.Context, keys []string) ([]LyricsCache, error)
+	// One round trip for a whole playlist, as with lyrics.
+	FindTrackFeaturesByKeys(ctx context.Context, keys []string) ([]TrackFeature, error)
 	GetAuthBlock(ctx context.Context, arg GetAuthBlockParams) (AuthBlock, error)
 	GetCoverByID(ctx context.Context, id string) (Cover, error)
 	GetCredentialByUser(ctx context.Context, userID string) (UserCredential, error)
@@ -67,6 +69,9 @@ type Querier interface {
 	// ON CONFLICT overwrites rather than skipping, which is what lets a negative
 	// entry become a positive one when lrclib later gains the track.
 	SaveLyrics(ctx context.Context, arg SaveLyricsParams) error
+	// Batched upsert. ON CONFLICT overwrites rather than skipping, so a negative
+	// entry becomes positive once MusicBrainz gains the release.
+	SaveTrackFeatures(ctx context.Context, arg SaveTrackFeaturesParams) error
 	SetUserEmailVerified(ctx context.Context, arg SetUserEmailVerifiedParams) error
 	TouchSession(ctx context.Context, arg TouchSessionParams) error
 	UpsertCover(ctx context.Context, arg UpsertCoverParams) error

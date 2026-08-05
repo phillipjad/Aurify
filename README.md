@@ -112,6 +112,9 @@ Toolchain versions: Go 1.26.3 · Node 24.16.0 · pnpm 11.5.0 · PostgreSQL 17.
   tokens ([ADR 0011](docs/adr/0011-authentication-and-sessions.md)).
 - **Lyrics + sentiment** — the lrclib client is real; sentiment uses a naive
   lexicon placeholder.
+- **Audio features** — measured, from AcousticBrainz where a track matches
+  ([ADR 0018](docs/adr/0018-audio-features.md)). `introspective` and `intimate`
+  stay flat: nothing reachable measures them.
 
 ## Deploying
 
