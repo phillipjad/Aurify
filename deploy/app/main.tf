@@ -106,6 +106,15 @@ resource "google_cloud_run_v2_service" "aurify" {
     containers {
       image = var.image
 
+      # Cover generation runs in a goroutine after the response is written
+      # (ADR 0019). The Cloud Run default allocates CPU only while a request is
+      # in flight, which would throttle that work to a crawl mid-job; cpu_idle
+      # = false keeps CPU allocated for the instance's whole lifetime. The
+      # service still scales to zero when idle.
+      resources {
+        cpu_idle = false
+      }
+
       ports {
         container_port = 8080
       }
