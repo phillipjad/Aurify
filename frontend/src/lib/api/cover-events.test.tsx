@@ -3,7 +3,9 @@ import { screen, waitFor } from '@testing-library/react'
 
 import { CoverGenerationWatcher } from '@/components/cover-generation-watcher'
 import { Toaster } from '@/components/ui/sonner'
+import { CoverGallery } from '@/features/covers/cover-gallery'
 import { apiFetch } from '@/lib/api/client'
+import { watchCover } from '@/lib/api/cover-events'
 import { toastedCovers } from '@/lib/cover-toasts'
 import { renderWithProviders } from '@/test/render'
 
@@ -107,5 +109,38 @@ describe('resuming generations after a reload', () => {
     await waitFor(() => expect(mockFetch).toHaveBeenCalledWith('/auth/session'))
     expect(mockFetch).not.toHaveBeenCalledWith(expect.stringContaining('/covers?'))
     expect(FakeEventSource.opened).toHaveLength(0)
+  })
+})
+
+// The gallery fetches its pages once and then lives off the stream, so a cover
+// created after that fetch is in none of those pages. Updating in place can
+// never reach it: the tile did not appear until something refetched the list,
+// which the old three-second poll used to do by accident.
+describe('a cover created after the gallery loaded', () => {
+  it('refetches the list so the new cover reaches the grid', async () => {
+    const NEW_COVER = { ...RUNNING_COVER, id: 'cover-new', playlistName: 'Cuddle Time' }
+    let listCalls = 0
+    mockFetch.mockImplementation((path: string) => {
+      if (path.startsWith('/auth/session')) return Promise.resolve({ user: { id: 'u1' } })
+      if (path.startsWith('/covers?')) {
+        listCalls += 1
+        // The gallery's first read predates the generation, exactly as it does
+        // when the POST resolves after the grid has already rendered.
+        return Promise.resolve(listCalls === 1 ? [] : [NEW_COVER])
+      }
+      return Promise.resolve(NEW_COVER)
+    })
+
+    const { queryClient } = renderWithProviders(<CoverGallery />, { path: '/covers' })
+    await waitFor(() => expect(listCalls).toBe(1))
+
+    // The root watcher holds this cover's stream even though no page holds the
+    // cover, so its first event is what has to wake the list up.
+    watchCover(queryClient, NEW_COVER.id)
+    await waitFor(() => expect(FakeEventSource.opened).toHaveLength(1))
+    FakeEventSource.opened[0]?.emit({ ...NEW_COVER, status: 'generating' })
+
+    await waitFor(() => expect(listCalls).toBeGreaterThan(1))
+    expect(await screen.findByText('Cuddle Time')).toBeInTheDocument()
   })
 })
