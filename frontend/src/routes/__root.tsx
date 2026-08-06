@@ -4,6 +4,7 @@ import { createRootRouteWithContext, Link, Outlet, useRouterState } from '@tanst
 
 import { AurifyLogo } from '@/components/aurify-logo'
 import { CoverGenerationWatcher } from '@/components/cover-generation-watcher'
+import { Toaster } from '@/components/ui/sonner'
 import { UserMenu } from '@/features/auth/user-menu'
 
 // Context made available to every route (loaders, components).
@@ -101,8 +102,11 @@ function RootLayout() {
       <SiteFooter />
 
       {/* Generations are watched from the root so their SSE streams survive
-          route changes. */}
+          route changes, and finished ones announce themselves here from any
+          route outside the covers section, with a link straight to the new
+          cover (see lib/cover-toasts.tsx). */}
       <CoverGenerationWatcher />
+      <Toaster />
 
       {/* On navigation the SPA swaps content silently; announce the new page to
           assistive tech (focus moves to <main> in the hook above). */}
