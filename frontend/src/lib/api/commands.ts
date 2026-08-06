@@ -1,9 +1,11 @@
 // WRITE side. TanStack Query mutations for the API's command endpoints.
 // Mirrors the backend's CQRS command handlers (see backend/internal/app/command).
-import { useMutation, useMutationState, useQueryClient } from '@tanstack/react-query'
+import { useEffect } from 'react'
+import { useMutation, useMutationState, useQueries, useQueryClient } from '@tanstack/react-query'
 
 import { apiFetch, BASE_URL } from './client'
-import { queryKeys } from './queries'
+import { watchCover } from './cover-events'
+import { coverQuery, queryKeys, TERMINAL_STATUSES } from './queries'
 import type { Cover, GenerateCoverRequest, Platform } from './types'
 
 /**
@@ -59,6 +61,49 @@ export interface CoverGeneration {
   error: unknown
 }
 
+/** Every generation this session has attempted, read from the mutation cache. */
+function useAcceptedGenerations() {
+  return useMutationState({
+    filters: { mutationKey: coverGenerationKey },
+    select: (mutation) => ({
+      playlistId: (mutation.state.variables as GenerateCoverRequest | undefined)?.playlistId,
+      coverId: (mutation.state.data as Cover | undefined)?.id,
+      status: mutation.state.status,
+      error: mutation.state.error as unknown,
+    }),
+  })
+}
+
+/**
+ * Hold an SSE stream open for every cover still being generated, from wherever
+ * this hook is mounted. It lives in the root layout (see
+ * CoverGenerationWatcher), because the streams must survive route changes: the
+ * progression is only observed if someone is still listening after the user
+ * has wandered elsewhere.
+ */
+export function useWatchCoverGenerations(): void {
+  const queryClient = useQueryClient()
+  const entries = useAcceptedGenerations()
+
+  const coverIds = [...new Set(entries.map((entry) => entry.coverId).filter((id): id is string => id != null))]
+  const coverResults = useQueries({ queries: coverIds.map((id) => coverQuery(id)) })
+  const coverById = new Map(coverIds.map((id, i) => [id, coverResults[i]?.data]))
+
+  // One stream per still-running cover. The joined key changes only when a
+  // generation starts or settles, so streams are not churned on unrelated
+  // re-renders.
+  const live = new Set<string>()
+  for (const id of coverIds) {
+    const status = coverById.get(id)?.status
+    if (!status || !TERMINAL_STATUSES.has(status)) live.add(id)
+  }
+  const liveKey = [...live].sort().join(' ')
+  useEffect(() => {
+    const unwatch = liveKey === '' ? [] : liveKey.split(' ').map((id) => watchCover(queryClient, id))
+    return () => unwatch.forEach((stop) => stop())
+  }, [queryClient, liveKey])
+}
+
 /**
  * Per-playlist generation state, read from the mutation cache rather than from a
  * single hook's result.
@@ -68,23 +113,44 @@ export interface CoverGeneration {
  * request instead of a shared "last variables" value. And the state survives a row
  * scrolling out of the windowed list and back, because the cache outlives the
  * component.
+ *
+ * The POST returns a *pending* cover and the pipeline runs server side, so a
+ * settled mutation is an accepted job, not a finished one. Each accepted cover
+ * is followed over its SSE stream (see cover-events.ts) until the status is
+ * terminal, and that status — not the request's — is what a row reports.
+ *
+ * This hook only *reads*; the streams themselves are held open by
+ * useWatchCoverGenerations at the root. Holding them here was a real bug:
+ * navigating off the playlists page unmounted the only subscriber, closed the
+ * stream, and the ready toast never fired — on exactly the route change it
+ * exists for.
  */
 export function useCoverGenerations(): (playlistId: string) => CoverGeneration {
-  const entries = useMutationState({
-    filters: { mutationKey: coverGenerationKey },
-    select: (mutation) => ({
-      playlistId: (mutation.state.variables as GenerateCoverRequest | undefined)?.playlistId,
-      status: mutation.state.status,
-      error: mutation.state.error as unknown,
-    }),
-  })
+  const entries = useAcceptedGenerations()
+
+  const coverIds = [...new Set(entries.map((entry) => entry.coverId).filter((id): id is string => id != null))]
+  // The cache subscription: events written by the stream land here. The fetch
+  // is only the fallback snapshot for a cover accepted before this component
+  // mounted; from then on the stream keeps it current.
+  const coverResults = useQueries({ queries: coverIds.map((id) => coverQuery(id)) })
+  const coverById = new Map(coverIds.map((id, i) => [id, coverResults[i]?.data]))
 
   return (playlistId: string) => {
     // Last wins: retrying a playlist should report the retry, not the attempt
     // before it.
     const matches = entries.filter((entry) => entry.playlistId === playlistId)
     const latest = matches[matches.length - 1]
-    return { status: latest?.status ?? 'idle', error: latest?.error }
+    if (!latest) return { status: 'idle', error: undefined }
+    if (latest.status !== 'success') return { status: latest.status, error: latest.error }
+
+    // Accepted. The row keeps its spinner until the cover itself settles;
+    // before the first detail fetch lands, the job is at best still pending.
+    const cover = latest.coverId ? coverById.get(latest.coverId) : undefined
+    if (!cover || !TERMINAL_STATUSES.has(cover.status)) return { status: 'pending', error: undefined }
+    if (cover.status === 'failed') {
+      return { status: 'error', error: cover.error ?? 'Generation failed. Try again in a moment.' }
+    }
+    return { status: 'success', error: undefined }
   }
 }
 

@@ -346,7 +346,7 @@ function PlaylistRow({ playlist, generation, onGenerate }: PlaylistRowProps) {
           </Button>
           {succeeded && (
             <Link to="/covers" className="text-xs font-medium text-primary underline underline-offset-2">
-              Cover started, view it
+              Cover ready, view it
             </Link>
           )}
         </div>
@@ -401,5 +401,7 @@ function PlaylistSkeletons() {
 
 /** Read a user-facing message off an unknown error, falling back to plain copy. */
 function errorMessage(error: unknown, fallback: string): string {
+  // A failed generation reports the cover row's error, which is a bare string.
+  if (typeof error === 'string' && error) return error
   return isApiError(error) ? (error.detail ?? fallback) : fallback
 }

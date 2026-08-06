@@ -3,6 +3,7 @@ import type { QueryClient } from '@tanstack/react-query'
 import { createRootRouteWithContext, Link, Outlet, useRouterState } from '@tanstack/react-router'
 
 import { AurifyLogo } from '@/components/aurify-logo'
+import { CoverGenerationWatcher } from '@/components/cover-generation-watcher'
 import { UserMenu } from '@/features/auth/user-menu'
 
 // Context made available to every route (loaders, components).
@@ -98,6 +99,10 @@ function RootLayout() {
       </main>
 
       <SiteFooter />
+
+      {/* Generations are watched from the root so their SSE streams survive
+          route changes. */}
+      <CoverGenerationWatcher />
 
       {/* On navigation the SPA swaps content silently; announce the new page to
           assistive tech (focus moves to <main> in the hook above). */}

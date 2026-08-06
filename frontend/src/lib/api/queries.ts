@@ -1,7 +1,16 @@
 // READ side. TanStack Query definitions for the API's query endpoints.
-import { infiniteQueryOptions, keepPreviousData, queryOptions, useInfiniteQuery, useQuery } from '@tanstack/react-query'
+import { useEffect } from 'react'
+import {
+  infiniteQueryOptions,
+  keepPreviousData,
+  queryOptions,
+  useInfiniteQuery,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query'
 
 import { apiFetch } from './client'
+import { watchCover } from './cover-events'
 import type { Cover, CoverStatus, Platform, Playlist } from './types'
 
 /** Page size for the paginated list endpoints (matches the API's default). */
@@ -50,7 +59,7 @@ export const playlistsInfiniteQuery = ({ platform, search, sort }: PlaylistsArgs
   })
 
 /** Cover statuses that will never change again without a new user action. */
-const TERMINAL_STATUSES: ReadonlySet<CoverStatus> = new Set<CoverStatus>(['ready', 'failed'])
+export const TERMINAL_STATUSES: ReadonlySet<CoverStatus> = new Set<CoverStatus>(['ready', 'failed'])
 
 export const coversInfiniteQuery = (filter: CoverFilter = 'all') =>
   infiniteQueryOptions({
@@ -62,16 +71,8 @@ export const coversInfiniteQuery = (filter: CoverFilter = 'all') =>
     },
     initialPageParam: 0,
     getNextPageParam: (lastPage, allPages) => (lastPage.length < PAGE_SIZE ? undefined : allPages.length * PAGE_SIZE),
-    // Generation is a multi-stage pipeline, so a cover's status changes server
-    // side with no client event to hang off. Poll (refetching every loaded page)
-    // while anything is still moving and stop once everything has settled —
-    // otherwise the status badge shows "generating" indefinitely and lies.
-    refetchInterval: (query) => {
-      const pages = query.state.data?.pages
-      if (!pages) return false
-      const stillWorking = pages.some((page) => page.some((cover) => !TERMINAL_STATUSES.has(cover.status)))
-      return stillWorking ? 3_000 : false
-    },
+    // No refetchInterval: status changes arrive over the covers' SSE streams
+    // (see cover-events.ts), which useCovers subscribes to below.
     // Keep the current grid on screen while switching status filters.
     placeholderData: keepPreviousData,
   })
@@ -87,9 +88,38 @@ export function usePlaylists(args: PlaylistsArgs) {
 }
 
 export function useCovers(filter: CoverFilter = 'all') {
-  return useInfiniteQuery(coversInfiniteQuery(filter))
+  const queryClient = useQueryClient()
+  const query = useInfiniteQuery(coversInfiniteQuery(filter))
+
+  // Every non-terminal cover on screen gets a live stream; events land in the
+  // cache and re-render the grid in place. Keyed on the joined id list so the
+  // effect re-runs only when the set of in-flight covers actually changes —
+  // not on every refetch — and streams are refcounted, so overlap with other
+  // subscribers costs nothing.
+  const liveIds = (query.data?.pages.flat() ?? [])
+    .filter((cover) => !TERMINAL_STATUSES.has(cover.status))
+    .map((cover) => cover.id)
+  const liveKey = liveIds.join(' ')
+  useEffect(() => {
+    const unwatch = liveKey === '' ? [] : liveKey.split(' ').map((id) => watchCover(queryClient, id))
+    return () => unwatch.forEach((stop) => stop())
+  }, [queryClient, liveKey])
+
+  return query
 }
 
 export function useCover(id: string) {
-  return useQuery(coverQuery(id))
+  const queryClient = useQueryClient()
+  const query = useQuery(coverQuery(id))
+
+  // Live while the generation runs. isLive flips exactly once (non-terminal to
+  // terminal), so the stream is opened and closed once per visit, not per
+  // status step.
+  const isLive = query.data != null && !TERMINAL_STATUSES.has(query.data.status)
+  useEffect(() => {
+    if (!isLive) return
+    return watchCover(queryClient, id)
+  }, [queryClient, id, isLive])
+
+  return query
 }

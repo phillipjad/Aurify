@@ -344,21 +344,44 @@ describe('PlaylistBrowser', () => {
     )
   })
 
-  it('confirms a started generation on the row that triggered it', async () => {
-    mockFetch.mockImplementation((path: string) =>
-      path.startsWith('/playlists')
-        ? Promise.resolve([MORNING_COFFEE, { ...MORNING_COFFEE, id: 'sp2', name: 'Late Night' }])
-        : Promise.resolve({ id: 'cover1', status: 'pending' }),
-    )
+  // The POST returns a pending cover and the pipeline runs server side, so the
+  // row keeps its spinner until the cover itself settles. Blinking the spinner
+  // off when the POST returns (in milliseconds now) would read as "done" while
+  // the job is still running.
+  it('keeps the spinner while the accepted cover is still generating', async () => {
+    mockFetch.mockImplementation((path: string, init?: { method?: string }) => {
+      if (path.startsWith('/playlists')) return Promise.resolve([MORNING_COFFEE])
+      if (init?.method === 'POST') return Promise.resolve({ id: 'cover1', status: 'pending' })
+      return Promise.resolve({ id: 'cover1', status: 'generating' })
+    })
+    renderWithProviders(<PlaylistBrowser />)
+
+    const row = (await screen.findByText('Morning Coffee')).closest('li') as HTMLElement
+    await userEvent.click(within(row).getByRole('button', { name: 'Aurify it' }))
+
+    // The POST has settled and the detail poll answered "generating": still busy.
+    await waitFor(() => expect(mockFetch).toHaveBeenCalledWith('/covers/cover1'))
+    expect(within(row).getByRole('button')).toHaveAttribute('aria-busy', 'true')
+    expect(within(row).queryByText(/cover ready/i)).not.toBeInTheDocument()
+  })
+
+  it('confirms a finished generation on the row that triggered it', async () => {
+    mockFetch.mockImplementation((path: string, init?: { method?: string }) => {
+      if (path.startsWith('/playlists')) {
+        return Promise.resolve([MORNING_COFFEE, { ...MORNING_COFFEE, id: 'sp2', name: 'Late Night' }])
+      }
+      if (init?.method === 'POST') return Promise.resolve({ id: 'cover1', status: 'pending' })
+      return Promise.resolve({ id: 'cover1', status: 'ready' })
+    })
     renderWithProviders(<PlaylistBrowser />)
 
     const row = (await screen.findByText('Morning Coffee')).closest('li') as HTMLElement
     await userEvent.click(within(row).getByRole('button', { name: 'Aurify it' }))
 
     // Feedback lands on the acted-on row only — the other row stays untouched.
-    expect(await within(row).findByText(/cover started/i)).toBeInTheDocument()
+    expect(await within(row).findByText(/cover ready/i)).toBeInTheDocument()
     const other = screen.getByText('Late Night').closest('li') as HTMLElement
-    expect(within(other).queryByText(/cover started/i)).not.toBeInTheDocument()
+    expect(within(other).queryByText(/cover ready/i)).not.toBeInTheDocument()
   })
 
   // The reported bug: a second click blanked the first row's spinner, because
@@ -366,14 +389,19 @@ describe('PlaylistBrowser', () => {
   // click. The first request was still running with nothing on screen to say so.
   it('runs several generations at once and reports each on its own row', async () => {
     const release: Record<string, (cover: unknown) => void> = {}
-    mockFetch.mockImplementation((path: string, init?: { body?: string }) => {
+    mockFetch.mockImplementation((path: string, init?: { body?: string; method?: string }) => {
       if (path.startsWith('/playlists')) {
         return Promise.resolve([MORNING_COFFEE, { ...MORNING_COFFEE, id: 'sp2', name: 'Late Night' }])
       }
-      const { playlistId } = JSON.parse(init?.body ?? '{}') as { playlistId: string }
-      return new Promise((resolve) => {
-        release[playlistId] = resolve
-      })
+      if (init?.method === 'POST') {
+        const { playlistId } = JSON.parse(init.body ?? '{}') as { playlistId: string }
+        return new Promise((resolve) => {
+          release[playlistId] = resolve
+        })
+      }
+      // The detail poll for an accepted cover; only the first's POST ever
+      // settles, and its cover finishes at once.
+      return Promise.resolve({ id: 'cover1', status: 'ready' })
     })
     renderWithProviders(<PlaylistBrowser />)
 
@@ -390,12 +418,29 @@ describe('PlaylistBrowser', () => {
       expect(within(second).getByRole('button')).toHaveAttribute('aria-busy', 'true')
     })
 
-    // Finish the first only. It reports success while the second keeps working.
+    // Accept the first only. Its cover reaches ready while the second keeps
+    // working.
     release.sp1?.({ id: 'cover1', status: 'pending' })
 
-    expect(await within(first).findByText(/cover started/i)).toBeInTheDocument()
+    expect(await within(first).findByText(/cover ready/i)).toBeInTheDocument()
     expect(within(second).getByRole('button')).toHaveAttribute('aria-busy', 'true')
-    expect(within(second).queryByText(/cover started/i)).not.toBeInTheDocument()
+    expect(within(second).queryByText(/cover ready/i)).not.toBeInTheDocument()
+  })
+
+  // A pipeline failure lands on the cover row after the POST has long
+  // returned; its error field is the only explanation the client gets.
+  it("reports the cover row's error when generation fails server side", async () => {
+    mockFetch.mockImplementation((path: string, init?: { method?: string }) => {
+      if (path.startsWith('/playlists')) return Promise.resolve([MORNING_COFFEE])
+      if (init?.method === 'POST') return Promise.resolve({ id: 'cover1', status: 'pending' })
+      return Promise.resolve({ id: 'cover1', status: 'failed', error: 'imagegen: prompt refused' })
+    })
+    renderWithProviders(<PlaylistBrowser />)
+
+    const row = (await screen.findByText('Morning Coffee')).closest('li') as HTMLElement
+    await userEvent.click(within(row).getByRole('button', { name: 'Aurify it' }))
+
+    expect(await within(row).findByRole('alert')).toHaveTextContent('imagegen: prompt refused')
   })
 
   it('reports a failed generation on the row that triggered it', async () => {
