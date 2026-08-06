@@ -6,6 +6,7 @@ import { toast } from 'sonner'
 import { CoverGenerationWatcher } from '@/components/cover-generation-watcher'
 import { Toaster } from '@/components/ui/sonner'
 import { maybeToastCoverSettled, toastedCovers } from '@/lib/cover-toasts'
+import { clearUnreadCovers, getUnreadCovers } from '@/lib/cover-unread'
 import { renderWithProviders } from '@/test/render'
 import type { Cover } from '@/lib/api/types'
 
@@ -19,9 +20,11 @@ const READY_COVER: Cover = {
 }
 
 beforeEach(() => {
-  // Sonner and the once-per-cover guard both keep module state; reset both.
+  // Sonner, the once-per-cover guard and the unread badge all keep module
+  // state; reset all three.
   toast.dismiss()
   toastedCovers.clear()
+  clearUnreadCovers()
   window.history.replaceState(null, '', '/playlists')
 })
 
@@ -64,6 +67,7 @@ describe('maybeToastCoverSettled', () => {
     act(() => maybeToastCoverSettled({ ...READY_COVER, status: 'generating' }))
 
     expect(screen.queryByText('Your cover is ready')).not.toBeInTheDocument()
+    expect(getUnreadCovers()).toHaveLength(0)
   })
 
   // Failure is the outcome that needs the user to do something, and it used to
@@ -75,6 +79,32 @@ describe('maybeToastCoverSettled', () => {
     expect(await screen.findByText(/didn.t finish/i)).toBeInTheDocument()
     expect(screen.getByText('Morning Coffee')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'See why' })).toHaveAttribute('href', '/covers/cover1')
+  })
+
+  // The toast expires in 8 seconds; the badge is what makes that acceptable.
+  it('counts a settled cover as unread until the user reaches the gallery', async () => {
+    const { router } = await renderToaster()
+    act(() => maybeToastCoverSettled(READY_COVER))
+    expect(getUnreadCovers()).toEqual(['cover1'])
+
+    await act(async () => {
+      await router.navigate({ to: '/covers' })
+    })
+
+    await waitFor(() => expect(getUnreadCovers()).toHaveLength(0))
+  })
+
+  // The gallery and the detail page render the same stream live, so a toast
+  // there would announce what is already on screen.
+  it('stays quiet while the user is in the covers section', async () => {
+    await renderToaster('/covers')
+
+    window.history.replaceState(null, '', '/covers')
+    act(() => maybeToastCoverSettled(READY_COVER))
+    window.history.replaceState(null, '', '/covers/cover1')
+    act(() => maybeToastCoverSettled(READY_COVER))
+
+    expect(screen.queryByText('Your cover is ready')).not.toBeInTheDocument()
   })
 
   // A generation can finish while the user is on their way to the gallery. The

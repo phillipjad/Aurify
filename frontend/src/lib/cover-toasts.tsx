@@ -7,11 +7,13 @@ import { AlertTriangle, Sparkles } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { ImageWithFallback } from '@/components/image-with-fallback'
+import { markCoverUnread } from './cover-unread'
 import type { Cover } from './api/types'
 
 /**
  * Long enough to read and reach for, short enough that a burst of finished
- * generations clears itself.
+ * generations clears itself. It can be this brief because the Covers nav
+ * carries an unread badge until the user actually looks (see cover-unread.ts).
  */
 const TOAST_DURATION_MS = 8_000
 
@@ -47,6 +49,7 @@ export function maybeToastCoverSettled(cover: Cover): void {
   if (window.location.pathname.startsWith('/covers')) return
   if (toastedCovers.has(cover.id)) return
   toastedCovers.add(cover.id)
+  markCoverUnread(cover.id)
 
   const playlist = cover.playlistName || 'Untitled playlist'
 

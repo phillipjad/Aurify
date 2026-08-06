@@ -1,11 +1,13 @@
-import { useEffect, useRef, useState, type RefObject } from 'react'
+import { useEffect, useRef, useState, useSyncExternalStore, type RefObject } from 'react'
 import type { QueryClient } from '@tanstack/react-query'
 import { createRootRouteWithContext, Link, Outlet, useRouterState } from '@tanstack/react-router'
 
 import { AurifyLogo } from '@/components/aurify-logo'
 import { CoverGenerationWatcher } from '@/components/cover-generation-watcher'
+import { Badge } from '@/components/ui/badge'
 import { Toaster } from '@/components/ui/sonner'
 import { UserMenu } from '@/features/auth/user-menu'
+import { getUnreadCovers, subscribeUnreadCovers } from '@/lib/cover-unread'
 
 // Context made available to every route (loaders, components).
 export interface RouterContext {
@@ -65,9 +67,7 @@ function RootLayout() {
             <Link to="/playlists" className={navLinkClass}>
               Playlists
             </Link>
-            <Link to="/covers" className={navLinkClass}>
-              Covers
-            </Link>
+            <CoversNavLink />
             <span className="mx-1 h-5 w-px bg-border" aria-hidden="true" />
             <UserMenu />
           </nav>
@@ -114,6 +114,36 @@ function RootLayout() {
         {announcement}
       </div>
     </div>
+  )
+}
+
+/**
+ * The Covers link, carrying a count of generations that finished while the user
+ * was elsewhere and has not looked at since.
+ *
+ * This is what lets the ready toast be brief. The toast is the interruption and
+ * it expires; the badge is the record and it does not, until the user reaches
+ * the gallery (see components/cover-generation-watcher.tsx).
+ */
+function CoversNavLink() {
+  const unread = useSyncExternalStore(subscribeUnreadCovers, getUnreadCovers)
+
+  return (
+    <Link to="/covers" className={`${navLinkClass} inline-flex items-center gap-1.5`}>
+      Covers
+      {unread.length > 0 && (
+        <>
+          {/* The number is decoration for a screen reader, which gets the
+              sentence below instead of a bare digit after the link name. */}
+          <Badge aria-hidden="true" className="px-1.5 py-0 tabular-nums">
+            {unread.length}
+          </Badge>
+          <span className="sr-only">
+            ({unread.length} new {unread.length === 1 ? 'cover' : 'covers'})
+          </span>
+        </>
+      )}
+    </Link>
   )
 }
 
