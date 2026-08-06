@@ -59,6 +59,9 @@ type Deps struct {
 	// FlowKey authenticates the DSP connect flow cookie, which is what lets the
 	// callback trust the user id it carries. Derive it with handlers.DeriveFlowKey.
 	FlowKey []byte
+	// WatchCover feeds the SSE stream on GET /covers/{id}/events with change
+	// signals (postgres.CoverWatcher.Subscribe in production).
+	WatchCover handlers.WatchCover
 }
 
 // NewRouter builds the fully configured API router. Version is reported in the
@@ -79,6 +82,9 @@ func NewRouter(deps Deps) (*mux.Router, error) {
 		mux.WithDescription(apiDescription),
 	)
 
+	// First, before logging or compression wrap the response writer: SSE needs
+	// the raw one (see handlers.StreamPassthroughMiddleware).
+	router.Use(handlers.StreamPassthroughMiddleware())
 	mux.UseLogging(router)
 	mux.UseCompression(router)
 	if len(corsOrigins) > 0 {
@@ -152,7 +158,7 @@ func NewRouter(deps Deps) (*mux.Router, error) {
 		application, deps.Google, deps.Cookies, deps.Guard, deps.AppBaseURL, deps.SupportEmail,
 	)
 	playlists := handlers.NewPlaylists(application)
-	covers := handlers.NewCovers(application)
+	covers := handlers.NewCovers(application, deps.WatchCover, deps.SessionCheck)
 
 	err := router.Configure(func(r *mux.Router) {
 		// Kubernetes-style probes (provided by mux).
@@ -283,9 +289,15 @@ func NewRouter(deps Deps) (*mux.Router, error) {
 
 		api.POST("/covers", covers.Generate).
 			WithOperationID("generateCover").
-			WithSummary("Analyze a playlist and generate a cover").
+			WithSummary("Start generating a cover for a playlist; subscribe to its events for progress").
 			WithJSONBody(dto.GenerateCoverRequest{}).
 			WithCreatedResponse(dto.CoverResponse{})
+
+		api.GET("/covers/{id}/events", covers.Events).
+			WithOperationID("streamCoverEvents").
+			WithSummary("Stream a cover's lifecycle over Server-Sent Events until it is terminal").
+			WithPathParam("id", "Cover id", "0f8fad5b-d9cb-469f-a165-70867728950e").
+			WithResponse(200, nil)
 
 		// ---- read side (queries) ----
 		api.GET("/playlists", playlists.List).

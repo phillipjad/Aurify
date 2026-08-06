@@ -67,8 +67,8 @@ func (storedImage) Find(_ context.Context, coverID string) (domain.GeneratedImag
 
 // newTestRouter builds the real router, so route configuration is under test
 // rather than stubbed. It returns the router and a signed access token for
-// "user-1".
-func newTestRouter(t *testing.T) (http.Handler, string) {
+// "user-1". Options mutate the Deps before the router is built.
+func newTestRouter(t *testing.T, opts ...func(*Deps)) (http.Handler, string) {
 	t.Helper()
 
 	_, key, err := ed25519.GenerateKey(nil)
@@ -93,7 +93,7 @@ func newTestRouter(t *testing.T) (http.Handler, string) {
 		t.Fatalf("google provider: %v", err)
 	}
 
-	router, err := NewRouter(Deps{
+	deps := Deps{
 		Application: &app.App{
 			Commands: &command.Bus{},
 			Queries: &query.Bus{
@@ -107,7 +107,14 @@ func newTestRouter(t *testing.T) (http.Handler, string) {
 		SessionCheck: func(context.Context, string) error { return nil },
 		Google:       googleProvider,
 		AppBaseURL:   "http://localhost:5173",
-	})
+		// A stream that is never signalled. Tests that drive the SSE route
+		// replace this with one they control.
+		WatchCover: func(string) (<-chan struct{}, func()) { return make(chan struct{}), func() {} },
+	}
+	for _, opt := range opts {
+		opt(&deps)
+	}
+	router, err := NewRouter(deps)
 	if err != nil {
 		t.Fatalf("build router: %v", err)
 	}
