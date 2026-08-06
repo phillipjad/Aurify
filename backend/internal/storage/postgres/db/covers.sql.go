@@ -31,6 +31,27 @@ func (q *Queries) DeleteCover(ctx context.Context, arg DeleteCoverParams) (int64
 	return result.RowsAffected(), nil
 }
 
+const failStuckCovers = `-- name: FailStuckCovers :execrows
+UPDATE covers
+SET status     = 'failed',
+    error      = 'generation was interrupted, try again',
+    updated_at = now()
+WHERE status IN ('pending', 'analyzing', 'generating')
+  AND updated_at < $1
+`
+
+// Generation runs in-process (ADR 0019), so a crash or instance scale-down
+// orphans any in-flight cover in a non-terminal status, and the gallery would
+// poll it as "generating" forever. Every pipeline stage bumps updated_at, so a
+// non-terminal cover untouched since before the cutoff has no worker attached.
+func (q *Queries) FailStuckCovers(ctx context.Context, staleBefore pgtype.Timestamptz) (int64, error) {
+	result, err := q.db.Exec(ctx, failStuckCovers, staleBefore)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const getCoverByID = `-- name: GetCoverByID :one
 SELECT id, user_id, platform, playlist_id, playlist_name, status,
        prompt, image_url, analysis, error, created_at, updated_at

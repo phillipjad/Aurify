@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/fgrzl/mux"
 
@@ -241,6 +242,29 @@ func run() error {
 	if err != nil {
 		return err
 	}
+
+	// Cover generation runs in-process after the response is written (ADR 0019),
+	// so a crash or instance scale-down orphans in-flight covers in a
+	// non-terminal status, and the gallery would poll them forever. Sweep on
+	// startup and periodically; the cutoff is far beyond the longest real run,
+	// so another instance's active pipeline is never swept.
+	go func() {
+		const staleAfter = 10 * time.Minute
+		ticker := time.NewTicker(5 * time.Minute)
+		defer ticker.Stop()
+		for {
+			if n, err := store.Covers().FailStuck(ctx, time.Now().UTC().Add(-staleAfter)); err != nil {
+				slog.Warn("sweeping stuck covers failed", "error", err)
+			} else if n > 0 {
+				slog.Info("failed stuck covers", "count", n)
+			}
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+			}
+		}
+	}()
 
 	slog.Info("starting aurify api", "addr", cfg.HTTPAddr)
 	server := mux.NewServer(cfg.HTTPAddr, router)

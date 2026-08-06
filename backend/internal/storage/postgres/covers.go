@@ -54,6 +54,14 @@ func (r *CoverRepository) Save(ctx context.Context, cover *domain.Cover) error {
 	})
 }
 
+// FailStuck marks covers that have sat in a non-terminal status since before
+// cutoff as failed, returning how many it failed. Deliberately not part of
+// ports.CoverRepository: it is operational recovery for orphaned in-process
+// pipelines (ADR 0019), wired directly in cmd/api rather than through a command.
+func (r *CoverRepository) FailStuck(ctx context.Context, cutoff time.Time) (int64, error) {
+	return r.q.FailStuckCovers(ctx, tsFromTime(cutoff))
+}
+
 // FindByID looks up a cover by id, mapping a miss to domain.ErrNotFound.
 func (r *CoverRepository) FindByID(ctx context.Context, id string) (*domain.Cover, error) {
 	row, err := r.q.GetCoverByID(ctx, id)

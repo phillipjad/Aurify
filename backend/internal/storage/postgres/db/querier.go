@@ -6,6 +6,8 @@ package db
 
 import (
 	"context"
+
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 type Querier interface {
@@ -35,6 +37,11 @@ type Querier interface {
 	DeleteCredentialByUser(ctx context.Context, userID string) error
 	DeleteEmailTokensByUserPurpose(ctx context.Context, arg DeleteEmailTokensByUserPurposeParams) error
 	DeleteRefreshTokensBySession(ctx context.Context, sessionID string) error
+	// Generation runs in-process (ADR 0019), so a crash or instance scale-down
+	// orphans any in-flight cover in a non-terminal status, and the gallery would
+	// poll it as "generating" forever. Every pipeline stage bumps updated_at, so a
+	// non-terminal cover untouched since before the cutoff has no worker attached.
+	FailStuckCovers(ctx context.Context, staleBefore pgtype.Timestamptz) (int64, error)
 	FindCoverImage(ctx context.Context, coverID string) (FindCoverImageRow, error)
 	// One round trip for a whole playlist. Looking these up one key at a time is
 	// what this table exists to avoid: a 194-track playlist would otherwise open
