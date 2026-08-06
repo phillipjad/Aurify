@@ -16,6 +16,7 @@ import { useSession } from '@/lib/api/auth'
 import { isApiError } from '@/lib/api/client'
 import { connectDsp, useCoverGenerations, useGenerateCover, type CoverGeneration } from '@/lib/api/commands'
 import { usePlaylists, type PlaylistSort } from '@/lib/api/queries'
+import { STATUS_LABEL } from '@/features/covers/cover-status'
 import { useDebouncedValue } from '@/lib/use-debounced-value'
 import type { Platform, Playlist } from '@/lib/api/types'
 import { PlatformPicker } from './platform-picker'
@@ -189,7 +190,7 @@ export function PlaylistBrowser() {
             </Button>
           )}
           {failedConnect && (
-            <p role="alert" className="max-w-xs text-right text-xs text-destructive">
+            <p role="alert" className="max-w-xs text-right text-xs text-destructive-text">
               {failedConnect}
             </p>
           )}
@@ -341,8 +342,11 @@ function PlaylistRow({ playlist, generation, onGenerate }: PlaylistRowProps) {
         </div>
 
         <div className="flex shrink-0 flex-col items-end gap-1">
-          <Button size="sm" loading={generating} onClick={onGenerate}>
-            {generating ? 'Aurifying…' : 'Aurify it'}
+          {/* The width is reserved for the longest state this button reaches, so
+              a right-aligned row does not jerk sideways when the label changes
+              from "Aurify it" to a stage and back. */}
+          <Button size="sm" className="min-w-[7.5rem]" loading={generating} onClick={onGenerate}>
+            {generating ? generatingLabel(generation.stage) : 'Aurify it'}
           </Button>
           {succeeded && (
             <Link to="/covers" className="text-xs font-medium text-primary underline underline-offset-2">
@@ -353,7 +357,7 @@ function PlaylistRow({ playlist, generation, onGenerate }: PlaylistRowProps) {
       </Card>
 
       {error != null && (
-        <p role="alert" className="px-3 pt-1.5 text-xs text-destructive">
+        <p role="alert" className="px-3 pt-1.5 text-xs text-destructive-text">
           {errorMessage(error, 'Generation failed. Try again in a moment.')}
         </p>
       )}
@@ -397,6 +401,19 @@ function PlaylistSkeletons() {
       ))}
     </ul>
   )
+}
+
+/**
+ * What the button says while a generation runs.
+ *
+ * The pipeline already names its own stages in the user's language, and the
+ * stream already delivers them, so the row reports "Listening…" and then
+ * "Painting…" rather than one frozen word for up to two minutes. Falls back to
+ * the generic label in the moment between accepting the job and hearing about
+ * it.
+ */
+function generatingLabel(stage: CoverGeneration['stage']): string {
+  return `${stage ? STATUS_LABEL[stage] : 'Aurifying'}…`
 }
 
 /** Read a user-facing message off an unknown error, falling back to plain copy. */

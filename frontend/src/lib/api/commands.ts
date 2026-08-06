@@ -7,7 +7,7 @@ import { useSession } from './auth'
 import { apiFetch, BASE_URL } from './client'
 import { watchCover } from './cover-events'
 import { coverQuery, queryKeys, runningCoversQuery, TERMINAL_STATUSES } from './queries'
-import type { Cover, GenerateCoverRequest, Platform } from './types'
+import type { Cover, CoverStatus, GenerateCoverRequest, Platform } from './types'
 
 /**
  * Start the DSP OAuth flow.
@@ -60,6 +60,12 @@ export function useGenerateCover() {
 export interface CoverGeneration {
   status: 'pending' | 'success' | 'error' | 'idle'
   error: unknown
+  /**
+   * The pipeline stage behind a `pending` status, once the stream has reported
+   * one. The row says what is happening rather than that something is, which
+   * is the difference between a two-minute wait and a two-minute void.
+   */
+  stage?: CoverStatus
 }
 
 /** Every generation this session has attempted, read from the mutation cache. */
@@ -164,7 +170,9 @@ export function useCoverGenerations(): (playlistId: string) => CoverGeneration {
     // Accepted. The row keeps its spinner until the cover itself settles;
     // before the first detail fetch lands, the job is at best still pending.
     const cover = latest.coverId ? coverById.get(latest.coverId) : undefined
-    if (!cover || !TERMINAL_STATUSES.has(cover.status)) return { status: 'pending', error: undefined }
+    if (!cover || !TERMINAL_STATUSES.has(cover.status)) {
+      return { status: 'pending', error: undefined, stage: cover?.status }
+    }
     if (cover.status === 'failed') {
       return { status: 'error', error: cover.error ?? 'Generation failed. Try again in a moment.' }
     }
