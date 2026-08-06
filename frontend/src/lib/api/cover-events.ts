@@ -12,7 +12,7 @@
 // budget on HTTP/1.1.
 import type { InfiniteData, QueryClient } from '@tanstack/react-query'
 
-import { maybeToastCoverReady } from '../cover-toasts'
+import { maybeToastCoverSettled } from '../cover-toasts'
 import { BASE_URL } from './client'
 import { queryKeys, TERMINAL_STATUSES } from './queries'
 import type { Cover } from './types'
@@ -42,9 +42,9 @@ export function watchCover(queryClient: QueryClient, id: string): () => void {
     source.addEventListener('cover', (event) => {
       const cover = JSON.parse((event as MessageEvent<string>).data) as Cover
       applyCover(queryClient, cover)
-      // A finished cover announces itself wherever the user is — unless they
-      // are already in the covers section watching it (the store decides).
-      maybeToastCoverReady(cover)
+      // A finished cover announces itself wherever the user is, unless they are
+      // already in the covers section watching it (the store decides).
+      maybeToastCoverSettled(cover)
       // The server closes after a terminal event; closing here too stops
       // EventSource from treating that close as an error and reconnecting.
       if (TERMINAL_STATUSES.has(cover.status)) closeStream(id)

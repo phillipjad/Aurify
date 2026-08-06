@@ -5,7 +5,7 @@ import { toast } from 'sonner'
 
 import { CoverGenerationWatcher } from '@/components/cover-generation-watcher'
 import { Toaster } from '@/components/ui/sonner'
-import { maybeToastCoverReady, toastedCovers } from '@/lib/cover-toasts'
+import { maybeToastCoverSettled, toastedCovers } from '@/lib/cover-toasts'
 import { renderWithProviders } from '@/test/render'
 import type { Cover } from '@/lib/api/types'
 
@@ -43,10 +43,10 @@ async function renderToaster(path = '/playlists') {
   return utils
 }
 
-describe('maybeToastCoverReady', () => {
+describe('maybeToastCoverSettled', () => {
   it('announces a ready cover with a link straight to it', async () => {
     const { router } = await renderToaster()
-    act(() => maybeToastCoverReady(READY_COVER))
+    act(() => maybeToastCoverSettled(READY_COVER))
 
     expect(await screen.findByText('Your cover is ready')).toBeInTheDocument()
     expect(screen.getByText('Morning Coffee')).toBeInTheDocument()
@@ -59,24 +59,22 @@ describe('maybeToastCoverReady', () => {
     expect(router.state.location.pathname).toBe('/covers/cover1')
   })
 
-  it('fires only for covers that just became ready', async () => {
+  it('stays quiet for a cover that is still working', async () => {
     await renderToaster()
-    act(() => maybeToastCoverReady({ ...READY_COVER, status: 'generating' }))
+    act(() => maybeToastCoverSettled({ ...READY_COVER, status: 'generating' }))
 
     expect(screen.queryByText('Your cover is ready')).not.toBeInTheDocument()
   })
 
-  // The gallery and the detail page render the same stream live, so a toast
-  // there would announce what is already on screen.
-  it('stays quiet while the user is in the covers section', async () => {
-    await renderToaster('/covers')
+  // Failure is the outcome that needs the user to do something, and it used to
+  // be the only one that arrived in silence.
+  it('announces a failed generation with a way to find out why', async () => {
+    await renderToaster()
+    act(() => maybeToastCoverSettled({ ...READY_COVER, status: 'failed', error: 'imagegen refused the prompt' }))
 
-    window.history.replaceState(null, '', '/covers')
-    act(() => maybeToastCoverReady(READY_COVER))
-    window.history.replaceState(null, '', '/covers/cover1')
-    act(() => maybeToastCoverReady(READY_COVER))
-
-    expect(screen.queryByText('Your cover is ready')).not.toBeInTheDocument()
+    expect(await screen.findByText(/didn.t finish/i)).toBeInTheDocument()
+    expect(screen.getByText('Morning Coffee')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'See why' })).toHaveAttribute('href', '/covers/cover1')
   })
 
   // A generation can finish while the user is on their way to the gallery. The
@@ -84,7 +82,7 @@ describe('maybeToastCoverReady', () => {
   // cover already on screen, so it must not follow them in.
   it('retires an outstanding toast when the user reaches the covers section', async () => {
     const { router } = await renderToaster()
-    act(() => maybeToastCoverReady(READY_COVER))
+    act(() => maybeToastCoverSettled(READY_COVER))
     expect(await screen.findByText('Your cover is ready')).toBeInTheDocument()
 
     await act(async () => {
@@ -99,8 +97,8 @@ describe('maybeToastCoverReady', () => {
   it('fires once per cover', async () => {
     await renderToaster()
     act(() => {
-      maybeToastCoverReady(READY_COVER)
-      maybeToastCoverReady(READY_COVER)
+      maybeToastCoverSettled(READY_COVER)
+      maybeToastCoverSettled(READY_COVER)
     })
 
     expect(await screen.findAllByText('Your cover is ready')).toHaveLength(1)
