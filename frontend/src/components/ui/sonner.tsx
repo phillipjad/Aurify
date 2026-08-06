@@ -10,13 +10,17 @@ export function Toaster(props: ToasterProps) {
   return (
     <Sonner
       className="toaster group"
-      // Clear of the footer, which is always on screen in the bounded shell.
+      // Clear of the footer, which is always on screen in the bounded shell and
+      // is taller on mobile, where its links wrap to a second line. Measured:
+      // 29px tall at desktop widths, 65px at 375px.
       offset={{ bottom: 56 }}
-      mobileOffset={{ bottom: 56 }}
+      mobileOffset={{ bottom: 76 }}
       // A toast that lingers 8s needs a dismissal that doesn't require knowing
-      // about swipe.
+      // about swipe. "Close toast" is Sonner's default, and "toast" is a word
+      // for the people who build these, not the people who hear them read out.
       closeButton
       toastOptions={{
+        closeButtonAriaLabel: 'Dismiss',
         // Sonner hardcodes several of its own grays, which do not follow this
         // app's theme: the description lands near 1.5:1 on the dark card, and
         // the close button paints a near-black glyph (--gray12) on it, so the
@@ -24,13 +28,19 @@ export function Toaster(props: ToasterProps) {
         // are re-pointed at real tokens. The `!` beats sonner's own selectors,
         // which are more specific than a utility class.
         classNames: {
+          // The card itself is focusable (Sonner gives it tabindex=0) and
+          // carried its default rgba(0,0,0,0.2) ring, which measures 1.05:1 on
+          // the dark card: a focus indicator nobody can see is not one.
+          toast:
+            'focus-visible:shadow-lg! focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background',
           description: 'text-muted-foreground!',
           closeButton: [
             // 24px rather than sonner's 20, which is under the minimum target.
             'size-6! bg-card! border-border! text-muted-foreground!',
             'hover:bg-muted! hover:text-foreground! hover:border-border! transition-colors',
-            // Its default focus ring is a black shadow, invisible on dark.
-            'focus-visible:shadow-none! focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background',
+            // Its default focus ring is a black shadow, invisible on dark. The
+            // offset is the card, which is the surface the button sits on.
+            'focus-visible:shadow-none! focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-card',
           ].join(' '),
         },
         style: {
