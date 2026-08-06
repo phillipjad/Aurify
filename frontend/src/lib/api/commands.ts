@@ -1,11 +1,12 @@
 // WRITE side. TanStack Query mutations for the API's command endpoints.
 // Mirrors the backend's CQRS command handlers (see backend/internal/app/command).
 import { useEffect } from 'react'
-import { useMutation, useMutationState, useQueries, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useMutationState, useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
 
+import { useSession } from './auth'
 import { apiFetch, BASE_URL } from './client'
 import { watchCover } from './cover-events'
-import { coverQuery, queryKeys, TERMINAL_STATUSES } from './queries'
+import { coverQuery, queryKeys, runningCoversQuery, TERMINAL_STATUSES } from './queries'
 import type { Cover, GenerateCoverRequest, Platform } from './types'
 
 /**
@@ -78,8 +79,13 @@ function useAcceptedGenerations() {
  * Hold an SSE stream open for every cover still being generated, from wherever
  * this hook is mounted. It lives in the root layout (see
  * CoverGenerationWatcher), because the streams must survive route changes: the
- * progression is only observed if someone is still listening after the user
- * has wandered elsewhere.
+ * ready toast fires off an event, and the event only arrives if someone is
+ * still listening after the user has wandered elsewhere.
+ *
+ * Two sources feed it. Generations accepted in this tab come from the mutation
+ * cache. Generations still running from *before* this page loaded come from a
+ * single startup query, since a reload drops the mutation cache while the work
+ * carries on server side.
  */
 export function useWatchCoverGenerations(): void {
   const queryClient = useQueryClient()
@@ -89,14 +95,26 @@ export function useWatchCoverGenerations(): void {
   const coverResults = useQueries({ queries: coverIds.map((id) => coverQuery(id)) })
   const coverById = new Map(coverIds.map((id, i) => [id, coverResults[i]?.data]))
 
+  // Only for a signed-in caller: the covers list is authenticated, and asking
+  // anonymously would put a guaranteed 401 in front of every visit.
+  const session = useSession()
+  const running = useQuery({ ...runningCoversQuery(), enabled: session.data != null })
+
   // One stream per still-running cover. The joined key changes only when a
   // generation starts or settles, so streams are not churned on unrelated
-  // re-renders.
+  // re-renders, and watchCover refcounts anything watched from both sources.
   const live = new Set<string>()
   for (const id of coverIds) {
     const status = coverById.get(id)?.status
     if (!status || !TERMINAL_STATUSES.has(status)) live.add(id)
   }
+  for (const cover of running.data ?? []) {
+    // The stream is authoritative once open, so a resumed cover that has since
+    // finished is filtered by its live status rather than the startup snapshot.
+    const current = queryClient.getQueryData<Cover>(queryKeys.cover(cover.id)) ?? cover
+    if (!TERMINAL_STATUSES.has(current.status)) live.add(cover.id)
+  }
+
   const liveKey = [...live].sort().join(' ')
   useEffect(() => {
     const unwatch = liveKey === '' ? [] : liveKey.split(' ').map((id) => watchCover(queryClient, id))

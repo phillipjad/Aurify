@@ -83,6 +83,27 @@ export const coverQuery = (id: string) =>
     queryFn: () => apiFetch<Cover>(`/covers/${encodeURIComponent(id)}`),
   })
 
+/**
+ * Covers still running, asked once per page load.
+ *
+ * A generation outlives the tab that started it, but the mutation cache does
+ * not: reload mid-run and nothing is left to say a job is in flight, so no
+ * stream is opened and the finished cover never announces itself. This is how
+ * the root watcher picks those back up (see useWatchCoverGenerations).
+ *
+ * One page is enough. Covers come back newest-first and a user has at most a
+ * handful running; anything older than that has long since settled.
+ */
+export const runningCoversQuery = () =>
+  queryOptions({
+    queryKey: ['covers', 'running'] as const,
+    queryFn: () => apiFetch<Cover[]>(`/covers?limit=${PAGE_SIZE}&offset=0`),
+    // Never refetched on its own: it exists to seed the streams at startup, and
+    // from that moment the streams themselves are the source of truth.
+    staleTime: Infinity,
+    refetchOnWindowFocus: false,
+  })
+
 export function usePlaylists(args: PlaylistsArgs) {
   return useInfiniteQuery(playlistsInfiniteQuery(args))
 }
