@@ -324,7 +324,8 @@ function PlaylistRow({ playlist, generation, onGenerate }: PlaylistRowProps) {
   const succeeded = generation.status === 'success'
   // Called unconditionally, as hooks must be. Before the stream has named a
   // stage there is nothing to cycle, and 'pending' is the label that says so.
-  const stage = useStageLabel(generation.stage ?? 'pending')
+  // The button is not a live region, so only the visible half is used here.
+  const { visible: stage } = useStageLabel(generation.stage ?? 'pending')
 
   return (
     <>
@@ -345,8 +346,10 @@ function PlaylistRow({ playlist, generation, onGenerate }: PlaylistRowProps) {
         </div>
 
         <div className="flex shrink-0 flex-col items-end gap-1">
-          {/* Width reserved for the longest label, so the row does not jerk. */}
-          <Button size="sm" className="min-w-[7.5rem]" loading={generating} onClick={onGenerate}>
+          {/* Width reserved for the longest label, so the row does not jerk.
+              The label now cycles every four seconds, so this has to clear the
+              widest verb plus the spinner: "Composing…" measures 131px. */}
+          <Button size="sm" className="min-w-[8.5rem]" loading={generating} onClick={onGenerate}>
             {generating ? `${generation.stage ? stage : 'Aurifying'}…` : 'Aurify it'}
           </Button>
           {succeeded && (

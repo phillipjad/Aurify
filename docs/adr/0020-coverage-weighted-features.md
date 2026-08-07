@@ -123,17 +123,24 @@ writer and the writer is provably dead before `run` touches the cover again.
 
 ### A word that moves
 
-The stage label cycles Listening → Judging → Enjoying → Grooving every four
-seconds, derived from the wall clock so every view of the same cover agrees
-without shared state. Frontend only: no progress count is persisted, streamed,
-or added to the contract.
+Both waiting stages cycle through synonyms every four seconds — eight for
+listening, seven for painting — derived from the wall clock so every view of the
+same cover agrees without shared state. Frontend only: no progress count is
+persisted, streamed, or added to the contract.
 
-This is a sign of life, not progress — a user at 1m45s sees motion but not how
-far along they are. That is the accepted cost of not adding a progress field to
-the row, the DTO, the OpenAPI contract and the client for a number that is only
-meaningful during one stage. `aria-live` carries the stable "Listening" through
-an `sr-only` node while the cycling word is `aria-hidden`, so a screen reader
-hears status changes rather than four synonyms a minute.
+This is a sign of life, not progress. A user at 1m45s sees motion but not how far
+along they are, which is the accepted cost of not adding a progress field to the
+row, the DTO, the OpenAPI contract and the client for a number meaningful during
+one stage only.
+
+The cycling word is `aria-hidden`, so fifteen synonyms a minute are never spoken.
+What the `aria-live` region carries instead is the stable stage plus how long it
+has been running, re-announced every thirty seconds: "Listening", then
+"Listening, 30 seconds", then "Listening, 1 minute 30 seconds". Elapsed time
+rather than progress because elapsed time is the one honest number this screen
+has. Without it the badge announced once and then went silent for two minutes,
+which is what a dead page sounds like — sighted users got motion and screen
+reader users got nothing.
 
 ## Measured end to end
 
