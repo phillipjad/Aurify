@@ -9,7 +9,6 @@ import { Toaster as Sonner, type ToasterProps } from 'sonner'
 export function Toaster(props: ToasterProps) {
   return (
     <Sonner
-      className="toaster group"
       // Clear of the footer, which is always on screen in the bounded shell and
       // is taller on mobile, where its links wrap to a second line. Measured:
       // 29px tall at desktop widths, 65px at 375px.

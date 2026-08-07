@@ -1,13 +1,17 @@
-// Covers that finished while the user was somewhere else and has not looked at
-// since. The count rides the Covers nav link, which is what lets a toast be
-// brief without being the only notice: the toast is the interruption, the badge
-// is the record.
+// How many covers finished while the user was somewhere else and has not
+// looked at since. The count rides the Covers nav link, which is what lets a
+// toast be brief without being the only notice: the toast is the interruption,
+// the badge is the record.
+//
+// A count rather than the ids, because the ids were never read: the caller
+// already refuses to announce the same cover twice, so there is nothing here to
+// deduplicate and nothing that needs to know which covers they were.
 //
 // Deliberately in memory only. A reload lands on a covers list that already
 // shows every cover and its status, so persisting this would duplicate what the
 // gallery itself says.
 const listeners = new Set<() => void>()
-let unread: readonly string[] = []
+let unread = 0
 
 function emit() {
   for (const listener of listeners) listener()
@@ -19,20 +23,19 @@ export function subscribeUnreadCovers(listener: () => void): () => void {
   return () => listeners.delete(listener)
 }
 
-/** Current unread cover ids; the reference changes only when the set does. */
-export function getUnreadCovers(): readonly string[] {
+/** Covers announced but not yet looked at. */
+export function getUnreadCoverCount(): number {
   return unread
 }
 
-export function markCoverUnread(id: string): void {
-  if (unread.includes(id)) return
-  unread = [...unread, id]
+export function markCoverUnread(): void {
+  unread += 1
   emit()
 }
 
 /** Called when the user reaches the covers section, where they can see them. */
 export function clearUnreadCovers(): void {
-  if (unread.length === 0) return
-  unread = []
+  if (unread === 0) return
+  unread = 0
   emit()
 }

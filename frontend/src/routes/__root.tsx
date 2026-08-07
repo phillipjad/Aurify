@@ -7,7 +7,7 @@ import { CoverGenerationWatcher } from '@/components/cover-generation-watcher'
 import { Badge } from '@/components/ui/badge'
 import { Toaster } from '@/components/ui/sonner'
 import { UserMenu } from '@/features/auth/user-menu'
-import { getUnreadCovers, subscribeUnreadCovers } from '@/lib/cover-unread'
+import { getUnreadCoverCount, subscribeUnreadCovers } from '@/lib/cover-unread'
 
 // Context made available to every route (loaders, components).
 export interface RouterContext {
@@ -126,20 +126,20 @@ function RootLayout() {
  * the gallery (see components/cover-generation-watcher.tsx).
  */
 function CoversNavLink() {
-  const unread = useSyncExternalStore(subscribeUnreadCovers, getUnreadCovers)
+  const unread = useSyncExternalStore(subscribeUnreadCovers, getUnreadCoverCount)
 
   return (
     <Link to="/covers" className={`${navLinkClass} inline-flex items-center gap-1.5`}>
       Covers
-      {unread.length > 0 && (
+      {unread > 0 && (
         <>
           {/* The number is decoration for a screen reader, which gets the
               sentence below instead of a bare digit after the link name. */}
           <Badge aria-hidden="true" className="px-1.5 py-0 tabular-nums">
-            {unread.length}
+            {unread}
           </Badge>
           <span className="sr-only">
-            ({unread.length} new {unread.length === 1 ? 'cover' : 'covers'})
+            ({unread} new {unread === 1 ? 'cover' : 'covers'})
           </span>
         </>
       )}

@@ -5,7 +5,7 @@ import { CoverGenerationWatcher } from '@/components/cover-generation-watcher'
 import { Toaster } from '@/components/ui/sonner'
 import { CoverGallery } from '@/features/covers/cover-gallery'
 import { apiFetch } from '@/lib/api/client'
-import { watchCover } from '@/lib/api/cover-events'
+import { seenCovers, watchCover } from '@/lib/api/cover-events'
 import { coversInfiniteQuery } from '@/lib/api/queries'
 import { toastedCovers } from '@/lib/cover-toasts'
 import { renderWithProviders } from '@/test/render'
@@ -53,6 +53,7 @@ beforeEach(() => {
   mockFetch.mockReset()
   FakeEventSource.opened = []
   toastedCovers.clear()
+  seenCovers.clear()
   vi.stubGlobal('EventSource', FakeEventSource)
 })
 

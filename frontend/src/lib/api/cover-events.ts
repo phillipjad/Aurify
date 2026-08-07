@@ -24,6 +24,11 @@ interface CoverStream {
 
 const streams = new Map<string, CoverStream>()
 
+// Covers this tab has seen an event for. The first one is what tells the
+// gallery a cover it has never listed now exists (see applyCover). Exported so
+// tests can reset it, like the toast module's own once-per-cover set.
+export const seenCovers = new Set<string>()
+
 /**
  * Watch one cover's stream, writing every event into the query cache. Returns
  * an unwatch function; the underlying connection closes when the last watcher
@@ -81,19 +86,12 @@ function applyCover(queryClient: QueryClient, cover: Cover) {
   // Updating in place can only reach covers a page already holds, and a
   // generation started after the gallery loaded is in none of them: the grid
   // would stay silent until something refetched it, which is what the old
-  // three-second poll quietly did. Ask the server for the pages again so the
-  // new cover arrives in its right place, rather than guessing where to splice
-  // it into an offset-paginated list. Events are finite and the cover is in the
-  // list after the first refetch, so this fires about once per generation.
-  const missingFromGallery = queryClient
-    .getQueryCache()
-    .findAll({ queryKey: ['covers', 'list'], type: 'active' })
-    .some((query) => {
-      const filter = query.queryKey[2]
-      // A filtered gallery is not missing a cover that does not belong in it.
-      if (filter !== 'all' && filter !== cover.status) return false
-      const data = query.state.data as InfiniteData<Cover[]> | undefined
-      return !data?.pages.some((page) => page.some((entry) => entry.id === cover.id))
-    })
-  if (missingFromGallery) void queryClient.invalidateQueries({ queryKey: ['covers', 'list'] })
+  // three-second poll quietly did. On first sight of a cover, ask the server
+  // for the pages again so it arrives in its right place, rather than guessing
+  // where to splice a row into an offset-paginated list. Once per cover, and
+  // only a real request when a gallery is actually mounted.
+  if (!seenCovers.has(cover.id)) {
+    seenCovers.add(cover.id)
+    void queryClient.invalidateQueries({ queryKey: ['covers', 'list'] })
+  }
 }

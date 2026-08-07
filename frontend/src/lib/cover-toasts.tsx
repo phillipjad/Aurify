@@ -49,7 +49,7 @@ export function maybeToastCoverSettled(cover: Cover): void {
   if (window.location.pathname.startsWith('/covers')) return
   if (toastedCovers.has(cover.id)) return
   toastedCovers.add(cover.id)
-  markCoverUnread(cover.id)
+  markCoverUnread()
 
   const playlist = cover.playlistName || 'Untitled playlist'
 

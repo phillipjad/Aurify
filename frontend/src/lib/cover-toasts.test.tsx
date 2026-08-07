@@ -6,7 +6,7 @@ import { toast } from 'sonner'
 import { CoverGenerationWatcher } from '@/components/cover-generation-watcher'
 import { Toaster } from '@/components/ui/sonner'
 import { maybeToastCoverSettled, toastedCovers } from '@/lib/cover-toasts'
-import { clearUnreadCovers, getUnreadCovers } from '@/lib/cover-unread'
+import { clearUnreadCovers, getUnreadCoverCount } from '@/lib/cover-unread'
 import { renderWithProviders } from '@/test/render'
 import type { Cover } from '@/lib/api/types'
 
@@ -67,7 +67,7 @@ describe('maybeToastCoverSettled', () => {
     act(() => maybeToastCoverSettled({ ...READY_COVER, status: 'generating' }))
 
     expect(screen.queryByText('Your cover is ready')).not.toBeInTheDocument()
-    expect(getUnreadCovers()).toHaveLength(0)
+    expect(getUnreadCoverCount()).toBe(0)
   })
 
   // Failure is the outcome that needs the user to do something, and it used to
@@ -85,13 +85,13 @@ describe('maybeToastCoverSettled', () => {
   it('counts a settled cover as unread until the user reaches the gallery', async () => {
     const { router } = await renderToaster()
     act(() => maybeToastCoverSettled(READY_COVER))
-    expect(getUnreadCovers()).toEqual(['cover1'])
+    expect(getUnreadCoverCount()).toBe(1)
 
     await act(async () => {
       await router.navigate({ to: '/covers' })
     })
 
-    await waitFor(() => expect(getUnreadCovers()).toHaveLength(0))
+    await waitFor(() => expect(getUnreadCoverCount()).toBe(0))
   })
 
   // The gallery and the detail page render the same stream live, so a toast
