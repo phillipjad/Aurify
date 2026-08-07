@@ -5,7 +5,6 @@ import { useVirtualizer } from '@tanstack/react-virtual'
 
 import { EmptyState } from '@/components/empty-state'
 import { LoadMore } from '@/components/load-more'
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { buttonVariants } from '@/components/ui/button-variants'
 import { Card } from '@/components/ui/card'
@@ -15,7 +14,7 @@ import { cn } from '@/lib/utils'
 import { isApiError } from '@/lib/api/client'
 import { useCovers, type CoverFilter } from '@/lib/api/queries'
 import type { ColorWeight, Cover } from '@/lib/api/types'
-import { STATUS_LABEL, STATUS_VARIANT, isInProgress } from './cover-status'
+import { StatusBadge, isInProgress } from './cover-status'
 
 const GRID = 'grid gap-4 sm:grid-cols-2 lg:grid-cols-3'
 
@@ -336,10 +335,7 @@ function CoverTile({ cover }: { cover: Cover }) {
             <h3 className="min-w-0 flex-1 truncate font-display text-sm font-semibold tracking-tight group-hover:underline">
               {cover.playlistName}
             </h3>
-            {/* aria-live so a status flipping under polling is announced, not silent. */}
-            <Badge variant={STATUS_VARIANT[cover.status]} aria-live="polite">
-              {STATUS_LABEL[cover.status]}
-            </Badge>
+            <StatusBadge status={cover.status} />
           </div>
 
           {cover.status === 'failed' ? (

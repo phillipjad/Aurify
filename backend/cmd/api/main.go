@@ -119,7 +119,8 @@ func run() error {
 	engine := analysis.NewEngine()
 	prompts := promptgen.New(cfg.PromptGen.BaseURL, cfg.PromptGen.Model, cfg.PromptGen.APIKey)
 	// Acoustic features for tracks the DSP left empty. AcousticBrainz first,
-	// since it is measured; the text model only when nothing matched at all.
+	// since it is measured; the text model blends in whenever too little of a
+	// playlist matched (see docs/adr/0020-coverage-weighted-features.md).
 	trackFeatures := acousticbrainz.New(store.TrackFeatures(), version)
 	featureEstimator := llmfeatures.New(
 		cfg.PromptGen.BaseURL, cfg.PromptGen.Model, cfg.PromptGen.APIKey,

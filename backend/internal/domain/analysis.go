@@ -21,15 +21,20 @@ type Sentiment struct {
 type PlaylistAnalysis struct {
 	PlaylistID string `json:"playlist_id"`
 	TrackCount int    `json:"track_count"`
-	// AnalyzedCount is how many tracks carried real, measured features.
+	// AnalyzedCount is how many tracks carried real, measured features. With
+	// TrackCount it is also what any stored analysis needs to reconstruct how
+	// much of its palette was measured rather than guessed
+	// (see analysis.CoverageWeight).
 	AnalyzedCount int           `json:"analyzed_count"`
 	MeanFeatures  AudioFeatures `json:"mean_features"`
 	MeanSentiment Sentiment     `json:"mean_sentiment"`
 	Palette       []ColorWeight `json:"palette"`
-	// FeaturesEstimated records that MeanFeatures was guessed from track titles
-	// rather than measured, which happens when no track could be matched to a
-	// features source. Kept so an estimate is never mistaken for a measurement
-	// later; omitempty so existing stored analyses are unaffected.
+	// FeaturesEstimated records that a guess from the tracks and their lyrics
+	// contributed to MeanFeatures, which happens whenever too little of the
+	// playlist could be matched to a features source to trust the mean
+	// (docs/adr/0020-coverage-weighted-features.md). Kept so an estimate is
+	// never mistaken for a measurement later; omitempty so existing stored
+	// analyses are unaffected.
 	FeaturesEstimated bool `json:"features_estimated,omitempty"`
 }
 

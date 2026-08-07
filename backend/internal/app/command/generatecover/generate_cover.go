@@ -16,6 +16,16 @@ import (
 	"github.com/phillipjad/aurify/backend/internal/domain"
 )
 
+// heartbeatInterval is how often the analyzing phase touches the cover row.
+//
+// Against the ten-minute staleness threshold in cmd/api this is a wide margin
+// on purpose: it costs two writes on a typical run and it is what lets the
+// AcousticBrainz lookup cap be chosen for how long a user will watch a stage
+// rather than for how long the sweep will tolerate one.
+//
+// A var only so a test can shorten it; nothing reassigns it in production.
+var heartbeatInterval = time.Minute
+
 // Command requests a cover for one of a user's playlists.
 type Command struct {
 	UserID     string
@@ -126,63 +136,12 @@ func (h *Handler) run(
 		return
 	}
 
-	// 1. Ingest the playlist's tracks (normalized audio features included).
-	tracks, err := provider.ListTracks(ctx, conn, cmd.PlaylistID)
+	result, err := h.analyze(ctx, provider, conn, cover, cmd)
 	if err != nil {
 		h.fail(ctx, cover, err)
 		return
 	}
 
-	// 2. Lyric sentiment per track. Lyrics are best-effort: a missing lyric set
-	//    contributes a neutral sentiment rather than failing the whole job.
-	//
-	//    The resolver handles caching, batching and bounded concurrency, and
-	//    never fails, so what comes back is index-aligned with tracks with empty
-	//    strings where nothing was found. The sentiment pass stays sequential:
-	//    it is local CPU work measured in microseconds, not a network call.
-	lyrics := h.lyrics.Resolve(ctx, tracks)
-	sentiments := make([]domain.Sentiment, len(tracks))
-	for i, text := range lyrics {
-		s, serr := h.sentiment.Analyze(ctx, text)
-		if serr != nil {
-			h.fail(ctx, cover, serr)
-			return
-		}
-		sentiments[i] = s
-	}
-
-	// 3. Fill in acoustic features the DSP did not supply, which on YouTube
-	//    Music is all of them. Without this every playlist analyzes to the zero
-	//    value and five of the seven palette dimensions score exactly 0, so
-	//    every cover comes out the same (see docs/adr/0018-audio-features.md).
-	//
-	//    Best effort, like lyrics: unmatched tracks keep Present false and the
-	//    engine skips them exactly as it does today.
-	if h.features != nil {
-		for i, f := range h.features.Lookup(ctx, tracks) {
-			if f.Present && !tracks[i].Features.Present {
-				tracks[i].Features = f
-			}
-		}
-	}
-
-	// 4. Aggregate features + sentiment into a normalized, weighted palette.
-	result, err := h.analysis.Analyze(ctx, cmd.PlaylistID, tracks, sentiments)
-	if err != nil {
-		h.fail(ctx, cover, err)
-		return
-	}
-
-	// Nothing matched, so the palette would be the constant one. Fall back to a
-	// guess from the track titles, which is worse than a measurement and far
-	// better than declaring the playlist silent.
-	if result.AnalyzedCount == 0 && h.estimator != nil {
-		if estimated, eerr := h.estimator.Estimate(ctx, tracks); eerr == nil && estimated.Present {
-			result.MeanFeatures = estimated
-			result.FeaturesEstimated = true
-			result.Palette = analysis.BuildPalette(result.MeanFeatures, result.MeanSentiment)
-		}
-	}
 	cover.Analysis = result
 	cover.Status = domain.CoverStatusGenerating
 	if err := h.covers.Save(ctx, cover); err != nil {
@@ -190,9 +149,9 @@ func (h *Handler) run(
 		return
 	}
 
-	// 5. Analysis -> prompt -> image, then store the bytes. The generator returns
-	//    the image itself because that is what image APIs hand back; deciding
-	//    where it lives is the store's job.
+	// Analysis -> prompt -> image, then store the bytes. The generator returns
+	// the image itself because that is what image APIs hand back; deciding
+	// where it lives is the store's job.
 	prompt, err := h.prompts.GeneratePrompt(ctx, result)
 	if err != nil {
 		h.fail(ctx, cover, err)
@@ -218,6 +177,120 @@ func (h *Handler) run(
 	cover.Status = domain.CoverStatusReady
 	if err := h.covers.Save(ctx, cover); err != nil {
 		h.fail(ctx, cover, err)
+	}
+}
+
+// analyze produces the playlist's analysis: tracks in, palette out.
+//
+// It is a function rather than the first half of run because of the heartbeat.
+// This phase is the long one, it writes nothing to the cover of its own, and
+// stopping the heartbeat has to happen on every exit from it; a defer at this
+// scope is what guarantees that, and what guarantees the writer is dead before
+// run touches the cover again.
+func (h *Handler) analyze(
+	ctx context.Context,
+	provider ports.DSPProvider,
+	conn domain.DSPConnection,
+	cover *domain.Cover,
+	cmd Command,
+) (domain.PlaylistAnalysis, error) {
+	defer h.heartbeat(ctx, cover)()
+
+	// 1. Ingest the playlist's tracks (normalized audio features included).
+	tracks, err := provider.ListTracks(ctx, conn, cmd.PlaylistID)
+	if err != nil {
+		return domain.PlaylistAnalysis{}, err
+	}
+
+	// 2. Lyric sentiment per track. Lyrics are best-effort: a missing lyric set
+	//    contributes a neutral sentiment rather than failing the whole job.
+	//
+	//    The resolver handles caching, batching and bounded concurrency, and
+	//    never fails, so what comes back is index-aligned with tracks with empty
+	//    strings where nothing was found. The sentiment pass stays sequential:
+	//    it is local CPU work measured in microseconds, not a network call.
+	lyrics := h.lyrics.Resolve(ctx, tracks)
+	sentiments := make([]domain.Sentiment, len(tracks))
+	for i, text := range lyrics {
+		s, serr := h.sentiment.Analyze(ctx, text)
+		if serr != nil {
+			return domain.PlaylistAnalysis{}, serr
+		}
+		sentiments[i] = s
+	}
+
+	// 3. Fill in acoustic features the DSP did not supply, which on YouTube
+	//    Music is all of them. Without this every playlist analyzes to the zero
+	//    value and five of the seven palette dimensions score exactly 0, so
+	//    every cover comes out the same (see docs/adr/0018-audio-features.md).
+	//
+	//    Best effort, like lyrics: unmatched tracks keep Present false and the
+	//    engine skips them exactly as it does today.
+	if h.features != nil {
+		for i, f := range h.features.Lookup(ctx, tracks) {
+			if f.Present && !tracks[i].Features.Present {
+				tracks[i].Features = f
+			}
+		}
+	}
+
+	// 4. Aggregate features + sentiment into a normalized, weighted palette.
+	result, err := h.analysis.Analyze(ctx, cmd.PlaylistID, tracks, sentiments)
+	if err != nil {
+		return domain.PlaylistAnalysis{}, err
+	}
+
+	// 5. Too little of the playlist measured to let the mean speak for it. A
+	//    mean over two matched tracks has a standard error near 0.2 on a [0,1]
+	//    dimension, so it is blended toward a guess from the tracks and their
+	//    lyrics in proportion to how much was actually measured
+	//    (see docs/adr/0020-coverage-weighted-features.md). Once the coverage
+	//    floors are cleared the estimator is not called at all.
+	if h.estimator != nil {
+		if w := analysis.CoverageWeight(result.AnalyzedCount, result.TrackCount); w < 1 {
+			if estimated, eerr := h.estimator.Estimate(ctx, tracks, lyrics); eerr == nil && estimated.Present {
+				result.MeanFeatures = analysis.BlendFeatures(result.MeanFeatures, estimated, w)
+				result.FeaturesEstimated = true
+				result.Palette = analysis.BuildPalette(result.MeanFeatures, result.MeanSentiment)
+			}
+		}
+	}
+	return result, nil
+}
+
+// heartbeat re-saves the cover on a timer, returning a stop that blocks until
+// the writer has exited.
+//
+// It exists because the analyzing phase writes nothing of its own: run saves the
+// cover as analyzing and does not save again until generating, which leaves
+// updated_at frozen across lyric resolution and the rate-limited feature
+// lookups. The sweep in cmd/api fails non-terminal covers untouched for ten
+// minutes, so without this the ceiling on that phase is a deadline rather than a
+// choice (see docs/adr/0019-async-cover-generation.md).
+//
+// Reads of the cover are safe because the caller writes nothing to it until stop
+// has returned. Each save fires the notify trigger, so a watching client simply
+// re-receives the snapshot it already has.
+func (h *Handler) heartbeat(ctx context.Context, cover *domain.Cover) (stop func()) {
+	done, stopped := make(chan struct{}), make(chan struct{})
+	go func() {
+		defer close(stopped)
+		ticker := time.NewTicker(heartbeatInterval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-done:
+				return
+			case <-ticker.C:
+				// A heartbeat that cannot be written is not worth failing a
+				// generation over; the sweep is the backstop for that.
+				_ = h.covers.Save(ctx, cover)
+			}
+		}
+	}()
+	return func() {
+		close(done)
+		<-stopped
 	}
 }
 

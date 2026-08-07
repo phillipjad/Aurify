@@ -16,7 +16,7 @@ import { useSession } from '@/lib/api/auth'
 import { isApiError } from '@/lib/api/client'
 import { connectDsp, useCoverGenerations, useGenerateCover, type CoverGeneration } from '@/lib/api/commands'
 import { usePlaylists, type PlaylistSort } from '@/lib/api/queries'
-import { STATUS_LABEL } from '@/features/covers/cover-status'
+import { useStageLabel } from '@/features/covers/cover-status'
 import { useDebouncedValue } from '@/lib/use-debounced-value'
 import type { Platform, Playlist } from '@/lib/api/types'
 import { PlatformPicker } from './platform-picker'
@@ -322,6 +322,9 @@ function PlaylistRow({ playlist, generation, onGenerate }: PlaylistRowProps) {
   const generating = generation.status === 'pending'
   const error = generation.status === 'error' ? generation.error : undefined
   const succeeded = generation.status === 'success'
+  // Called unconditionally, as hooks must be. Before the stream has named a
+  // stage there is nothing to cycle, and 'pending' is the label that says so.
+  const stage = useStageLabel(generation.stage ?? 'pending')
 
   return (
     <>
@@ -344,7 +347,7 @@ function PlaylistRow({ playlist, generation, onGenerate }: PlaylistRowProps) {
         <div className="flex shrink-0 flex-col items-end gap-1">
           {/* Width reserved for the longest label, so the row does not jerk. */}
           <Button size="sm" className="min-w-[7.5rem]" loading={generating} onClick={onGenerate}>
-            {generating ? generatingLabel(generation.stage) : 'Aurify it'}
+            {generating ? `${generation.stage ? stage : 'Aurifying'}…` : 'Aurify it'}
           </Button>
           {succeeded && (
             <Link to="/covers" className="text-xs font-medium text-primary underline underline-offset-2">
@@ -399,12 +402,6 @@ function PlaylistSkeletons() {
       ))}
     </ul>
   )
-}
-
-/** "Listening…" then "Painting…" rather than one frozen word for two minutes;
- * generic until the stream has said which stage it is in. */
-function generatingLabel(stage: CoverGeneration['stage']): string {
-  return `${stage ? STATUS_LABEL[stage] : 'Aurifying'}…`
 }
 
 /** Read a user-facing message off an unknown error, falling back to plain copy. */

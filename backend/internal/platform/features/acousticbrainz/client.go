@@ -37,13 +37,11 @@ const (
 	idsPerTrack = 8
 
 	// maxLookupsPerRun caps how many uncached tracks reach the network in one
-	// generation.
-	//
-	// The palette is a mean, so a sample estimates it about as well as the whole
-	// playlist, and at one MusicBrainz request per second an uncapped 194-track
-	// playlist would add three minutes to a synchronous generation. Each run
-	// widens the cache, so a playlist converges over a few generations.
-	maxLookupsPerRun = 25
+	// generation. At one rate-limited search per second it is a stopwatch, not a
+	// budget: roughly how many seconds the analyzing stage lasts on a cold
+	// playlist. Measured and argued in
+	// docs/adr/0020-coverage-weighted-features.md.
+	maxLookupsPerRun = 100
 )
 
 // Client looks features up through MusicBrainz and AcousticBrainz, in front of a
@@ -116,16 +114,16 @@ func (c *Client) Lookup(ctx context.Context, tracks []domain.Track) []domain.Aud
 	}
 
 	fresh := make([]domain.CachedFeatures, 0, len(pending))
-	for _, i := range pending {
-		features, err := c.fetch(ctx, tracks[i])
+	for found := range c.resolveAll(ctx, tracks, pending) {
+		features, err := c.features(ctx, found.ids)
 		if err != nil {
 			// Network trouble is not cached: an outage would otherwise be
 			// remembered as "this track has no features", permanently.
 			continue
 		}
-		out[i] = features
+		out[found.index] = features
 		fresh = append(fresh, domain.CachedFeatures{
-			Key:       keys[i],
+			Key:       keys[found.index],
 			Features:  features,
 			FetchedAt: time.Now().UTC(),
 		})
@@ -152,15 +150,45 @@ func (c *Client) Lookup(ctx context.Context, tracks []domain.Track) []domain.Aud
 	return out
 }
 
-// fetch resolves one track to features, or to an absent result.
-func (c *Client) fetch(ctx context.Context, track domain.Track) (domain.AudioFeatures, error) {
-	if err := c.limit.wait(ctx); err != nil {
-		return domain.AudioFeatures{}, err
-	}
-	ids, err := c.resolve(ctx, track)
-	if err != nil {
-		return domain.AudioFeatures{}, err
-	}
+// candidates carries one track's MusicBrainz recording ids to the second stage.
+type candidates struct {
+	index int
+	ids   []string
+}
+
+// resolveAll runs the rate-limited half of the lookup on its own goroutine, so
+// the unlimited half can happen during the wait rather than after it. Only the
+// MusicBrainz search is throttled, and it was not most of the cost; overlapping
+// the two stages roughly halved the phase. Measured, and the reason there is no
+// batch alternative, in docs/adr/0020-coverage-weighted-features.md.
+//
+// The channel is buffered for the whole run so searching never waits on
+// fetching.
+func (c *Client) resolveAll(
+	ctx context.Context,
+	tracks []domain.Track,
+	pending []int,
+) <-chan candidates {
+	out := make(chan candidates, len(pending))
+	go func() {
+		defer close(out)
+		for _, i := range pending {
+			if err := c.limit.wait(ctx); err != nil {
+				return
+			}
+			ids, err := c.resolve(ctx, tracks[i])
+			if err != nil {
+				// Not cached, for the same reason a failed fetch is not.
+				continue
+			}
+			out <- candidates{index: i, ids: ids}
+		}
+	}()
+	return out
+}
+
+// features turns one track's candidate recordings into its features.
+func (c *Client) features(ctx context.Context, ids []string) (domain.AudioFeatures, error) {
 	if len(ids) == 0 {
 		// A real answer: nothing in MusicBrainz matches this closely enough.
 		return domain.AudioFeatures{Present: false}, nil

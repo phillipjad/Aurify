@@ -53,11 +53,15 @@ label: "not_danceable at p=0.75" means 0.25, not 0.75.
 ### Costs, both real
 
 MusicBrainz rate-limits to one request per second and blocks rather than
-throttles, so lookups are serialized and cached in `track_features`, mirroring
-`lyrics_cache` including negative entries. At most 25 uncached tracks are looked
-up per generation: the palette is a mean, so a sample estimates it about as well,
+throttles, so the searches are serialized and cached in `track_features`,
+mirroring `lyrics_cache` including negative entries. Uncached tracks are capped
+per generation: the palette is a mean, so a sample estimates it about as well,
 and an uncapped 194-track playlist would add three minutes to a synchronous
 generation. Each run widens the cache.
+
+> Amended by [ADR 0020](0020-coverage-weighted-features.md). The cap is now 100
+> rather than 25, the two upstream calls are pipelined, and "a sample estimates
+> it about as well" holds only above a coverage floor.
 
 AcousticBrainz stopped collecting in 2022, so recent releases are absent.
 
@@ -71,6 +75,10 @@ It is a guess. Measured on `gemma3:4b` it discriminates (`instrumentalness`
 spread 0.78 across genres, `valence` 0.35, `energy` 0.33) but called power metal
 more acoustic than country and returned an identical `speechiness` for
 everything.
+
+> Amended by [ADR 0020](0020-coverage-weighted-features.md). The estimate now
+> reads lyrics as well as titles, and it is blended in whenever coverage is thin
+> rather than only when nothing matched at all.
 
 ## Consequences
 

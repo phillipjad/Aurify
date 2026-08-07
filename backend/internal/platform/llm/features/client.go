@@ -1,16 +1,17 @@
-// Package features estimates a playlist's acoustic character from its track
-// titles, using the text model already configured for prompt generation.
+// Package features estimates a playlist's acoustic character from its tracks
+// and their lyrics, using the text model already configured for prompt
+// generation.
 //
 // This is the fallback, not the plan. Real features come from AcousticBrainz;
-// this runs only when nothing in a playlist could be matched there, which is
-// what happens to anything released after their 2022 freeze. What it produces is
-// a guess, and domain.PlaylistAnalysis.FeaturesEstimated records that it was
-// used so nothing downstream mistakes it for a measurement.
+// this runs when too little of a playlist could be matched there to trust the
+// mean, which is what happens to anything released after their 2022 freeze.
+// What it produces is a guess, and domain.PlaylistAnalysis.FeaturesEstimated
+// records that it contributed so nothing downstream mistakes it for a
+// measurement.
 //
-// Measured against gemma3:4b on four playlists it does discriminate:
-// instrumentalness spread 0.78 across genres, valence 0.35, energy 0.33. It also
-// got acousticness plainly wrong, calling power metal more acoustic than
-// country, and returned an identical speechiness for everything.
+// Lyrics are here because the pipeline has already resolved them a step earlier
+// (see generatecover), so they cost nothing to reach and say far more about a
+// track than its title does.
 package features
 
 import (
@@ -27,18 +28,25 @@ import (
 	"github.com/phillipjad/aurify/backend/internal/domain"
 )
 
-// maxTracksInPrompt caps how much of a playlist is described.
+// maxTracksInPrompt and maxLyricChars bound the prompt.
 //
 // The estimate is one number per dimension for the whole playlist, so a sample
-// characterizes it as well as the full list would, and a 194-track playlist
-// would otherwise spend most of the context window listing songs.
-const maxTracksInPrompt = 40
+// characterizes it as well as the full list would. What sets the numbers is the
+// context window: nothing here configures num_ctx, so the ceiling is the
+// provider's default rather than the model's capability, and Ollama defaults to
+// 4k. Twenty tracks at 600 characters is roughly 3k tokens, which leaves room
+// for the reply.
+const (
+	maxTracksInPrompt = 20
+	maxLyricChars     = 600
+)
 
-const systemPrompt = `You estimate the acoustic character of a playlist from its track list.
+const systemPrompt = `You estimate the acoustic character of a playlist from its tracks and their lyrics.
 
 Reply with ONLY a JSON object with these keys, each a number from 0.0 to 1.0: ` +
 	`acousticness, danceability, energy, instrumentalness, liveness, loudness, ` +
-	`speechiness, valence. Base it on what you know of these artists and songs.
+	`speechiness, valence. Base it on what you know of these artists and songs, ` +
+	`and on what the lyrics suggest about their sound and mood.
 
 No prose, no explanation, no markdown.`
 
@@ -111,7 +119,11 @@ type estimate struct {
 }
 
 // Estimate returns the playlist's estimated character, or Present false.
-func (c *Client) Estimate(ctx context.Context, tracks []domain.Track) (domain.AudioFeatures, error) {
+func (c *Client) Estimate(
+	ctx context.Context,
+	tracks []domain.Track,
+	lyrics []string,
+) (domain.AudioFeatures, error) {
 	if c.baseURL == "" || len(tracks) == 0 {
 		return domain.AudioFeatures{Present: false}, nil
 	}
@@ -120,7 +132,7 @@ func (c *Client) Estimate(ctx context.Context, tracks []domain.Track) (domain.Au
 		Model: c.model,
 		Messages: []chatMessage{
 			{Role: "system", Content: systemPrompt},
-			{Role: "user", Content: describeTracks(tracks)},
+			{Role: "user", Content: describeTracks(tracks, lyrics)},
 		},
 		Stream:         false,
 		ResponseFormat: &responseFormat{Type: "json_object"},
@@ -212,25 +224,56 @@ func value(v *float64) float64 {
 	}
 }
 
-// describeTracks renders the track list the model reasons over.
-func describeTracks(tracks []domain.Track) string {
+// describeTracks renders the track list the model reasons over: one line per
+// track, each followed by an excerpt of its lyrics where any were found.
+//
+// lyrics is index-aligned with tracks but tolerated short or nil, because the
+// only caller that has none should still get the title-only description this
+// produced before lyrics were passed at all.
+func describeTracks(tracks []domain.Track, lyrics []string) string {
 	var b strings.Builder
 	b.WriteString("Tracks:\n")
 
 	limit := min(len(tracks), maxTracksInPrompt)
-	for _, t := range tracks[:limit] {
+	for i, t := range tracks[:limit] {
 		artist := ""
 		if len(t.Artists) > 0 {
 			artist = t.Artists[0]
 		}
 		if artist != "" {
 			fmt.Fprintf(&b, "- %s - %s\n", artist, t.Title)
-			continue
+		} else {
+			fmt.Fprintf(&b, "- %s\n", t.Title)
 		}
-		fmt.Fprintf(&b, "- %s\n", t.Title)
+		if i < len(lyrics) {
+			b.WriteString(excerptLyrics(lyrics[i]))
+		}
 	}
 	if len(tracks) > limit {
 		fmt.Fprintf(&b, "(and %d more)\n", len(tracks)-limit)
+	}
+	return b.String()
+}
+
+// excerptLyrics indents a bounded excerpt of one track's lyrics under it, whole
+// lines only so the model is never handed half a word. Empty in, empty out, and
+// likewise for the pathological single-line lyric that cannot be cut: the track
+// falls back to its title line, which is what a track without lyrics gets.
+func excerptLyrics(text string) string {
+	var b strings.Builder
+	for _, line := range strings.Split(strings.TrimSpace(text), "\n") {
+		line = strings.TrimSpace(line)
+		// Blank lines separate verses and are most of what a trimmed lyric
+		// would otherwise spend its budget on.
+		if line == "" {
+			continue
+		}
+		if b.Len()+len(line) > maxLyricChars {
+			break
+		}
+		b.WriteString("  ")
+		b.WriteString(line)
+		b.WriteByte('\n')
 	}
 	return b.String()
 }
