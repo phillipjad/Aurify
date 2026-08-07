@@ -73,6 +73,15 @@ export const coversInfiniteQuery = (filter: CoverFilter = 'all') =>
     getNextPageParam: (lastPage, allPages) => (lastPage.length < PAGE_SIZE ? undefined : allPages.length * PAGE_SIZE),
     // No refetchInterval: status changes arrive over the covers' SSE streams
     // (see cover-events.ts), which useCovers subscribes to below.
+    //
+    // Always refetch on mount, against the 30s the rest of the app shares. A
+    // stream reports changes, and a generation started from another route has
+    // usually already announced the only change it will make for the next half
+    // minute by the time the user arrives here. Serving them a cached list from
+    // before the job began left the grid empty until the stage *after* the one
+    // they were in: measured at 30s absent, then appearing already "Painting",
+    // never "Listening". Arriving is the moment this has to be true.
+    staleTime: 0,
     // Keep the current grid on screen while switching status filters.
     placeholderData: keepPreviousData,
   })

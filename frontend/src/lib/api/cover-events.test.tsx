@@ -6,6 +6,7 @@ import { Toaster } from '@/components/ui/sonner'
 import { CoverGallery } from '@/features/covers/cover-gallery'
 import { apiFetch } from '@/lib/api/client'
 import { watchCover } from '@/lib/api/cover-events'
+import { coversInfiniteQuery } from '@/lib/api/queries'
 import { toastedCovers } from '@/lib/cover-toasts'
 import { renderWithProviders } from '@/test/render'
 
@@ -142,5 +143,22 @@ describe('a cover created after the gallery loaded', () => {
 
     await waitFor(() => expect(listCalls).toBeGreaterThan(1))
     expect(await screen.findByText('Cuddle Time')).toBeInTheDocument()
+  })
+})
+
+// The other half of the same bug. The stream only reports *changes*, and a
+// generation started from another route has usually already announced the only
+// change it will make for the next half minute by the time the user arrives at
+// the gallery. Under the app's shared 30s staleTime the grid served a cached
+// list that predated the cover, and nothing refetched until the stage after the
+// one the user was in: measured live at 30s absent, then appearing already
+// "Painting", never "Listening".
+//
+// This pins the setting rather than the behaviour: the test harness builds its
+// own QueryClient without the app's staleTime, so a mount here refetches either
+// way and cannot tell the two apart.
+describe('the gallery list', () => {
+  it('is configured to refetch on arrival', () => {
+    expect(coversInfiniteQuery('all').staleTime).toBe(0)
   })
 })
