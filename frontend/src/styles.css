@@ -277,6 +277,25 @@ body::before {
   animation: route-enter 200ms ease-out;
 }
 
+/* The placeholder on a cover that is still generating breathes rather than
+   pulses. Tailwind's animate-pulse is tuned for a skeleton that resolves in a
+   moment; this one sits under a tile for a minute or more, so it is slower and
+   shallower — a sign of life that does not ask to be looked at.
+
+   Only the midpoint is declared, so the element's natural opacity is both ends.
+   That is what lets the reduced-motion block below neutralise it for free: at
+   the 0.01ms it forces, this lands fully opaque rather than frozen part-faded,
+   which is the failure the busy-indicator exemption exists to prevent. */
+@keyframes breathe {
+  50% {
+    opacity: 0.4;
+  }
+}
+
+.animate-breathe {
+  animation: breathe 3.2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
 /* Reduced motion: kill decorative movement and transitions rather than letting
    Tailwind's animate-* utilities run regardless of the user's preference. */
 @media (prefers-reduced-motion: reduce) {

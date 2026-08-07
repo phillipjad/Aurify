@@ -323,7 +323,7 @@ function CoverTile({ cover }: { cover: Cover }) {
                 {cover.status === 'failed' ? (
                   <AlertTriangle className="size-8 text-muted-foreground" />
                 ) : (
-                  <Sparkles className={cn('size-8 text-muted-foreground', working && 'animate-pulse')} />
+                  <Sparkles className={cn('size-8 text-muted-foreground', working && 'animate-breathe')} />
                 )}
               </div>
             }

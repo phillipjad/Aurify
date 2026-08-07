@@ -123,10 +123,25 @@ writer and the writer is provably dead before `run` touches the cover again.
 
 ### A word that moves
 
-Both waiting stages cycle through synonyms every four seconds — eight for
-listening, seven for painting — derived from the wall clock so every view of the
-same cover agrees without shared state. Frontend only: no progress count is
-persisted, streamed, or added to the contract.
+Both waiting stages cycle through synonyms — eight for listening, seven for
+painting — each holding for one full ellipsis before handing over: "Listening",
+"Listening.", "Listening..", "Listening...", "Judging". A period a second, a verb
+every four. The verb and the dot count both come off one wall-clock step, so
+every view of the same cover agrees without shared state. Frontend only: no
+progress count is persisted, streamed, or added to the contract.
+
+Nothing moves but the dots. They grow into a box already wide enough for three,
+and the label reserves the widest verb (measured: "Composing" at 5.11em), so the
+word's left edge is fixed for the whole stage rather than re-centring on every
+tick. Same reserve in `em` for the badge at 12px and the button at 14px.
+
+The placeholder on a generating tile breathes with it: a 3.2s fade to 0.4 opacity
+and back, slower and shallower than Tailwind's `animate-pulse`, which is tuned
+for a skeleton that resolves in a moment rather than one sitting there for a
+minute. Only the midpoint keyframe is declared, so under `prefers-reduced-motion`
+the animation neutralises to the element's own opacity instead of freezing
+part-faded — the trick `route-enter` already uses, and it avoids needing a second
+busy-indicator exemption.
 
 This is a sign of life, not progress. A user at 1m45s sees motion but not how far
 along they are, which is the accepted cost of not adding a progress field to the

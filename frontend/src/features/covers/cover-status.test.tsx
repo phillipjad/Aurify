@@ -25,7 +25,10 @@ it('announces the stage, not the synonym', () => {
   vi.setSystemTime(4000)
   const { container } = render(<StatusBadge status="analyzing" />)
 
-  expect(screen.getByText('Judging')).toHaveAttribute('aria-hidden', 'true')
+  // Hidden by an ancestor rather than on the word itself, so this asks the
+  // question that matters: is the cycling word inside the live region's blind
+  // spot, wherever the markup puts it.
+  expect(screen.getByText('Judging').closest('[aria-hidden="true"]')).not.toBeNull()
   expect(container.querySelector('.sr-only')).toHaveTextContent('Listening')
 })
 
@@ -58,6 +61,40 @@ it('cycles the painting stage too', () => {
 
   act(() => void vi.advanceTimersByTime(4000))
   expect(screen.getByText('Mixing')).toBeInTheDocument()
+})
+
+// A verb holds for one full ellipsis before handing over, and the dots live in
+// a fixed-width box so the verb never slides left as they appear.
+it('grows an ellipsis before changing the verb', () => {
+  vi.setSystemTime(4000)
+  const { container } = render(<StatusBadge status="analyzing" />)
+  const shown = () => container.querySelector('[aria-hidden="true"]')?.textContent
+
+  expect(shown()).toBe('Judging')
+  act(() => void vi.advanceTimersByTime(1000))
+  expect(shown()).toBe('Judging.')
+  act(() => void vi.advanceTimersByTime(1000))
+  expect(shown()).toBe('Judging..')
+  act(() => void vi.advanceTimersByTime(1000))
+  expect(shown()).toBe('Judging...')
+
+  // Fourth second hands over to the next verb, with the ellipsis reset.
+  act(() => void vi.advanceTimersByTime(1000))
+  expect(shown()).toBe('Enjoying')
+})
+
+// Queued has nothing to cycle through, but it is still waiting, so it still
+// earns the ellipsis. Only settled states sit completely still.
+it('animates a queued cover without cycling it', () => {
+  vi.setSystemTime(4000)
+  const { container } = render(<StatusBadge status="pending" />)
+  const shown = () => container.querySelector('[aria-hidden="true"]')?.textContent
+
+  expect(shown()).toBe('Queued')
+  act(() => void vi.advanceTimersByTime(2000))
+  expect(shown()).toBe('Queued..')
+  act(() => void vi.advanceTimersByTime(2000))
+  expect(shown()).toBe('Queued')
 })
 
 // Every other status is one node: there is nothing to cycle, so there is nothing

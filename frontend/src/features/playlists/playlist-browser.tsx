@@ -16,7 +16,7 @@ import { useSession } from '@/lib/api/auth'
 import { isApiError } from '@/lib/api/client'
 import { connectDsp, useCoverGenerations, useGenerateCover, type CoverGeneration } from '@/lib/api/commands'
 import { usePlaylists, type PlaylistSort } from '@/lib/api/queries'
-import { useStageLabel } from '@/features/covers/cover-status'
+import { StageLabel, useStageLabel } from '@/features/covers/cover-status'
 import { useDebouncedValue } from '@/lib/use-debounced-value'
 import type { Platform, Playlist } from '@/lib/api/types'
 import { PlatformPicker } from './platform-picker'
@@ -324,8 +324,8 @@ function PlaylistRow({ playlist, generation, onGenerate }: PlaylistRowProps) {
   const succeeded = generation.status === 'success'
   // Called unconditionally, as hooks must be. Before the stream has named a
   // stage there is nothing to cycle, and 'pending' is the label that says so.
-  // The button is not a live region, so only the visible half is used here.
-  const { visible: stage } = useStageLabel(generation.stage ?? 'pending')
+  // The button is not a live region, so the announced half is unused here.
+  const { visible: stage, dots } = useStageLabel(generation.stage ?? 'pending')
 
   return (
     <>
@@ -350,7 +350,7 @@ function PlaylistRow({ playlist, generation, onGenerate }: PlaylistRowProps) {
               The label now cycles every four seconds, so this has to clear the
               widest verb plus the spinner: "Composing…" measures 131px. */}
           <Button size="sm" className="min-w-[8.5rem]" loading={generating} onClick={onGenerate}>
-            {generating ? `${generation.stage ? stage : 'Aurifying'}…` : 'Aurify it'}
+            {generating ? <StageLabel visible={generation.stage ? stage : 'Aurifying'} dots={dots} /> : 'Aurify it'}
           </Button>
           {succeeded && (
             <Link to="/covers" className="text-xs font-medium text-primary underline underline-offset-2">

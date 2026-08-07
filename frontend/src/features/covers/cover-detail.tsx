@@ -175,7 +175,7 @@ function CoverImage({ cover, working }: { cover: Cover; working: boolean }) {
             {cover.status === 'failed' ? (
               <AlertTriangle className="size-10 text-muted-foreground" />
             ) : (
-              <Sparkles className={cn('size-10 text-muted-foreground', working && 'animate-pulse')} />
+              <Sparkles className={cn('size-10 text-muted-foreground', working && 'animate-breathe')} />
             )}
           </div>
         }
