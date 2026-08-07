@@ -283,9 +283,8 @@ body::before {
    shallower — a sign of life that does not ask to be looked at.
 
    Only the midpoint is declared, so the element's natural opacity is both ends.
-   That is what lets the reduced-motion block below neutralise it for free: at
-   the 0.01ms it forces, this lands fully opaque rather than frozen part-faded,
-   which is the failure the busy-indicator exemption exists to prevent. */
+   Anything that stops this animation therefore lands on a fully opaque icon
+   rather than freezing it part-faded, which would read as a rendering bug. */
 @keyframes breathe {
   50% {
     opacity: 0.4;
@@ -318,6 +317,17 @@ body::before {
      silently drop it. */
   [data-motion='busy'] {
     animation-duration: 1.8s !important;
+    animation-iteration-count: infinite !important;
+  }
+
+  /* The placeholder on a generating cover is a busy indicator by the same
+     argument: it is the only thing on a tile with no artwork saying the tile is
+     still being worked on, and a still one is indistinguishable from a cover
+     that never arrived. It keeps its own 3.2s rather than borrowing the
+     spinner's 1.8s, because a slow breath is already the calmer of the two and
+     speeding it up for this audience would be backwards. */
+  [data-motion='breathe'] {
+    animation-duration: 3.2s !important;
     animation-iteration-count: infinite !important;
   }
 }

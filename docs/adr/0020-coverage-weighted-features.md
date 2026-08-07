@@ -138,10 +138,15 @@ tick. Same reserve in `em` for the badge at 12px and the button at 14px.
 The placeholder on a generating tile breathes with it: a 3.2s fade to 0.4 opacity
 and back, slower and shallower than Tailwind's `animate-pulse`, which is tuned
 for a skeleton that resolves in a moment rather than one sitting there for a
-minute. Only the midpoint keyframe is declared, so under `prefers-reduced-motion`
-the animation neutralises to the element's own opacity instead of freezing
-part-faded — the trick `route-enter` already uses, and it avoids needing a second
-busy-indicator exemption.
+minute. Only the midpoint keyframe is declared, so anything that stops the
+animation lands on a fully opaque icon rather than freezing it part-faded.
+
+It carries `data-motion="breathe"`, joining the spinner in ADR 0019's
+busy-indicator exemption from the reduced-motion reset, on the same reasoning: it
+is the only thing on an artwork-less tile saying the tile is still being worked
+on, and a still one is indistinguishable from a cover that never arrived. It
+keeps 3.2s rather than borrowing the spinner's 1.8s, since speeding a breath up
+for the audience that asked for less motion would be backwards.
 
 This is a sign of life, not progress. A user at 1m45s sees motion but not how far
 along they are, which is the accepted cost of not adding a progress field to the
