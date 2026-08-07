@@ -42,7 +42,8 @@ export function renderWithProviders(ui: ReactElement, options?: { path?: string 
   })
 
   // The router comes back so a test can assert on the URL, which is where view
-  // state now lives.
+  // state now lives, and the client so a test can drive the cache the way the
+  // SSE stream does.
   return {
     ...render(
       <QueryClientProvider client={queryClient}>
@@ -50,5 +51,6 @@ export function renderWithProviders(ui: ReactElement, options?: { path?: string 
       </QueryClientProvider>,
     ),
     router,
+    queryClient,
   }
 }

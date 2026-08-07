@@ -1,7 +1,10 @@
 package handlers
 
 import (
+	"encoding/json"
+	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/fgrzl/mux"
 
@@ -15,14 +18,24 @@ import (
 	"github.com/phillipjad/aurify/backend/internal/transport/http/dto"
 )
 
-// Covers serves both the write side (generate) and read side (get/list) of
-// covers.
+// WatchCover signals on every change to one cover, and cancels via the returned
+// func. Satisfied by postgres.CoverWatcher.Subscribe, wired in cmd/api.
+type WatchCover func(coverID string) (<-chan struct{}, func())
+
+// Covers serves the write side (generate), the read side (get/list), and the
+// live side (events) of covers.
 type Covers struct {
 	app *app.App
+	// The stream's own dependencies: change signals, and the revocation check
+	// re-run mid-stream because a stream outlives its one middleware pass.
+	watch    WatchCover
+	sessions SessionCheck
 }
 
 // NewCovers constructs the covers handler.
-func NewCovers(a *app.App) *Covers { return &Covers{app: a} }
+func NewCovers(a *app.App, watch WatchCover, sessions SessionCheck) *Covers {
+	return &Covers{app: a, watch: watch, sessions: sessions}
+}
 
 // Generate kicks off cover generation for a playlist (command).
 // POST /api/v1/covers
@@ -75,6 +88,103 @@ func (h *Covers) Get(c mux.RouteContext) {
 		return
 	}
 	c.OK(dto.NewCoverResponse(cover))
+}
+
+// Each beat proves the stream alive, re-checks revocation, and re-reads the
+// cover, which is what recovers a notification lost while reconnecting.
+const heartbeatInterval = 15 * time.Second
+
+// Events streams a cover's lifecycle over SSE until terminal (query, long-lived).
+// GET /api/v1/covers/{id}/events
+//
+// Every event is a complete snapshot, which is what makes reconnects trivial:
+// the first event catches a client up, so there is no replay log to maintain.
+// EventSource cannot set headers, so it authenticates by cookie like every
+// other route, and revocation is re-checked on each heartbeat.
+func (h *Covers) Events(c mux.RouteContext) {
+	userID := currentUser(c)
+	if userID == "" {
+		c.Unauthorized()
+		return
+	}
+	sessionID := c.User().CustomClaimValue(SessionClaim)
+
+	id, ok := c.Params().String("id")
+	if !ok {
+		c.BadRequest("missing id", "path parameter 'id' is required")
+		return
+	}
+
+	// Before the stream opens, so someone else's id gets a plain 404.
+	cover, err := h.app.Queries.GetCover.Handle(c, getcover.Query{CoverID: id, UserID: userID})
+	if err != nil {
+		respondError(c, err)
+		return
+	}
+
+	// Events go through the raw writer, the only one that can flush; headers go
+	// through the context's so the access log still sees them.
+	w := streamWriter(c)
+	rc := http.NewResponseController(w)
+	// The server's 10s WriteTimeout would sever this, cleared per-connection.
+	_ = rc.SetWriteDeadline(time.Time{})
+
+	c.Response().Header().Set("Content-Type", "text/event-stream")
+	c.Response().Header().Set("Cache-Control", "no-store")
+	c.Response().WriteHeader(http.StatusOK)
+
+	send := func(cover *domain.Cover) bool {
+		payload, merr := json.Marshal(dto.NewCoverResponse(cover))
+		if merr != nil {
+			return false
+		}
+		if _, werr := fmt.Fprintf(w, "event: cover\ndata: %s\n\n", payload); werr != nil {
+			return false
+		}
+		// Unflushed events buffer until close, which is worse than no stream.
+		return rc.Flush() == nil
+	}
+
+	if !send(cover) || cover.Status.Terminal() {
+		return
+	}
+
+	updates, cancel := h.watch(id)
+	defer cancel()
+
+	heartbeat := time.NewTicker(heartbeatInterval)
+	defer heartbeat.Stop()
+
+	ctx := c.Request().Context()
+	lastSent := cover.UpdatedAt
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-updates:
+		case <-heartbeat.C:
+			if h.sessions(ctx, sessionID) != nil {
+				return
+			}
+		}
+
+		cover, err = h.app.Queries.GetCover.Handle(c, getcover.Query{CoverID: id, UserID: userID})
+		if err != nil {
+			return
+		}
+		if cover.UpdatedAt.Equal(lastSent) {
+			// Nothing new: a comment line satisfies proxies without waking the
+			// client, which a full event would (parse, cache write, re-render).
+			if _, werr := fmt.Fprint(w, ": ping\n\n"); werr != nil || rc.Flush() != nil {
+				return
+			}
+			continue
+		}
+		lastSent = cover.UpdatedAt
+		if !send(cover) || cover.Status.Terminal() {
+			return
+		}
+	}
 }
 
 // Image serves the bytes behind a cover's imageUrl (query).

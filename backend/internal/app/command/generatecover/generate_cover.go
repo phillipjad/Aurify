@@ -5,6 +5,8 @@ package generatecover
 
 import (
 	"context"
+	"log/slog"
+	"sync"
 	"time"
 
 	"github.com/phillipjad/aurify/backend/internal/analysis"
@@ -35,6 +37,9 @@ type Handler struct {
 	// as it did before either existed.
 	features  ports.FeatureSource
 	estimator ports.FeatureEstimator
+
+	// running counts in-flight background pipelines so Wait can observe them.
+	running sync.WaitGroup
 }
 
 // NewHandler constructs a GenerateCover handler with all of its dependencies.
@@ -64,25 +69,17 @@ func NewHandler(
 	}
 }
 
-// Handle runs the pipeline synchronously and returns the id of the persisted
-// cover.
-//
-// NOTE: A production implementation should enqueue this work and return a
-// pending cover immediately, since analysis + generation can take many seconds
-// for large playlists. The synchronous flow here keeps the scaffold readable.
+// Handle accepts the generation and returns the pending cover's id; the
+// pipeline runs in the background and reports over SSE (see ADR 0019).
 func (h *Handler) Handle(ctx context.Context, cmd Command) (string, error) {
 	provider, conn, err := h.connections.Resolve(ctx, cmd.UserID, cmd.Platform)
 	if err != nil {
 		return "", err
 	}
 
-	// The name is what the gallery labels a cover with, and it is read here rather
-	// than taken from the request: the API declares it required on the response, so
-	// whether a cover is identifiable should not depend on the caller supplying it.
-	//
-	// Best effort on purpose. A cover with no label is a poor outcome; failing a
-	// generation the user asked for because a label could not be fetched is a worse
-	// one.
+	// Read here rather than taken from the request, so a cover's identity does
+	// not depend on the caller, and fetched before the first save so it is never
+	// untitled. Best effort: a missing label beats a failed generation.
 	playlistName := ""
 	if playlist, perr := provider.GetPlaylist(ctx, conn, cmd.PlaylistID); perr == nil {
 		playlistName = playlist.Name
@@ -93,17 +90,47 @@ func (h *Handler) Handle(ctx context.Context, cmd Command) (string, error) {
 		Platform:     cmd.Platform,
 		PlaylistID:   cmd.PlaylistID,
 		PlaylistName: playlistName,
-		Status:       domain.CoverStatusAnalyzing,
+		Status:       domain.CoverStatusPending,
 		CreatedAt:    time.Now().UTC(),
 	}
 	if err := h.covers.Save(ctx, cover); err != nil {
 		return "", err
 	}
 
+	// The request context dies with the response; the pipeline outlives it.
+	bg := context.WithoutCancel(ctx)
+	h.running.Add(1)
+	go func() {
+		defer h.running.Done()
+		h.run(bg, provider, conn, cover, cmd)
+	}()
+	return cover.ID, nil
+}
+
+// Wait blocks until every accepted generation has finished, for tests. Shutdown
+// does not wait: interrupted covers are failed by the sweep in cmd/api.
+func (h *Handler) Wait() { h.running.Wait() }
+
+// run executes the pipeline, recording the outcome on the cover row. No caller
+// to return to, so every failure ends at h.fail.
+func (h *Handler) run(
+	ctx context.Context,
+	provider ports.DSPProvider,
+	conn domain.DSPConnection,
+	cover *domain.Cover,
+	cmd Command,
+) {
+	cover.Status = domain.CoverStatusAnalyzing
+	if err := h.covers.Save(ctx, cover); err != nil {
+		h.fail(ctx, cover, err)
+		return
+	}
+
 	// 1. Ingest the playlist's tracks (normalized audio features included).
 	tracks, err := provider.ListTracks(ctx, conn, cmd.PlaylistID)
 	if err != nil {
-		return cover.ID, h.fail(ctx, cover, err)
+		h.fail(ctx, cover, err)
+		return
 	}
 
 	// 2. Lyric sentiment per track. Lyrics are best-effort: a missing lyric set
@@ -118,7 +145,8 @@ func (h *Handler) Handle(ctx context.Context, cmd Command) (string, error) {
 	for i, text := range lyrics {
 		s, serr := h.sentiment.Analyze(ctx, text)
 		if serr != nil {
-			return cover.ID, h.fail(ctx, cover, serr)
+			h.fail(ctx, cover, serr)
+			return
 		}
 		sentiments[i] = s
 	}
@@ -141,7 +169,8 @@ func (h *Handler) Handle(ctx context.Context, cmd Command) (string, error) {
 	// 4. Aggregate features + sentiment into a normalized, weighted palette.
 	result, err := h.analysis.Analyze(ctx, cmd.PlaylistID, tracks, sentiments)
 	if err != nil {
-		return cover.ID, h.fail(ctx, cover, err)
+		h.fail(ctx, cover, err)
+		return
 	}
 
 	// Nothing matched, so the palette would be the constant one. Fall back to a
@@ -157,7 +186,8 @@ func (h *Handler) Handle(ctx context.Context, cmd Command) (string, error) {
 	cover.Analysis = result
 	cover.Status = domain.CoverStatusGenerating
 	if err := h.covers.Save(ctx, cover); err != nil {
-		return cover.ID, err
+		h.fail(ctx, cover, err)
+		return
 	}
 
 	// 5. Analysis -> prompt -> image, then store the bytes. The generator returns
@@ -165,7 +195,8 @@ func (h *Handler) Handle(ctx context.Context, cmd Command) (string, error) {
 	//    where it lives is the store's job.
 	prompt, err := h.prompts.GeneratePrompt(ctx, result)
 	if err != nil {
-		return cover.ID, h.fail(ctx, cover, err)
+		h.fail(ctx, cover, err)
+		return
 	}
 	// Recorded before it is used, so a failure downstream keeps it. Image
 	// providers refuse prompts, and the prompt is the only thing that explains
@@ -174,25 +205,26 @@ func (h *Handler) Handle(ctx context.Context, cmd Command) (string, error) {
 
 	image, err := h.images.GenerateImage(ctx, prompt)
 	if err != nil {
-		return cover.ID, h.fail(ctx, cover, err)
+		h.fail(ctx, cover, err)
+		return
 	}
 	imageURL, err := h.imageStore.Put(ctx, cover.ID, image)
 	if err != nil {
-		return cover.ID, h.fail(ctx, cover, err)
+		h.fail(ctx, cover, err)
+		return
 	}
 
 	cover.ImageURL = imageURL
 	cover.Status = domain.CoverStatusReady
 	if err := h.covers.Save(ctx, cover); err != nil {
-		return cover.ID, err
+		h.fail(ctx, cover, err)
 	}
-	return cover.ID, nil
 }
 
-// fail marks the cover as failed, persists the cause, and returns it.
-func (h *Handler) fail(ctx context.Context, cover *domain.Cover, cause error) error {
+// fail marks the cover failed and persists the cause; the log is for operators.
+func (h *Handler) fail(ctx context.Context, cover *domain.Cover, cause error) {
+	slog.Error("cover generation failed", "cover", cover.ID, "error", cause)
 	cover.Status = domain.CoverStatusFailed
 	cover.Error = cause.Error()
 	_ = h.covers.Save(ctx, cover)
-	return cause
 }

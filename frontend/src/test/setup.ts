@@ -39,6 +39,48 @@ if (!('ResizeObserver' in globalThis)) {
   } as unknown as typeof ResizeObserver
 }
 
+// jsdom has no matchMedia, which Sonner's <Toaster> reads when it mounts.
+// Never-matching is the right answer for every query it asks (mobile layout,
+// reduced motion).
+if (!window.matchMedia) {
+  window.matchMedia = (query: string) =>
+    ({
+      matches: false,
+      media: query,
+      onchange: null,
+      addEventListener() {},
+      removeEventListener() {},
+      addListener() {},
+      removeListener() {},
+      dispatchEvent: () => false,
+    }) as MediaQueryList
+}
+
+// jsdom has no pointer capture, which Sonner's toasts take on pointerdown for
+// swipe-to-dismiss. No-ops suffice: nothing here asserts on swiping.
+for (const method of ['setPointerCapture', 'releasePointerCapture', 'hasPointerCapture'] as const) {
+  if (!(method in Element.prototype)) {
+    Object.defineProperty(Element.prototype, method, {
+      value: method === 'hasPointerCapture' ? () => false : () => {},
+      writable: true,
+    })
+  }
+}
+
+// jsdom has no EventSource, which cover-events.ts opens for every in-flight
+// cover. An inert stand-in is enough: component tests drive cover state through
+// the mocked apiFetch, and the SSE path itself is covered by the backend's
+// stream tests.
+if (!('EventSource' in globalThis)) {
+  globalThis.EventSource = class {
+    withCredentials = false
+    constructor(_url: string, _init?: EventSourceInit) {}
+    addEventListener() {}
+    removeEventListener() {}
+    close() {}
+  } as unknown as typeof EventSource
+}
+
 // Globals are disabled in vitest.config.ts, so unmount React trees between tests
 // explicitly (Testing Library's auto-cleanup relies on a global afterEach).
 afterEach(() => {

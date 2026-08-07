@@ -83,7 +83,7 @@ function CoverDetailView({ cover }: { cover: Cover }) {
           </header>
 
           {cover.status === 'failed' && (
-            <p role="alert" className="text-sm text-destructive">
+            <p role="alert" className="text-sm text-destructive-text">
               {cover.error || 'Generation didn’t finish. Nothing was saved to the cover.'}
             </p>
           )}
@@ -156,7 +156,7 @@ function CoverDetailView({ cover }: { cover: Cover }) {
           </div>
 
           {(regenerate.isError || del.isError) && (
-            <p role="alert" className="text-sm text-destructive">
+            <p role="alert" className="text-sm text-destructive-text">
               {errorText(regenerate.error ?? del.error, 'That didn’t work. Try again in a moment.')}
             </p>
           )}

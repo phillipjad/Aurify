@@ -14,6 +14,12 @@ const (
 	CoverStatusFailed     CoverStatus = "failed"
 )
 
+// Terminal reports whether the status will never change again without a new
+// user action.
+func (s CoverStatus) Terminal() bool {
+	return s == CoverStatusReady || s == CoverStatusFailed
+}
+
 // Cover is a generated playlist/album cover together with the analysis that
 // produced it. Covers are persisted per-user so they can be revisited. The
 // Analysis is stored as a JSONB column (see docs/adr/0010-postgresql-storage.md).

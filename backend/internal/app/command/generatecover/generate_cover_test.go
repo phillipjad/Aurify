@@ -180,6 +180,34 @@ func newHandler(provider *fakeProvider) (*Handler, *fakeCovers, *fakeImageStore)
 
 // --- tests ---
 
+// The accept persists the cover as pending before any pipeline work runs: the
+// id Handle returns is only useful if a poll can find the row immediately, and
+// the poll is the client's only progress signal (see ADR 0019).
+func TestHandleAcceptsWithAPendingCover(t *testing.T) {
+	provider := &fakeProvider{playlist: domain.Playlist{ID: "PL1", Name: "Chill Vibes"}}
+	handler, covers, _ := newHandler(provider)
+
+	id, err := handler.Handle(context.Background(), Command{
+		UserID:     "user-1",
+		Platform:   domain.PlatformYouTubeMusic,
+		PlaylistID: "PL1",
+	})
+	if err != nil {
+		t.Fatalf("Handle: %v", err)
+	}
+	handler.Wait()
+
+	if covers.saved[0].Status != domain.CoverStatusPending {
+		t.Errorf("first saved status = %q, want pending before the pipeline starts", covers.saved[0].Status)
+	}
+	if covers.saved[0].ID != id {
+		t.Errorf("returned id %q is not the pending cover's id %q", id, covers.saved[0].ID)
+	}
+	if last := covers.saved[len(covers.saved)-1]; last.Status != domain.CoverStatusReady {
+		t.Errorf("final status = %q, want the pipeline to have completed", last.Status)
+	}
+}
+
 // The gallery labels each cover with this, and it used to be saved empty, so
 // every tile rendered untitled.
 func TestGeneratedCoverCarriesThePlaylistName(t *testing.T) {
@@ -193,6 +221,7 @@ func TestGeneratedCoverCarriesThePlaylistName(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("Handle: %v", err)
 	}
+	handler.Wait()
 
 	if len(covers.saved) == 0 {
 		t.Fatal("no cover was saved")
@@ -226,6 +255,7 @@ func TestTheStoredImageIsWhatTheCoverPointsAt(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Handle: %v", err)
 	}
+	handler.Wait()
 
 	if images.coverID != id {
 		t.Errorf("stored under %q, want the cover's own id %q", images.coverID, id)
@@ -251,13 +281,16 @@ func TestAFailedImageStillRecordsThePrompt(t *testing.T) {
 	handler, covers, _ := newHandler(provider)
 	handler.images = refusingImages{}
 
+	// The accept succeeds; the failure lands on the cover row, the only channel
+	// the client watches once the request has returned.
 	if _, err := handler.Handle(context.Background(), Command{
 		UserID:     "user-1",
 		Platform:   domain.PlatformYouTubeMusic,
 		PlaylistID: "PL1",
-	}); err == nil {
-		t.Fatal("expected the generation to fail")
+	}); err != nil {
+		t.Fatalf("Handle: %v", err)
 	}
+	handler.Wait()
 
 	last := covers.saved[len(covers.saved)-1]
 	if last.Status != domain.CoverStatusFailed {
@@ -285,9 +318,10 @@ func TestAFailedStoreFailsTheCover(t *testing.T) {
 		UserID:     "user-1",
 		Platform:   domain.PlatformYouTubeMusic,
 		PlaylistID: "PL1",
-	}); err == nil {
-		t.Fatal("expected the generation to fail")
+	}); err != nil {
+		t.Fatalf("Handle: %v", err)
 	}
+	handler.Wait()
 
 	last := covers.saved[len(covers.saved)-1]
 	if last.Status != domain.CoverStatusFailed {
@@ -323,6 +357,7 @@ func TestGenerationSurvivesAFailedNameLookup(t *testing.T) {
 	if id == "" {
 		t.Fatal("no cover id returned")
 	}
+	handler.Wait()
 
 	last := covers.saved[len(covers.saved)-1]
 	if last.Status != domain.CoverStatusReady {
@@ -393,6 +428,7 @@ func generate(t *testing.T, h *Handler) {
 	}); err != nil {
 		t.Fatalf("Handle: %v", err)
 	}
+	h.Wait()
 }
 
 func dominant(a domain.PlaylistAnalysis) string {

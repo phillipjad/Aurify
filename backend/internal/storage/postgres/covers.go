@@ -54,6 +54,12 @@ func (r *CoverRepository) Save(ctx context.Context, cover *domain.Cover) error {
 	})
 }
 
+// FailStuck fails covers left non-terminal since before cutoff. Not on
+// ports.CoverRepository: operational recovery, not an application command.
+func (r *CoverRepository) FailStuck(ctx context.Context, cutoff time.Time) (int64, error) {
+	return r.q.FailStuckCovers(ctx, tsFromTime(cutoff))
+}
+
 // FindByID looks up a cover by id, mapping a miss to domain.ErrNotFound.
 func (r *CoverRepository) FindByID(ctx context.Context, id string) (*domain.Cover, error) {
 	row, err := r.q.GetCoverByID(ctx, id)

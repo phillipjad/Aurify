@@ -1,9 +1,13 @@
-import { useEffect, useRef, useState, type RefObject } from 'react'
+import { useEffect, useRef, useState, useSyncExternalStore, type RefObject } from 'react'
 import type { QueryClient } from '@tanstack/react-query'
 import { createRootRouteWithContext, Link, Outlet, useRouterState } from '@tanstack/react-router'
 
 import { AurifyLogo } from '@/components/aurify-logo'
+import { CoverGenerationWatcher } from '@/components/cover-generation-watcher'
+import { Badge } from '@/components/ui/badge'
+import { Toaster } from '@/components/ui/sonner'
 import { UserMenu } from '@/features/auth/user-menu'
+import { getUnreadCoverCount, subscribeUnreadCovers } from '@/lib/cover-unread'
 
 // Context made available to every route (loaders, components).
 export interface RouterContext {
@@ -63,9 +67,7 @@ function RootLayout() {
             <Link to="/playlists" className={navLinkClass}>
               Playlists
             </Link>
-            <Link to="/covers" className={navLinkClass}>
-              Covers
-            </Link>
+            <CoversNavLink />
             <span className="mx-1 h-5 w-px bg-border" aria-hidden="true" />
             <UserMenu />
           </nav>
@@ -99,12 +101,43 @@ function RootLayout() {
 
       <SiteFooter />
 
+      {/* Watched from the root so the streams survive route changes; finished
+          covers announce themselves here (see lib/cover-toasts.tsx). */}
+      <CoverGenerationWatcher />
+      <Toaster />
+
       {/* On navigation the SPA swaps content silently; announce the new page to
           assistive tech (focus moves to <main> in the hook above). */}
       <div role="status" aria-live="polite" className="sr-only">
         {announcement}
       </div>
     </div>
+  )
+}
+
+/**
+ * The Covers link, counting generations that finished while the user was
+ * elsewhere. This is what lets the toast be brief: it expires, the badge does
+ * not, until they reach the gallery.
+ */
+function CoversNavLink() {
+  const unread = useSyncExternalStore(subscribeUnreadCovers, getUnreadCoverCount)
+
+  return (
+    <Link to="/covers" className={`${navLinkClass} inline-flex items-center gap-1.5`}>
+      Covers
+      {unread > 0 && (
+        <>
+          {/* Decoration: the sentence below is what gets read out. */}
+          <Badge aria-hidden="true" className="px-1.5 py-0 tabular-nums">
+            {unread}
+          </Badge>
+          <span className="sr-only">
+            ({unread} new {unread === 1 ? 'cover' : 'covers'})
+          </span>
+        </>
+      )}
+    </Link>
   )
 }
 

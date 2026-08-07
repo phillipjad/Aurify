@@ -21,7 +21,9 @@ export type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> &
 export function Button({ className, variant, size, loading = false, disabled, children, ...props }: ButtonProps) {
   return (
     <button
-      className={cn(buttonVariants({ variant, size, className }))}
+      // Still `disabled` so the browser blocks the click, but opting out of the
+      // dimming that goes with it, as the docstring above promises.
+      className={cn(buttonVariants({ variant, size, className }), loading && 'opacity-100!')}
       disabled={disabled ?? loading}
       aria-busy={loading || undefined}
       {...props}

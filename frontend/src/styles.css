@@ -45,6 +45,12 @@
      Foreground chroma is kept low enough to stay in sRGB at these lightnesses. */
   --destructive: oklch(0.55 0.21 25);
   --destructive-foreground: oklch(0.99 0.005 0);
+  /* --destructive is tuned as a *background*, paired with the near-white
+     foreground above. Used the other way round, as text on the page, it
+     measures 5.10:1 here but only 3.70:1 in dark, under the 4.5:1 that error
+     copy needs. This is that pairing: destructive-coloured text on background
+     or card. */
+  --destructive-text: oklch(0.55 0.21 25);
 
   --success: oklch(0.52 0.14 150);
   --success-foreground: oklch(0.99 0.01 150);
@@ -89,6 +95,9 @@
      against its near-white label, below AA. L=0.56 brings it to 4.88:1. */
   --destructive: oklch(0.56 0.21 25);
   --destructive-foreground: oklch(0.98 0.005 0);
+  /* Lightened well past --destructive, which reads 3.70:1 on this background
+     and 3.35:1 on this card. Measured here: 5.62:1 and 5.09:1. */
+  --destructive-text: oklch(0.66 0.19 25);
 
   --success: oklch(0.7 0.16 155);
   --success-foreground: oklch(0.16 0.03 155);
@@ -118,6 +127,7 @@
   --color-accent-foreground: var(--accent-foreground);
   --color-destructive: var(--destructive);
   --color-destructive-foreground: var(--destructive-foreground);
+  --color-destructive-text: var(--destructive-text);
   --color-success: var(--success);
   --color-success-foreground: var(--success-foreground);
   --color-border: var(--border);

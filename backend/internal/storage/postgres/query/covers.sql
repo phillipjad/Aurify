@@ -31,6 +31,18 @@ WHERE user_id = @user_id
 ORDER BY created_at DESC
 LIMIT @row_limit OFFSET @row_offset;
 
+-- name: FailStuckCovers :execrows
+-- Generation runs in-process (ADR 0019), so a crash or instance scale-down
+-- orphans any in-flight cover in a non-terminal status, and the gallery would
+-- poll it as "generating" forever. Every pipeline stage bumps updated_at, so a
+-- non-terminal cover untouched since before the cutoff has no worker attached.
+UPDATE covers
+SET status     = 'failed',
+    error      = 'generation was interrupted, try again',
+    updated_at = now()
+WHERE status IN ('pending', 'analyzing', 'generating')
+  AND updated_at < @stale_before;
+
 -- name: DeleteCover :execrows
 -- Scoped to the owner so a user can never delete another user's cover; the
 -- rows-affected count lets the caller distinguish "deleted" from "not found".
