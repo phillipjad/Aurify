@@ -101,10 +101,8 @@ function RootLayout() {
 
       <SiteFooter />
 
-      {/* Generations are watched from the root so their SSE streams survive
-          route changes, and finished ones announce themselves here from any
-          route outside the covers section, with a link straight to the new
-          cover (see lib/cover-toasts.tsx). */}
+      {/* Watched from the root so the streams survive route changes; finished
+          covers announce themselves here (see lib/cover-toasts.tsx). */}
       <CoverGenerationWatcher />
       <Toaster />
 
@@ -118,12 +116,9 @@ function RootLayout() {
 }
 
 /**
- * The Covers link, carrying a count of generations that finished while the user
- * was elsewhere and has not looked at since.
- *
- * This is what lets the ready toast be brief. The toast is the interruption and
- * it expires; the badge is the record and it does not, until the user reaches
- * the gallery (see components/cover-generation-watcher.tsx).
+ * The Covers link, counting generations that finished while the user was
+ * elsewhere. This is what lets the toast be brief: it expires, the badge does
+ * not, until they reach the gallery.
  */
 function CoversNavLink() {
   const unread = useSyncExternalStore(subscribeUnreadCovers, getUnreadCoverCount)
@@ -133,8 +128,7 @@ function CoversNavLink() {
       Covers
       {unread > 0 && (
         <>
-          {/* The number is decoration for a screen reader, which gets the
-              sentence below instead of a bare digit after the link name. */}
+          {/* Decoration: the sentence below is what gets read out. */}
           <Badge aria-hidden="true" className="px-1.5 py-0 tabular-nums">
             {unread}
           </Badge>

@@ -1,15 +1,6 @@
-// Live cover updates over Server-Sent Events.
-//
-// GET /covers/{id}/events streams a complete cover snapshot on connect and on
-// every change, so there is nothing to poll: events land in the TanStack Query
-// cache and every subscribed component re-renders from there. EventSource
-// reconnects on its own, and because the first event after a reconnect is a
-// full snapshot, a dropped connection can never leave stale state behind.
-//
-// Streams are shared and refcounted per cover id: the gallery, a playlist row
-// and a detail view watching the same generation hold one connection between
-// them, which keeps a burst of generations inside the browser's connection
-// budget on HTTP/1.1.
+// Live cover updates over SSE. Full snapshots land in the query cache, so a
+// reconnect cannot leave stale state, and streams are refcounted per cover so
+// the gallery, a row and a detail view share one connection.
 import type { InfiniteData, QueryClient } from '@tanstack/react-query'
 
 import { maybeToastCoverSettled } from '../cover-toasts'
@@ -24,34 +15,28 @@ interface CoverStream {
 
 const streams = new Map<string, CoverStream>()
 
-// Covers this tab has seen an event for. The first one is what tells the
-// gallery a cover it has never listed now exists (see applyCover). Exported so
-// tests can reset it, like the toast module's own once-per-cover set.
+// Covers seen this tab, so applyCover can spot a gallery that never listed one.
 export const seenCovers = new Set<string>()
 
 /**
- * Watch one cover's stream, writing every event into the query cache. Returns
- * an unwatch function; the underlying connection closes when the last watcher
- * leaves or the cover reaches a terminal status, whichever comes first.
+ * Watch one cover, writing events into the query cache. The connection closes
+ * when the last watcher leaves or the cover settles, whichever is first.
  */
 export function watchCover(queryClient: QueryClient, id: string): () => void {
   const existing = streams.get(id)
   if (existing) {
     existing.refs += 1
   } else {
-    // Cookie-authenticated, like every other API call; EventSource cannot set
-    // headers, so withCredentials is the whole auth story.
+    // EventSource cannot set headers, so withCredentials is the whole auth story.
     const source = new EventSource(`${BASE_URL}/covers/${encodeURIComponent(id)}/events`, {
       withCredentials: true,
     })
     source.addEventListener('cover', (event) => {
       const cover = JSON.parse((event as MessageEvent<string>).data) as Cover
       applyCover(queryClient, cover)
-      // A finished cover announces itself wherever the user is, unless they are
-      // already in the covers section watching it (the store decides).
       maybeToastCoverSettled(cover)
-      // The server closes after a terminal event; closing here too stops
-      // EventSource from treating that close as an error and reconnecting.
+      // Closing here too stops EventSource treating the server's close as an
+      // error and reconnecting.
       if (TERMINAL_STATUSES.has(cover.status)) closeStream(id)
     })
     streams.set(id, { source, refs: 1 })
@@ -83,13 +68,9 @@ function applyCover(queryClient: QueryClient, cover: Cover) {
     }
   })
 
-  // Updating in place can only reach covers a page already holds, and a
-  // generation started after the gallery loaded is in none of them: the grid
-  // would stay silent until something refetched it, which is what the old
-  // three-second poll quietly did. On first sight of a cover, ask the server
-  // for the pages again so it arrives in its right place, rather than guessing
-  // where to splice a row into an offset-paginated list. Once per cover, and
-  // only a real request when a gallery is actually mounted.
+  // A generation started after the gallery loaded is in none of its pages, so
+  // updating in place cannot reach it. Refetch once per cover and let the server
+  // place the row, rather than splicing into an offset-paginated list.
   if (!seenCovers.has(cover.id)) {
     seenCovers.add(cover.id)
     void queryClient.invalidateQueries({ queryKey: ['covers', 'list'] })

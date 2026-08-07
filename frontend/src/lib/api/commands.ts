@@ -60,15 +60,11 @@ export function useGenerateCover() {
 export interface CoverGeneration {
   status: 'pending' | 'success' | 'error' | 'idle'
   error: unknown
-  /**
-   * The pipeline stage behind a `pending` status, once the stream has reported
-   * one. The row says what is happening rather than that something is, which
-   * is the difference between a two-minute wait and a two-minute void.
-   */
+  /** The live stage behind `pending`, so the row says what is happening. */
   stage?: CoverStatus
 }
 
-/** Every generation this session has attempted, read from the mutation cache. */
+/** Every generation this session attempted, from the mutation cache. */
 function useAcceptedGenerations() {
   return useMutationState({
     filters: { mutationKey: coverGenerationKey },
@@ -82,16 +78,10 @@ function useAcceptedGenerations() {
 }
 
 /**
- * Hold an SSE stream open for every cover still being generated, from wherever
- * this hook is mounted. It lives in the root layout (see
- * CoverGenerationWatcher), because the streams must survive route changes: the
- * ready toast fires off an event, and the event only arrives if someone is
- * still listening after the user has wandered elsewhere.
- *
- * Two sources feed it. Generations accepted in this tab come from the mutation
- * cache. Generations still running from *before* this page loaded come from a
- * single startup query, since a reload drops the mutation cache while the work
- * carries on server side.
+ * Hold a stream open for every running cover. Lives in the root layout, because
+ * the streams must survive route changes: the ready toast fires off an event,
+ * which only arrives if someone is still listening. Fed by the mutation cache
+ * for this tab's generations, and a startup query for ones a reload forgot.
  */
 export function useWatchCoverGenerations(): void {
   const queryClient = useQueryClient()
@@ -101,22 +91,19 @@ export function useWatchCoverGenerations(): void {
   const coverResults = useQueries({ queries: coverIds.map((id) => coverQuery(id)) })
   const coverById = new Map(coverIds.map((id, i) => [id, coverResults[i]?.data]))
 
-  // Only for a signed-in caller: the covers list is authenticated, and asking
-  // anonymously would put a guaranteed 401 in front of every visit.
+  // Anonymously this is a guaranteed 401 in front of every visit.
   const session = useSession()
   const running = useQuery({ ...runningCoversQuery(), enabled: session.data != null })
 
-  // One stream per still-running cover. The joined key changes only when a
-  // generation starts or settles, so streams are not churned on unrelated
-  // re-renders, and watchCover refcounts anything watched from both sources.
+  // The joined key changes only when a generation starts or settles, so streams
+  // are not churned on unrelated re-renders. watchCover refcounts the overlap.
   const live = new Set<string>()
   for (const id of coverIds) {
     const status = coverById.get(id)?.status
     if (!status || !TERMINAL_STATUSES.has(status)) live.add(id)
   }
   for (const cover of running.data ?? []) {
-    // The stream is authoritative once open, so a resumed cover that has since
-    // finished is filtered by its live status rather than the startup snapshot.
+    // The stream outranks the startup snapshot once it has said anything.
     const current = queryClient.getQueryData<Cover>(queryKeys.cover(cover.id)) ?? cover
     if (!TERMINAL_STATUSES.has(current.status)) live.add(cover.id)
   }
@@ -138,24 +125,16 @@ export function useWatchCoverGenerations(): void {
  * scrolling out of the windowed list and back, because the cache outlives the
  * component.
  *
- * The POST returns a *pending* cover and the pipeline runs server side, so a
- * settled mutation is an accepted job, not a finished one. Each accepted cover
- * is followed over its SSE stream (see cover-events.ts) until the status is
- * terminal, and that status — not the request's — is what a row reports.
- *
- * This hook only *reads*; the streams themselves are held open by
- * useWatchCoverGenerations at the root. Holding them here was a real bug:
- * navigating off the playlists page unmounted the only subscriber, closed the
- * stream, and the ready toast never fired — on exactly the route change it
- * exists for.
+ * The POST returns a *pending* cover, so a settled mutation is an accepted job,
+ * not a finished one: the row reports the cover's status, not the request's.
+ * Read-only. The streams are held at the root, because holding them here closed
+ * them on the very navigation the toast exists for.
  */
 export function useCoverGenerations(): (playlistId: string) => CoverGeneration {
   const entries = useAcceptedGenerations()
 
   const coverIds = [...new Set(entries.map((entry) => entry.coverId).filter((id): id is string => id != null))]
-  // The cache subscription: events written by the stream land here. The fetch
-  // is only the fallback snapshot for a cover accepted before this component
-  // mounted; from then on the stream keeps it current.
+  // Subscribes to what the stream writes; the fetch is only the first snapshot.
   const coverResults = useQueries({ queries: coverIds.map((id) => coverQuery(id)) })
   const coverById = new Map(coverIds.map((id, i) => [id, coverResults[i]?.data]))
 
@@ -167,8 +146,7 @@ export function useCoverGenerations(): (playlistId: string) => CoverGeneration {
     if (!latest) return { status: 'idle', error: undefined }
     if (latest.status !== 'success') return { status: latest.status, error: latest.error }
 
-    // Accepted. The row keeps its spinner until the cover itself settles;
-    // before the first detail fetch lands, the job is at best still pending.
+    // The row keeps its spinner until the cover itself settles.
     const cover = latest.coverId ? coverById.get(latest.coverId) : undefined
     if (!cover || !TERMINAL_STATUSES.has(cover.status)) {
       return { status: 'pending', error: undefined, stage: cover?.status }

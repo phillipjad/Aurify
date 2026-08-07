@@ -69,24 +69,17 @@ func NewHandler(
 	}
 }
 
-// Handle accepts the generation: it validates the user's DSP connection,
-// persists a pending cover, and returns its id while the pipeline runs in the
-// background. The client observes the progression by polling GET /covers, which
-// it already does for every non-terminal cover (see ADR 0019).
+// Handle accepts the generation and returns the pending cover's id; the
+// pipeline runs in the background and reports over SSE (see ADR 0019).
 func (h *Handler) Handle(ctx context.Context, cmd Command) (string, error) {
 	provider, conn, err := h.connections.Resolve(ctx, cmd.UserID, cmd.Platform)
 	if err != nil {
 		return "", err
 	}
 
-	// The name is what the gallery labels a cover with, and it is read here rather
-	// than taken from the request: the API declares it required on the response, so
-	// whether a cover is identifiable should not depend on the caller supplying it.
-	// Fetched before the first save, so the cover never appears untitled.
-	//
-	// Best effort on purpose. A cover with no label is a poor outcome; failing a
-	// generation the user asked for because a label could not be fetched is a worse
-	// one.
+	// Read here rather than taken from the request, so a cover's identity does
+	// not depend on the caller, and fetched before the first save so it is never
+	// untitled. Best effort: a missing label beats a failed generation.
 	playlistName := ""
 	if playlist, perr := provider.GetPlaylist(ctx, conn, cmd.PlaylistID); perr == nil {
 		playlistName = playlist.Name
@@ -104,9 +97,7 @@ func (h *Handler) Handle(ctx context.Context, cmd Command) (string, error) {
 		return "", err
 	}
 
-	// The request context is cancelled the moment the response is written, and
-	// the pipeline outlives the response by design. WithoutCancel keeps the
-	// context's values while dropping that cancellation.
+	// The request context dies with the response; the pipeline outlives it.
 	bg := context.WithoutCancel(ctx)
 	h.running.Add(1)
 	go func() {
@@ -116,15 +107,12 @@ func (h *Handler) Handle(ctx context.Context, cmd Command) (string, error) {
 	return cover.ID, nil
 }
 
-// Wait blocks until every accepted generation has finished. Tests use it to
-// observe the pipeline's final state. The server does not wait on shutdown:
-// a pipeline takes longer than any termination grace period, so interrupted
-// covers are failed by the sweep in cmd/api instead.
+// Wait blocks until every accepted generation has finished, for tests. Shutdown
+// does not wait: interrupted covers are failed by the sweep in cmd/api.
 func (h *Handler) Wait() { h.running.Wait() }
 
-// run executes the pipeline and records the outcome on the cover row, which is
-// the job record. There is no caller to return an error to, so every failure
-// ends at h.fail.
+// run executes the pipeline, recording the outcome on the cover row. No caller
+// to return to, so every failure ends at h.fail.
 func (h *Handler) run(
 	ctx context.Context,
 	provider ports.DSPProvider,
@@ -233,8 +221,7 @@ func (h *Handler) run(
 	}
 }
 
-// fail marks the cover as failed and persists the cause. The cover row is the
-// only channel back to the user, so the log line is for the operator.
+// fail marks the cover failed and persists the cause; the log is for operators.
 func (h *Handler) fail(ctx context.Context, cover *domain.Cover, cause error) {
 	slog.Error("cover generation failed", "cover", cover.ID, "error", cause)
 	cover.Status = domain.CoverStatusFailed

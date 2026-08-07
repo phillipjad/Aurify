@@ -342,9 +342,7 @@ function PlaylistRow({ playlist, generation, onGenerate }: PlaylistRowProps) {
         </div>
 
         <div className="flex shrink-0 flex-col items-end gap-1">
-          {/* The width is reserved for the longest state this button reaches, so
-              a right-aligned row does not jerk sideways when the label changes
-              from "Aurify it" to a stage and back. */}
+          {/* Width reserved for the longest label, so the row does not jerk. */}
           <Button size="sm" className="min-w-[7.5rem]" loading={generating} onClick={onGenerate}>
             {generating ? generatingLabel(generation.stage) : 'Aurify it'}
           </Button>
@@ -403,22 +401,15 @@ function PlaylistSkeletons() {
   )
 }
 
-/**
- * What the button says while a generation runs.
- *
- * The pipeline already names its own stages in the user's language, and the
- * stream already delivers them, so the row reports "Listening…" and then
- * "Painting…" rather than one frozen word for up to two minutes. Falls back to
- * the generic label in the moment between accepting the job and hearing about
- * it.
- */
+/** "Listening…" then "Painting…" rather than one frozen word for two minutes;
+ * generic until the stream has said which stage it is in. */
 function generatingLabel(stage: CoverGeneration['stage']): string {
   return `${stage ? STATUS_LABEL[stage] : 'Aurifying'}…`
 }
 
 /** Read a user-facing message off an unknown error, falling back to plain copy. */
 function errorMessage(error: unknown, fallback: string): string {
-  // A failed generation reports the cover row's error, which is a bare string.
+  // A failed generation reports the cover row's error, a bare string.
   if (typeof error === 'string' && error) return error
   return isApiError(error) ? (error.detail ?? fallback) : fallback
 }

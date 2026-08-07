@@ -71,16 +71,11 @@ export const coversInfiniteQuery = (filter: CoverFilter = 'all') =>
     },
     initialPageParam: 0,
     getNextPageParam: (lastPage, allPages) => (lastPage.length < PAGE_SIZE ? undefined : allPages.length * PAGE_SIZE),
-    // No refetchInterval: status changes arrive over the covers' SSE streams
-    // (see cover-events.ts), which useCovers subscribes to below.
-    //
-    // Always refetch on mount, against the 30s the rest of the app shares. A
-    // stream reports changes, and a generation started from another route has
-    // usually already announced the only change it will make for the next half
-    // minute by the time the user arrives here. Serving them a cached list from
-    // before the job began left the grid empty until the stage *after* the one
-    // they were in: measured at 30s absent, then appearing already "Painting",
-    // never "Listening". Arriving is the moment this has to be true.
+    // No refetchInterval: changes arrive over the SSE streams useCovers opens.
+    // But a stream only reports *changes*, and a generation started elsewhere
+    // has usually already announced its last one for the next half minute by
+    // the time the user arrives, so a cached list left the grid 30s stale and
+    // skipped "Listening" entirely. Arriving must go back to the server.
     staleTime: 0,
     // Keep the current grid on screen while switching status filters.
     placeholderData: keepPreviousData,
@@ -93,22 +88,15 @@ export const coverQuery = (id: string) =>
   })
 
 /**
- * Covers still running, asked once per page load.
- *
- * A generation outlives the tab that started it, but the mutation cache does
- * not: reload mid-run and nothing is left to say a job is in flight, so no
- * stream is opened and the finished cover never announces itself. This is how
- * the root watcher picks those back up (see useWatchCoverGenerations).
- *
- * One page is enough. Covers come back newest-first and a user has at most a
- * handful running; anything older than that has long since settled.
+ * Covers still running, asked once per page load. A generation outlives the tab
+ * that started it but the mutation cache does not, so a reload would leave
+ * nothing watching. One page is enough: covers come back newest-first.
  */
 export const runningCoversQuery = () =>
   queryOptions({
     queryKey: ['covers', 'running'] as const,
     queryFn: () => apiFetch<Cover[]>(`/covers?limit=${PAGE_SIZE}&offset=0`),
-    // Never refetched on its own: it exists to seed the streams at startup, and
-    // from that moment the streams themselves are the source of truth.
+    // Seeds the streams at startup; from then on they are the source of truth.
     staleTime: Infinity,
     refetchOnWindowFocus: false,
   })
@@ -121,11 +109,8 @@ export function useCovers(filter: CoverFilter = 'all') {
   const queryClient = useQueryClient()
   const query = useInfiniteQuery(coversInfiniteQuery(filter))
 
-  // Every non-terminal cover on screen gets a live stream; events land in the
-  // cache and re-render the grid in place. Keyed on the joined id list so the
-  // effect re-runs only when the set of in-flight covers actually changes —
-  // not on every refetch — and streams are refcounted, so overlap with other
-  // subscribers costs nothing.
+  // Every non-terminal cover on screen gets a stream. Keyed on the joined ids so
+  // the effect re-runs only when that set changes, not on every refetch.
   const liveIds = (query.data?.pages.flat() ?? [])
     .filter((cover) => !TERMINAL_STATUSES.has(cover.status))
     .map((cover) => cover.id)
@@ -142,9 +127,7 @@ export function useCover(id: string) {
   const queryClient = useQueryClient()
   const query = useQuery(coverQuery(id))
 
-  // Live while the generation runs. isLive flips exactly once (non-terminal to
-  // terminal), so the stream is opened and closed once per visit, not per
-  // status step.
+  // isLive flips once, so the stream opens and closes once per visit.
   const isLive = query.data != null && !TERMINAL_STATUSES.has(query.data.status)
   useEffect(() => {
     if (!isLive) return

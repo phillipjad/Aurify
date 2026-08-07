@@ -238,20 +238,16 @@ func run() error {
 		// Derived from the authentication seed rather than configured separately,
 		// so there is no second secret to deploy.
 		FlowKey: handlers.DeriveFlowKey(signingKey.Seed()),
-		// Push for the SSE streams: a database trigger NOTIFYs on every cover
-		// write, this watcher LISTENs on one dedicated connection, and each
-		// stream subscribes to its own cover (see docs/adr/0019).
+		// Push for the SSE streams: a trigger NOTIFYs, this LISTENs (ADR 0019).
 		WatchCover: store.WatchCovers(ctx).Subscribe,
 	})
 	if err != nil {
 		return err
 	}
 
-	// Cover generation runs in-process after the response is written (ADR 0019),
-	// so a crash or instance scale-down orphans in-flight covers in a
-	// non-terminal status, and the gallery would poll them forever. Sweep on
-	// startup and periodically; the cutoff is far beyond the longest real run,
-	// so another instance's active pipeline is never swept.
+	// Generation runs in-process (ADR 0019), so a crash orphans in-flight covers
+	// in a non-terminal status. The cutoff is far beyond the longest real run, so
+	// another instance's active pipeline is never swept.
 	go func() {
 		const staleAfter = 10 * time.Minute
 		ticker := time.NewTicker(5 * time.Minute)

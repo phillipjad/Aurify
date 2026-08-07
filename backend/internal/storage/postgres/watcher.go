@@ -7,34 +7,22 @@ import (
 	"time"
 )
 
-// CoverWatcher fans PostgreSQL cover-update notifications out to in-process
-// subscribers. One instance holds one LISTEN connection; a second API instance
-// runs its own watcher against the same channel, so nothing here needs to be
-// shared across instances (see docs/adr/0019-async-cover-generation.md).
-//
-// Signals are coalescing and carry no payload: a subscriber is told "your cover
-// changed" and re-reads the row, so a missed or merged notification can never
-// deliver stale state.
+// CoverWatcher fans cover-update notifications out to in-process subscribers,
+// one LISTEN connection per instance (see docs/adr/0019-async-cover-generation.md).
 type CoverWatcher struct {
 	mu   sync.Mutex
 	subs map[string]map[chan struct{}]struct{}
 }
 
-// WatchCovers starts listening for cover updates until ctx is cancelled.
-//
-// The listener runs on a dedicated connection acquired from the pool; if it
-// drops, it reconnects with backoff. Subscribers are not told about the gap,
-// which is safe because every SSE stream also re-reads its cover on a heartbeat
-// tick, so a lost notification delays an update rather than losing it.
+// WatchCovers listens for cover updates until ctx is cancelled, reconnecting
+// on drop. A notification lost in that gap is recovered by the stream heartbeat.
 func (s *Store) WatchCovers(ctx context.Context) *CoverWatcher {
 	w := &CoverWatcher{subs: make(map[string]map[chan struct{}]struct{})}
 	go w.listen(ctx, s)
 	return w
 }
 
-// Subscribe registers interest in one cover. The returned channel receives a
-// coalesced signal whenever the cover's row changes; the returned func cancels
-// the subscription and must be called.
+// Subscribe signals on every change to one cover. The returned func must be called.
 func (w *CoverWatcher) Subscribe(coverID string) (<-chan struct{}, func()) {
 	ch := make(chan struct{}, 1)
 	w.mu.Lock()
@@ -77,9 +65,8 @@ func (w *CoverWatcher) listen(ctx context.Context, s *Store) {
 	}
 }
 
-// listenOnce holds one connection out of the pool for the lifetime of the
-// LISTEN, which is the price of push: notifications arrive on a session, not a
-// pool.
+// listenOnce holds a pool connection for the lifetime of the LISTEN, since
+// notifications arrive on a session rather than a pool.
 func (w *CoverWatcher) listenOnce(ctx context.Context, s *Store) error {
 	conn, err := s.pool.Acquire(ctx)
 	if err != nil {
