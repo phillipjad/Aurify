@@ -293,13 +293,18 @@ body::before {
   }
 }
 
+/* The accent stop is pulled toward the resting colour rather than used neat.
+   Measured against --muted: raw --accent is 2.47:1 in light mode, so the sweep
+   made the mark harder to see than standing still; at 70% it is 3.29:1 light and
+   6.24:1 dark, and still visibly warm. The other two stops were already clear
+   (--muted-foreground 6.43/6.71, --primary 4.66/5.70). */
 .aurora-glyph {
   background-image: linear-gradient(
     100deg,
     var(--muted-foreground) 0%,
     var(--muted-foreground) 35%,
     var(--primary) 50%,
-    var(--accent) 58%,
+    color-mix(in oklch, var(--accent) 70%, var(--muted-foreground)) 58%,
     var(--muted-foreground) 72%,
     var(--muted-foreground) 100%
   );
@@ -336,11 +341,15 @@ body::before {
   /* The placeholder mark on a generating cover is a busy indicator by the same
      argument: it is the only thing on a tile with no artwork saying the tile is
      still being worked on, and a still one is indistinguishable from a cover
-     that never arrived. It keeps its own 6s rather than borrowing the spinner's
-     1.8s — a drift with no travel, flash or bounce is already the gentlest of
-     these, and speeding it up for this audience would be backwards. */
+     that never arrived.
+
+     It halves to a 12s drift rather than borrowing the spinner's 1.8s. The
+     spinner is a 16px glyph; this is a tile-centre element carrying colour and a
+     gallery can show several at once, so the exemption is a larger ask than the
+     one it cites. Slowing it keeps the "still working" signal while handing back
+     most of the movement. */
   [data-motion='aurora'] {
-    animation-duration: 6s !important;
+    animation-duration: 12s !important;
     animation-iteration-count: infinite !important;
   }
 }

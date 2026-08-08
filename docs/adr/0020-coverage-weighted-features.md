@@ -155,9 +155,29 @@ stop rests there too.
 It carries `data-motion="aurora"`, joining the spinner in ADR 0019's
 busy-indicator exemption from the reduced-motion reset, on the same reasoning: it
 is the only thing on an artwork-less tile saying the tile is still being worked
-on, and a still one is indistinguishable from a cover that never arrived. It
-keeps 6s rather than borrowing the spinner's 1.8s, since a drift with no travel,
-flash or bounce is already the gentlest of these.
+on, and a still one is indistinguishable from a cover that never arrived. Under
+that preference it halves to a 12s drift rather than borrowing the spinner's
+1.8s: the spinner is a 16px glyph, this is a tile-centre element carrying colour
+and a gallery can show several at once, so the exemption is a larger ask than the
+one it cites. Slowing it keeps the signal and hands back most of the movement.
+
+Contrast of every gradient stop against `--muted`, measured from the computed
+colours in both themes:
+
+| stop | light | dark |
+|---|---|---|
+| `--muted-foreground` (resting) | 6.43:1 | 6.71:1 |
+| `--primary` | 4.66:1 | 5.70:1 |
+| accent band | **3.29:1** | 6.24:1 |
+
+The accent stop is `color-mix(in oklch, var(--accent) 70%, var(--muted-foreground))`
+rather than `--accent` neat, which measured 2.47:1 in light mode — the sweep made
+the mark *harder* to see than standing still, which is the opposite of what a
+busy indicator is for. The mark is `aria-hidden` decoration, so WCAG's non-text
+contrast minimum does not strictly bind; it is met anyway because the point of
+the animation is to be seen. Note that Tailwind emits a pre-`color-mix` fallback
+using the neat accent, so a browser without `color-mix` support still renders the
+2.47:1 band.
 
 This is a sign of life, not progress. A user at 1m45s sees motion but not how far
 along they are, which is the accepted cost of not adding a progress field to the
