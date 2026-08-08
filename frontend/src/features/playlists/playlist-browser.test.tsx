@@ -363,6 +363,11 @@ describe('PlaylistBrowser', () => {
     await waitFor(() => expect(mockFetch).toHaveBeenCalledWith('/covers/cover1'))
     expect(within(row).getByRole('button')).toHaveAttribute('aria-busy', 'true')
     expect(within(row).queryByText(/cover ready/i)).not.toBeInTheDocument()
+
+    // The label cycles through synonyms, so it is hidden and the button is named
+    // by the stable stage instead. Without this the control announces itself as
+    // whichever word the ellipsis happens to be on.
+    expect(within(row).getByRole('button', { name: 'Painting' })).toBeInTheDocument()
   })
 
   it('confirms a finished generation on the row that triggered it', async () => {

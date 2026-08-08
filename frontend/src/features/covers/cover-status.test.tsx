@@ -118,3 +118,14 @@ it('leaves a settled status alone', () => {
   render(<StatusBadge status="ready" />)
   expect(screen.getByText('Ready')).not.toHaveAttribute('aria-hidden')
 })
+
+// The gallery renders one badge per tile. Several generations at once meant
+// several live regions talking over each other about covers they never named,
+// while the ready toast was already announcing completion once, by name.
+it('is not a live region unless asked', () => {
+  const { container, rerender } = render(<StatusBadge status="analyzing" />)
+  expect(container.querySelector('[aria-live]')).toBeNull()
+
+  rerender(<StatusBadge status="analyzing" live />)
+  expect(container.querySelector('[aria-live="polite"]')).not.toBeNull()
+})

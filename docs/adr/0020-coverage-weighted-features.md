@@ -165,13 +165,23 @@ row, the DTO, the OpenAPI contract and the client for a number meaningful during
 one stage only.
 
 The cycling word is `aria-hidden`, so fifteen synonyms a minute are never spoken.
-What the `aria-live` region carries instead is the stable stage plus how long it
-has been running, re-announced every thirty seconds: "Listening", then
-"Listening, 30 seconds", then "Listening, 1 minute 30 seconds". Elapsed time
-rather than progress because elapsed time is the one honest number this screen
-has. Without it the badge announced once and then went silent for two minutes,
-which is what a dead page sounds like — sighted users got motion and screen
-reader users got nothing.
+What is announced instead is the stable stage plus how long it has been running,
+re-announced every thirty seconds: "Listening", then "Listening, 30 seconds",
+then "Listening, 1 minute 30 seconds". Elapsed time rather than progress because
+elapsed time is the one honest number this screen has. Without it the badge
+announced once and then went silent for two minutes, which is what a dead page
+sounds like — sighted users got motion and screen reader users got nothing.
+
+Every surface showing a cycling word hides it and carries that stable label, the
+playlist row's button included: left unsplit, the cycling word becomes the
+button's accessible name and the control announces itself as "Savoring…" rather
+than as a generation in progress.
+
+Only the detail view is a live region. The gallery renders a badge per tile, so
+several generations meant several regions announcing unattributed stage changes
+over each other, while the ready toast was already announcing completion once and
+by name. A list attributes badly and interrupts often; a page about one cover
+does neither.
 
 ## Measured end to end
 

@@ -71,7 +71,7 @@ function CoverDetailView({ cover }: { cover: Cover }) {
               <span>{platformLabel(cover.platform)}</span>
               <span aria-hidden="true">·</span>
               <time dateTime={cover.createdAt}>{formatDate(cover.createdAt)}</time>
-              <StatusBadge status={cover.status} />
+              <StatusBadge status={cover.status} live />
             </div>
             <h1 className="font-display text-2xl font-bold tracking-tight text-balance sm:text-3xl">
               {cover.playlistName}

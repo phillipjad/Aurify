@@ -324,8 +324,7 @@ function PlaylistRow({ playlist, generation, onGenerate }: PlaylistRowProps) {
   const succeeded = generation.status === 'success'
   // Called unconditionally, as hooks must be. Before the stream has named a
   // stage there is nothing to cycle, and 'pending' is the label that says so.
-  // The button is not a live region, so the announced half is unused here.
-  const { visible: stage, dots } = useStageLabel(generation.stage ?? 'pending')
+  const { visible: stage, dots, announced } = useStageLabel(generation.stage ?? 'pending')
 
   return (
     <>
@@ -350,7 +349,20 @@ function PlaylistRow({ playlist, generation, onGenerate }: PlaylistRowProps) {
               The label now cycles every four seconds, so this has to clear the
               widest verb plus the spinner: "Composing…" measures 131px. */}
           <Button size="sm" className="min-w-[8.5rem]" loading={generating} onClick={onGenerate}>
-            {generating ? <StageLabel visible={generation.stage ? stage : 'Aurifying'} dots={dots} /> : 'Aurify it'}
+            {generating ? (
+              <>
+                {/* The cycling word is decoration; without this split it would
+                    become the button's accessible name, so the control would
+                    announce itself as "Savoring…" rather than as a generation
+                    in progress. */}
+                <span aria-hidden="true">
+                  <StageLabel visible={generation.stage ? stage : 'Aurifying'} dots={dots} />
+                </span>
+                <span className="sr-only">{announced}</span>
+              </>
+            ) : (
+              'Aurify it'
+            )}
           </Button>
           {succeeded && (
             <Link to="/covers" className="text-xs font-medium text-primary underline underline-offset-2">

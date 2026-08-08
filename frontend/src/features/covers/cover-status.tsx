@@ -45,8 +45,7 @@ const STAGE_VERBS: Partial<Record<CoverStatus, readonly string[]>> = {
 // One period per second, and a verb holds for a full ellipsis before handing
 // over: "Listening" · "Listening." · "Listening.." · "Listening..." · "Judging".
 const DOT_MS = 1000
-const MAX_DOTS = 3
-const STEPS_PER_VERB = MAX_DOTS + 1
+const STEPS_PER_VERB = 4
 
 // How often the stage re-announces itself to a screen reader. Far rarer than
 // the visible cycle: the words are decoration and must not be spoken, but two
@@ -54,24 +53,11 @@ const STEPS_PER_VERB = MAX_DOTS + 1
 const ANNOUNCE_MS = 30_000
 
 /**
- * What the stage says, visibly and aloud.
+ * What the stage says: `visible` cycles, `announced` does not.
  *
- * The cycle is anchored to the moment this stage began rather than to the wall
- * clock, so every stage opens on its first verb with no ellipsis and counts up
- * from there. Anchoring to the clock instead meant a generation could open on
- * "Savoring..." and appear to race through several words as it crossed
- * pending → analyzing → generating, since each stage re-derived its index
- * against a differently-sized verb list.
- *
- * Two views of one cover stay together in practice because they reset on the
- * same event: the status change arrives over the same stream. Only a view that
- * mounts mid-stage starts its own count, which costs a little agreement to buy
- * a stage that never opens mid-word.
- *
- * `announced` is the stable label plus how long the stage has been running,
- * changing only every ANNOUNCE_MS. There is deliberately no progress here,
- * because nothing measures progress; elapsed time is the one honest thing this
- * screen knows.
+ * Both are anchored to the moment the stage began, not to the wall clock; the
+ * reasoning and what that trades away are in
+ * docs/adr/0020-coverage-weighted-features.md.
  */
 export function useStageLabel(status: CoverStatus): { visible: string; dots: string; announced: string } {
   const verbs = STAGE_VERBS[status]
@@ -106,17 +92,12 @@ export function useStageLabel(status: CoverStatus): { visible: string; dots: str
 }
 
 /**
- * The verb and its ellipsis, both anchored so nothing under them moves.
+ * The verb and its ellipsis, in two reserves so nothing under them moves.
  *
- * Two reserves do it. The dots sit in a box wide enough for three, so they grow
- * rightward into space already allotted rather than pushing the verb left. The
- * label as a whole reserves the widest verb, so a shorter one leaves trailing
- * space instead of re-centring — which means the left edge is fixed for the
- * entire stage, not just between ticks.
- *
- * Measured rather than guessed: "Composing" is 5.11em and the dots 0.9em, so
- * 6.25em clears the pair with a little slack. In em because the badge sets 12px
- * and the button 14px, and one rem value cannot be right for both.
+ * Measured: "Composing" is 5.11em and three dots 0.9em, so 6.25em clears the
+ * pair. In em because the badge sets 12px and the button 14px, and one rem
+ * value cannot be right for both. Purely decorative — every caller hides it
+ * from assistive tech and announces a stable label instead.
  */
 export function StageLabel({ visible, dots }: { visible: string; dots: string }) {
   return (
@@ -139,21 +120,23 @@ function spokenDuration(seconds: number): string {
 /**
  * The lifecycle badge, shared by the gallery and the detail view.
  *
- * aria-live is on the badge so a status flipping is announced rather than
- * silent. Through a cycling stage the visible word is hidden from it, because
- * the cycle is a sign of life rather than progress and fifteen synonyms a
- * minute would be noise; what is announced instead is the stage and how long it
- * has been running. A settled status is one node, since there is nothing to
- * hide.
+ * The cycling word is always hidden from assistive tech and replaced by the
+ * stable stage, so the badge reads as "Listening" however it currently looks.
+ *
+ * `live` is off by default because the gallery renders one of these per tile:
+ * with several generations running that was several live regions announcing
+ * unattributed stage changes at each other. Completion is already announced
+ * once, and by name, by the ready toast (lib/cover-toasts.tsx). Turn it on
+ * where the page really is about one cover.
  */
-export function StatusBadge({ status }: { status: CoverStatus }) {
+export function StatusBadge({ status, live = false }: { status: CoverStatus; live?: boolean }) {
   const { visible, dots, announced } = useStageLabel(status)
 
   return (
     // No width reserve here: StageLabel carries its own, so a cycling badge is
     // already a constant width and the playlist name beside it never
     // re-truncates. A settled badge has no StageLabel and stays snug.
-    <Badge variant={STATUS_VARIANT[status]} aria-live="polite">
+    <Badge variant={STATUS_VARIANT[status]} aria-live={live ? 'polite' : undefined}>
       {STAGE_VERBS[status] ? (
         <>
           <span aria-hidden="true">
@@ -170,12 +153,8 @@ export function StatusBadge({ status }: { status: CoverStatus }) {
 
 /**
  * Lucide's `sparkles`, copied from lucide-react 1.25.0 because the package
- * exports the component and not its geometry.
- *
- * It is here as a mask rather than as `<Sparkles>` for one reason: an SVG
- * stroked with `currentColor` can only be a flat colour, and this mark needs a
- * gradient moving through it. Masking a painted box gives the shape a fill that
- * CSS can animate.
+ * exports the component and not its geometry. A mask rather than `<Sparkles>`
+ * because an SVG stroked with `currentColor` cannot carry a gradient.
  */
 const SPARKLE_MASK = `url("data:image/svg+xml,${encodeURIComponent(
   `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">` +
