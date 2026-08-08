@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { AlertTriangle, ArrowLeft, Download, ImageOff, RefreshCw, Sparkles, Trash2 } from 'lucide-react'
+import { AlertTriangle, ArrowLeft, Download, ImageOff, RefreshCw, Trash2 } from 'lucide-react'
 import { Link, useNavigate } from '@tanstack/react-router'
 
 import { Button } from '@/components/ui/button'
@@ -11,10 +11,9 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { isApiError } from '@/lib/api/client'
 import { useDeleteCover, useGenerateCover } from '@/lib/api/commands'
 import { useCover } from '@/lib/api/queries'
-import { cn } from '@/lib/utils'
 import type { ColorWeight, Cover } from '@/lib/api/types'
 import { platformLabel } from '@/features/playlists/platforms'
-import { StatusBadge, isInProgress } from './cover-status'
+import { CoverGlyph, StatusBadge, isInProgress } from './cover-status'
 
 export function CoverDetail({ coverId }: { coverId: string }) {
   const cover = useCover(coverId)
@@ -175,10 +174,7 @@ function CoverImage({ cover, working }: { cover: Cover; working: boolean }) {
             {cover.status === 'failed' ? (
               <AlertTriangle className="size-10 text-muted-foreground" />
             ) : (
-              <Sparkles
-                data-motion="breathe"
-                className={cn('size-10 text-muted-foreground', working && 'animate-breathe')}
-              />
+              <CoverGlyph working={working} className="size-10" />
             )}
           </div>
         }

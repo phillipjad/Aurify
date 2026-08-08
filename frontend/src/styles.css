@@ -277,22 +277,35 @@ body::before {
   animation: route-enter 200ms ease-out;
 }
 
-/* The placeholder on a cover that is still generating breathes rather than
-   pulses. Tailwind's animate-pulse is tuned for a skeleton that resolves in a
-   moment; this one sits under a tile for a minute or more, so it is slower and
-   shallower — a sign of life that does not ask to be looked at.
+/* The placeholder mark on a cover that is still generating: an aurora drifting
+   through the glyph, rather than the whole thing fading in and out. A tile with
+   no artwork sits there for a minute or more, and colour moving through the
+   mark says "being made" in a way a dimmer says only "waiting".
 
-   Only the midpoint is declared, so the element's natural opacity is both ends.
-   Anything that stops this animation therefore lands on a fully opaque icon
-   rather than freezing it part-faded, which would read as a rendering bug. */
-@keyframes breathe {
-  50% {
-    opacity: 0.4;
+   The glyph is a CSS mask (see CoverGlyph), so this paints a gradient behind it
+   and lets the mask cut the shape out. Both ends of the gradient are the
+   resting muted colour with the colour band in the middle, which means the
+   sweep starts and finishes on the plain icon — and if anything stops the
+   animation it rests on that plain icon rather than mid-flare. */
+@keyframes aurora-sweep {
+  to {
+    background-position: 100% 0;
   }
 }
 
-.animate-breathe {
-  animation: breathe 3.2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+.aurora-glyph {
+  background-image: linear-gradient(
+    100deg,
+    var(--muted-foreground) 0%,
+    var(--muted-foreground) 35%,
+    var(--primary) 50%,
+    var(--accent) 58%,
+    var(--muted-foreground) 72%,
+    var(--muted-foreground) 100%
+  );
+  background-size: 300% 100%;
+  background-position: 0 0;
+  animation: aurora-sweep 6s linear infinite;
 }
 
 /* Reduced motion: kill decorative movement and transitions rather than letting
@@ -320,14 +333,14 @@ body::before {
     animation-iteration-count: infinite !important;
   }
 
-  /* The placeholder on a generating cover is a busy indicator by the same
+  /* The placeholder mark on a generating cover is a busy indicator by the same
      argument: it is the only thing on a tile with no artwork saying the tile is
      still being worked on, and a still one is indistinguishable from a cover
-     that never arrived. It keeps its own 3.2s rather than borrowing the
-     spinner's 1.8s, because a slow breath is already the calmer of the two and
-     speeding it up for this audience would be backwards. */
-  [data-motion='breathe'] {
-    animation-duration: 3.2s !important;
+     that never arrived. It keeps its own 6s rather than borrowing the spinner's
+     1.8s — a drift with no travel, flash or bounce is already the gentlest of
+     these, and speeding it up for this audience would be backwards. */
+  [data-motion='aurora'] {
+    animation-duration: 6s !important;
     animation-iteration-count: infinite !important;
   }
 }

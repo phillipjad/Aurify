@@ -126,27 +126,38 @@ writer and the writer is provably dead before `run` touches the cover again.
 Both waiting stages cycle through synonyms — eight for listening, seven for
 painting — each holding for one full ellipsis before handing over: "Listening",
 "Listening.", "Listening..", "Listening...", "Judging". A period a second, a verb
-every four. The verb and the dot count both come off one wall-clock step, so
-every view of the same cover agrees without shared state. Frontend only: no
-progress count is persisted, streamed, or added to the contract.
+every four. Frontend only: no progress count is persisted, streamed, or added to
+the contract.
+
+The cycle is anchored to the moment a stage begins rather than to the wall clock.
+Anchored to the clock, a generation opened on whatever word the time of day
+landed on, and crossing pending → analyzing → generating re-derived the index
+against a differently-sized verb list each time, so a fresh click appeared to
+race through several words before settling. Two views still agree in practice,
+because both reset on the same status event; only a view that mounts mid-stage
+starts its own count, which is the price of never opening mid-word.
 
 Nothing moves but the dots. They grow into a box already wide enough for three,
 and the label reserves the widest verb (measured: "Composing" at 5.11em), so the
 word's left edge is fixed for the whole stage rather than re-centring on every
 tick. Same reserve in `em` for the badge at 12px and the button at 14px.
 
-The placeholder on a generating tile breathes with it: a 3.2s fade to 0.4 opacity
-and back, slower and shallower than Tailwind's `animate-pulse`, which is tuned
-for a skeleton that resolves in a moment rather than one sitting there for a
-minute. Only the midpoint keyframe is declared, so anything that stops the
-animation lands on a fully opaque icon rather than freezing it part-faded.
+The placeholder mark on a generating tile carries an aurora that drifts through
+it over 6s, rather than the whole glyph fading in and out. Colour moving through
+the mark says "being made"; a dimmer says only "waiting".
 
-It carries `data-motion="breathe"`, joining the spinner in ADR 0019's
+That needs a fill an SVG stroked with `currentColor` cannot have, so `CoverGlyph`
+renders the mark as a CSS mask over a painted box and lets the gradient animate
+underneath. The gradient is the resting muted colour at both ends with the colour
+band in the middle, so the sweep starts and finishes on the plain icon and any
+stop rests there too.
+
+It carries `data-motion="aurora"`, joining the spinner in ADR 0019's
 busy-indicator exemption from the reduced-motion reset, on the same reasoning: it
 is the only thing on an artwork-less tile saying the tile is still being worked
 on, and a still one is indistinguishable from a cover that never arrived. It
-keeps 3.2s rather than borrowing the spinner's 1.8s, since speeding a breath up
-for the audience that asked for less motion would be backwards.
+keeps 6s rather than borrowing the spinner's 1.8s, since a drift with no travel,
+flash or bounce is already the gentlest of these.
 
 This is a sign of life, not progress. A user at 1m45s sees motion but not how far
 along they are, which is the accepted cost of not adding a progress field to the

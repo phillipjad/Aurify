@@ -14,7 +14,7 @@ import { cn } from '@/lib/utils'
 import { isApiError } from '@/lib/api/client'
 import { useCovers, type CoverFilter } from '@/lib/api/queries'
 import type { ColorWeight, Cover } from '@/lib/api/types'
-import { StatusBadge, isInProgress } from './cover-status'
+import { CoverGlyph, StatusBadge, isInProgress } from './cover-status'
 
 const GRID = 'grid gap-4 sm:grid-cols-2 lg:grid-cols-3'
 
@@ -323,10 +323,7 @@ function CoverTile({ cover }: { cover: Cover }) {
                 {cover.status === 'failed' ? (
                   <AlertTriangle className="size-8 text-muted-foreground" />
                 ) : (
-                  <Sparkles
-                    data-motion="breathe"
-                    className={cn('size-8 text-muted-foreground', working && 'animate-breathe')}
-                  />
+                  <CoverGlyph working={working} className="size-8" />
                 )}
               </div>
             }

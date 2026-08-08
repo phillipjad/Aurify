@@ -1,6 +1,7 @@
 import { useEffect, useReducer, useRef } from 'react'
 
 import { Badge, type BadgeProps } from '@/components/ui/badge'
+import { cn } from '@/lib/utils'
 import type { CoverStatus } from '@/lib/api/types'
 
 // Shared cover-lifecycle vocabulary, so the gallery and the detail view label
@@ -55,24 +56,32 @@ const ANNOUNCE_MS = 30_000
 /**
  * What the stage says, visibly and aloud.
  *
- * `visible` and `dots` both come off one wall-clock step rather than a counter,
- * so the gallery tile and the playlist row show the same word at the same point
- * in the same ellipsis without sharing any state.
+ * The cycle is anchored to the moment this stage began rather than to the wall
+ * clock, so every stage opens on its first verb with no ellipsis and counts up
+ * from there. Anchoring to the clock instead meant a generation could open on
+ * "Savoring..." and appear to race through several words as it crossed
+ * pending → analyzing → generating, since each stage re-derived its index
+ * against a differently-sized verb list.
+ *
+ * Two views of one cover stay together in practice because they reset on the
+ * same event: the status change arrives over the same stream. Only a view that
+ * mounts mid-stage starts its own count, which costs a little agreement to buy
+ * a stage that never opens mid-word.
  *
  * `announced` is the stable label plus how long the stage has been running,
  * changing only every ANNOUNCE_MS. There is deliberately no progress here,
  * because nothing measures progress; elapsed time is the one honest thing this
- * screen knows. It counts from when this view saw the stage, so opening a page
- * mid-generation starts from zero.
+ * screen knows.
  */
 export function useStageLabel(status: CoverStatus): { visible: string; dots: string; announced: string } {
   const verbs = STAGE_VERBS[status]
   const [, tick] = useReducer((n: number) => n + 1, 0)
-  const startedAt = useRef(Date.now())
 
-  useEffect(() => {
-    startedAt.current = Date.now()
-  }, [status])
+  // Set during render, not in an effect. An effect lands a frame late, and the
+  // frame it misses is the one still showing the previous stage's word — the
+  // flicker this anchor exists to remove.
+  const cycle = useRef({ status, at: Date.now() })
+  if (cycle.current.status !== status) cycle.current = { status, at: Date.now() }
 
   useEffect(() => {
     if (!verbs) return
@@ -83,10 +92,11 @@ export function useStageLabel(status: CoverStatus): { visible: string; dots: str
   const label = STATUS_LABEL[status]
   if (!verbs) return { visible: label, dots: '', announced: label }
 
-  const step = Math.floor(Date.now() / DOT_MS)
+  const since = Date.now() - cycle.current.at
+  const step = Math.floor(since / DOT_MS)
   // Bucketed, so the announced string is stable between announcements and the
   // live region stays quiet while the visible half ticks every second.
-  const elapsed = Math.floor((Date.now() - startedAt.current) / ANNOUNCE_MS) * (ANNOUNCE_MS / 1000)
+  const elapsed = Math.floor(since / ANNOUNCE_MS) * (ANNOUNCE_MS / 1000)
 
   return {
     visible: verbs[Math.floor(step / STEPS_PER_VERB) % verbs.length],
@@ -155,6 +165,45 @@ export function StatusBadge({ status }: { status: CoverStatus }) {
         STATUS_LABEL[status]
       )}
     </Badge>
+  )
+}
+
+/**
+ * Lucide's `sparkles`, copied from lucide-react 1.25.0 because the package
+ * exports the component and not its geometry.
+ *
+ * It is here as a mask rather than as `<Sparkles>` for one reason: an SVG
+ * stroked with `currentColor` can only be a flat colour, and this mark needs a
+ * gradient moving through it. Masking a painted box gives the shape a fill that
+ * CSS can animate.
+ */
+const SPARKLE_MASK = `url("data:image/svg+xml,${encodeURIComponent(
+  `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">` +
+    `<path d="M11.017 2.814a1 1 0 0 1 1.966 0l1.051 5.558a2 2 0 0 0 1.594 1.594l5.558 1.051a1 1 0 0 1 0 1.966l-5.558 1.051a2 2 0 0 0-1.594 1.594l-1.051 5.558a1 1 0 0 1-1.966 0l-1.051-5.558a2 2 0 0 0-1.594-1.594l-5.558-1.051a1 1 0 0 1 0-1.966l5.558-1.051a2 2 0 0 0 1.594-1.594z"/>` +
+    `<path d="M20 2v4"/><path d="M22 4h-4"/><circle cx="4" cy="20" r="2"/></svg>`,
+)}")`
+
+/**
+ * The mark that stands in for artwork a cover does not have yet.
+ *
+ * At rest it is the plain muted glyph. While the cover is still being made, an
+ * aurora drifts through it (see .aurora-glyph in styles.css), which reads as
+ * being worked on rather than merely waiting.
+ */
+export function CoverGlyph({ working, className }: { working: boolean; className?: string }) {
+  return (
+    <span
+      aria-hidden="true"
+      data-motion={working ? 'aurora' : undefined}
+      className={cn('block bg-muted-foreground', working && 'aurora-glyph', className)}
+      style={{
+        maskImage: SPARKLE_MASK,
+        WebkitMaskImage: SPARKLE_MASK,
+        maskSize: 'contain',
+        maskRepeat: 'no-repeat',
+        maskPosition: 'center',
+      }}
+    />
   )
 }
 
