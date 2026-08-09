@@ -1,0 +1,26 @@
+diff --git a/dist/index.js b/dist/index.js
+index bd21e898f431298b70e941833c78819a1eb53a36..b934af3354ecba5f5356d1c82892960a132f9921 100644
+--- a/dist/index.js
++++ b/dist/index.js
+@@ -429,7 +429,7 @@ const GAP = 14;
+ // Threshold to dismiss a toast
+ const SWIPE_THRESHOLD = 45;
+ // Equal to exit animation duration
+-const TIME_BEFORE_UNMOUNT = 200;
++const TIME_BEFORE_UNMOUNT = 500;
+ function cn(...classes) {
+     return classes.filter(Boolean).join(' ');
+ }
+diff --git a/dist/index.mjs b/dist/index.mjs
+index d0c7a5a1fa1ed8b19c27bea968bb404f2437a07e..716735aa11f68054aa8b5c0e6dbc1a0ce0092497 100644
+--- a/dist/index.mjs
++++ b/dist/index.mjs
+@@ -422,7 +422,7 @@ const GAP = 14;
+ // Threshold to dismiss a toast
+ const SWIPE_THRESHOLD = 45;
+ // Equal to exit animation duration
+-const TIME_BEFORE_UNMOUNT = 200;
++const TIME_BEFORE_UNMOUNT = 500;
+ function cn(...classes) {
+     return classes.filter(Boolean).join(' ');
+ }

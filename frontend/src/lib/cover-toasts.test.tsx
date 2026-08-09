@@ -1,11 +1,11 @@
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { toast } from 'sonner'
 
 import { CoverGenerationWatcher } from '@/components/cover-generation-watcher'
 import { Toaster } from '@/components/ui/sonner'
-import { maybeToastCoverSettled, toastedCovers } from '@/lib/cover-toasts'
+import { dismissCoverToasts, maybeToastCoverSettled, outstandingCoverToasts, toastedCovers } from '@/lib/cover-toasts'
 import { clearUnreadCovers, getUnreadCoverCount } from '@/lib/cover-unread'
 import { renderWithProviders } from '@/test/render'
 import type { Cover } from '@/lib/api/types'
@@ -20,10 +20,11 @@ const READY_COVER: Cover = {
 }
 
 beforeEach(() => {
-  // Sonner, the once-per-cover guard and the unread badge all keep module
-  // state; reset all three.
+  // Sonner, the once-per-cover guard, the on-screen set and the unread badge
+  // all keep module state; reset all four.
   toast.dismiss()
   toastedCovers.clear()
+  outstandingCoverToasts.clear()
   clearUnreadCovers()
   window.history.replaceState(null, '', '/playlists')
 })
@@ -120,6 +121,55 @@ describe('maybeToastCoverSettled', () => {
     })
 
     await waitFor(() => expect(screen.queryByText('Your cover is ready')).not.toBeInTheDocument())
+  })
+
+  // Entering /covers retires every outstanding toast, and five cards vanishing
+  // in the same frame reads as a glitch rather than as the section clearing.
+  // Driven through the store rather than the DOM: what is pinned here is the
+  // order and the spacing, and jsdom runs none of the animation either way.
+  it('retires a stack one at a time, oldest first', () => {
+    for (const id of ['first', 'second', 'third']) {
+      maybeToastCoverSettled({ ...READY_COVER, id })
+    }
+
+    const dismiss = vi.spyOn(toast, 'dismiss')
+    vi.useFakeTimers()
+    try {
+      dismissCoverToasts()
+      const dismissed = () => dismiss.mock.calls.map(([id]) => id)
+
+      // Nothing leaves synchronously, and then one every 250ms.
+      vi.advanceTimersByTime(0)
+      expect(dismissed()).toEqual(['first'])
+
+      vi.advanceTimersByTime(249)
+      expect(dismissed()).toEqual(['first'])
+
+      vi.advanceTimersByTime(1)
+      expect(dismissed()).toEqual(['first', 'second'])
+
+      vi.advanceTimersByTime(250)
+      expect(dismissed()).toEqual(['first', 'second', 'third'])
+    } finally {
+      vi.useRealTimers()
+      dismiss.mockRestore()
+    }
+  })
+
+  // The stagger above only covers the route change. Covers that settle together
+  // would still expire together 8s later, so the gap is built into the duration
+  // at fire time and the same rhythm holds however the stack is retired.
+  it('spreads the expiry of a burst rather than letting it land at once', () => {
+    for (const id of ['one', 'two', 'three']) {
+      maybeToastCoverSettled({ ...READY_COVER, id })
+    }
+
+    const durations = toast
+      .getToasts()
+      .filter((t) => ['one', 'two', 'three'].includes(String(t.id)))
+      .map((t) => ('duration' in t ? t.duration : undefined))
+
+    expect(durations).toEqual([8_000, 8_250, 8_500])
   })
 
   // A reconnecting stream can replay a ready snapshot; the user finished one

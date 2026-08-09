@@ -313,6 +313,51 @@ body::before {
   animation: aurora-sweep 6s linear infinite;
 }
 
+/* Toast exit. Sonner already leaves downward on its own: bottom-anchored toasts
+   set --lift: -1, so its removal rule resolves to a downward translate with
+   opacity 0. What it did not do was let that finish. The exit rides the same
+   400ms transition as the stacking moves, while sonner unmounted the node after
+   TIME_BEFORE_UNMOUNT, stock 200ms, so the card was pulled at around 20%
+   opacity two thirds of the way down: the hard cut in issue #76. That constant is
+   raised to 500ms in patches/sonner@2.0.7.patch; sonner's own comment calls it
+   "equal to exit animation duration", so it is meant to move with this.
+
+   --y is extended rather than replaced, because it also carries the stacking
+   offset of every toast behind the front one and overriding transform outright
+   fights that maths. The [data-sonner-toaster] prefix is here purely for weight:
+   sonner appends its stylesheet to <head> when it loads, so it wins every tie
+   with an equally specific selector. */
+[data-sonner-toaster] [data-sonner-toast][data-removed='true'][data-front='true'][data-swipe-out='false'] {
+  --y: translateY(calc(var(--lift) * -110%));
+}
+
+[data-sonner-toaster]
+  [data-sonner-toast][data-removed='true'][data-front='false'][data-swipe-out='false'][data-expanded='true'] {
+  --y: translateY(calc(var(--lift) * var(--offset) + var(--lift) * -110%));
+}
+
+[data-sonner-toaster] [data-sonner-toast][data-removed='true'][data-swipe-out='false'] {
+  /* Sinking rather than dropping: it accelerates away while shrinking slightly,
+     and the fade lands well before the travel does, so the card is invisible for
+     the last of the fall instead of being taken away mid-picture. */
+  transform: var(--y) scale(0.94);
+  transition:
+    transform 480ms cubic-bezier(0.4, 0, 1, 1),
+    opacity 360ms ease-out,
+    visibility 0s linear 360ms;
+}
+
+/* A removed toast lingers for half a second after it is invisible, waiting on
+   the unmount. Left alone it stays clickable, tabbable and in the accessibility
+   tree the whole time, so a keyboard user can land on a card that is no longer
+   there. `visibility` is discretely animatable, so a zero-length transition
+   delayed to the end of the fade retires it from all three the moment it stops
+   being visible, without cutting the fade short. */
+[data-sonner-toast][data-removed='true'] {
+  pointer-events: none;
+  visibility: hidden;
+}
+
 /* Reduced motion: kill decorative movement and transitions rather than letting
    Tailwind's animate-* utilities run regardless of the user's preference. */
 @media (prefers-reduced-motion: reduce) {
@@ -351,5 +396,26 @@ body::before {
   [data-motion='aurora'] {
     animation-duration: 12s !important;
     animation-iteration-count: infinite !important;
+  }
+
+  /* A toast that vanishes between two frames is exactly what issue #76 was
+     filed about, and the reset above is what does it. So the exit is exempt
+     too, but on different terms from the busy indicators: a dismissal is not
+     something the user has to keep watching, so it gets no travel and no
+     shrink. Only opacity, and slower than the motion version, because a fade
+     with nothing else moving needs the time to register as a departure rather
+     than a glitch. --y is put back to the mounted offset so the card fades
+     where it stands.
+
+     Marked !important rather than out-specified: sonner's removal rules carry
+     up to five attribute selectors and it injects them after this stylesheet,
+     so weight alone is a race this cannot reliably win. The block is already an
+     !important zone for the same reason. */
+  [data-sonner-toaster] [data-sonner-toast][data-removed='true'][data-swipe-out='false'] {
+    --y: translateY(calc(var(--lift) * var(--offset))) !important;
+    transform: var(--y) !important;
+    transition:
+      opacity 320ms ease-out,
+      visibility 0s linear 320ms !important;
   }
 }

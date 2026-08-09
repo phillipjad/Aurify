@@ -25,6 +25,7 @@ lightweight [MADR](https://adr.github.io/madr/)-style records.
 | [0018](0018-audio-features.md) | Audio features from AcousticBrainz, estimated when absent | Amended by [0020](0020-coverage-weighted-features.md) |
 | [0019](0019-async-cover-generation.md) | Cover generation off the request, progress over SSE | Accepted |
 | [0020](0020-coverage-weighted-features.md) | Weight the measured palette by coverage, estimate from lyrics | Accepted |
+| [0021](0021-patched-sonner-unmount-delay.md) | Sonner is patched so toast exits can finish | Accepted |
 
 ## Adding a new ADR
 
