@@ -4,6 +4,9 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+patchedDependencies:
+  sonner@2.0.7: 7a3a4bf8108bbc2f07777cc6c63409b4739dbf011f5568b184f677ff196d967e
+
 importers:
 
   .:
@@ -40,7 +43,7 @@ importers:
         version: 19.2.8(react@19.2.8)
       sonner:
         specifier: ^2.0.7
-        version: 2.0.7(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+        version: 2.0.7(patch_hash=7a3a4bf8108bbc2f07777cc6c63409b4739dbf011f5568b184f677ff196d967e)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       tailwind-merge:
         specifier: ^3.6.0
         version: 3.6.0
@@ -5995,7 +5998,7 @@ snapshots:
 
   smob@1.6.2: {}
 
-  sonner@2.0.7(react-dom@19.2.8(react@19.2.8))(react@19.2.8):
+  sonner@2.0.7(patch_hash=7a3a4bf8108bbc2f07777cc6c63409b4739dbf011f5568b184f677ff196d967e)(react-dom@19.2.8(react@19.2.8))(react@19.2.8):
     dependencies:
       react: 19.2.8
       react-dom: 19.2.8(react@19.2.8)
