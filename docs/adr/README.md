@@ -22,8 +22,9 @@ lightweight [MADR](https://adr.github.io/madr/)-style records.
 | [0015](0015-lyrics-cache-and-failure-policy.md) | Lyrics cache, bounded concurrency, and a skip-don't-retry failure policy | Accepted |
 | [0016](0016-generation-providers.md) | Generation providers: an OpenAI-compatible base URL, and images in PostgreSQL | Accepted |
 | [0017](0017-bounded-app-shell.md) | The app shell is bounded to the viewport, with `<main>` as the only scroll container | Accepted |
-| [0018](0018-audio-features.md) | Audio features from AcousticBrainz, estimated when absent | Accepted |
+| [0018](0018-audio-features.md) | Audio features from AcousticBrainz, estimated when absent | Amended by [0020](0020-coverage-weighted-features.md) |
 | [0019](0019-async-cover-generation.md) | Cover generation off the request, progress over SSE | Accepted |
+| [0020](0020-coverage-weighted-features.md) | Weight the measured palette by coverage, estimate from lyrics | Accepted |
 
 ## Adding a new ADR
 

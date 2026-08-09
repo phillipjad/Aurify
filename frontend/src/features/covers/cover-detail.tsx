@@ -1,8 +1,7 @@
 import { useState } from 'react'
-import { AlertTriangle, ArrowLeft, Download, ImageOff, RefreshCw, Sparkles, Trash2 } from 'lucide-react'
+import { AlertTriangle, ArrowLeft, Download, ImageOff, RefreshCw, Trash2 } from 'lucide-react'
 import { Link, useNavigate } from '@tanstack/react-router'
 
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { buttonVariants } from '@/components/ui/button-variants'
 import { Card } from '@/components/ui/card'
@@ -12,10 +11,9 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { isApiError } from '@/lib/api/client'
 import { useDeleteCover, useGenerateCover } from '@/lib/api/commands'
 import { useCover } from '@/lib/api/queries'
-import { cn } from '@/lib/utils'
 import type { ColorWeight, Cover } from '@/lib/api/types'
 import { platformLabel } from '@/features/playlists/platforms'
-import { STATUS_LABEL, STATUS_VARIANT, isInProgress } from './cover-status'
+import { CoverGlyph, StatusBadge, isInProgress } from './cover-status'
 
 export function CoverDetail({ coverId }: { coverId: string }) {
   const cover = useCover(coverId)
@@ -73,9 +71,7 @@ function CoverDetailView({ cover }: { cover: Cover }) {
               <span>{platformLabel(cover.platform)}</span>
               <span aria-hidden="true">·</span>
               <time dateTime={cover.createdAt}>{formatDate(cover.createdAt)}</time>
-              <Badge variant={STATUS_VARIANT[cover.status]} aria-live="polite">
-                {STATUS_LABEL[cover.status]}
-              </Badge>
+              <StatusBadge status={cover.status} live />
             </div>
             <h1 className="font-display text-2xl font-bold tracking-tight text-balance sm:text-3xl">
               {cover.playlistName}
@@ -178,7 +174,7 @@ function CoverImage({ cover, working }: { cover: Cover; working: boolean }) {
             {cover.status === 'failed' ? (
               <AlertTriangle className="size-10 text-muted-foreground" />
             ) : (
-              <Sparkles className={cn('size-10 text-muted-foreground', working && 'animate-pulse')} />
+              <CoverGlyph working={working} className="size-10" />
             )}
           </div>
         }

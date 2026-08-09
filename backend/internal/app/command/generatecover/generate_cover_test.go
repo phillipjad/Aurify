@@ -3,7 +3,10 @@ package generatecover
 import (
 	"context"
 	"errors"
+	"fmt"
+	"math"
 	"testing"
+	"time"
 
 	"github.com/phillipjad/aurify/backend/internal/analysis"
 	"github.com/phillipjad/aurify/backend/internal/app/dspconn"
@@ -17,6 +20,8 @@ import (
 type fakeProvider struct {
 	playlist    domain.Playlist
 	playlistErr error
+	// tracks, when nil, is the single-track playlist most of these tests want.
+	tracks []domain.Track
 }
 
 var _ ports.DSPProvider = (*fakeProvider)(nil)
@@ -50,7 +55,23 @@ func (p *fakeProvider) ListPlaylists(context.Context, domain.DSPConnection) ([]d
 }
 
 func (p *fakeProvider) ListTracks(context.Context, domain.DSPConnection, string) ([]domain.Track, error) {
+	if p.tracks != nil {
+		return p.tracks, nil
+	}
 	return []domain.Track{{ID: "v1", Platform: domain.PlatformYouTubeMusic, Title: "Yellow"}}, nil
+}
+
+// playlistOf builds a playlist big enough for coverage to mean something.
+func playlistOf(n int) []domain.Track {
+	out := make([]domain.Track, n)
+	for i := range out {
+		out[i] = domain.Track{
+			ID:       fmt.Sprintf("v%d", i),
+			Platform: domain.PlatformYouTubeMusic,
+			Title:    fmt.Sprintf("track %d", i),
+		}
+	}
+	return out
 }
 
 type fakeRegistry struct{ provider ports.DSPProvider }
@@ -373,14 +394,23 @@ func TestGenerationSurvivesAFailedNameLookup(t *testing.T) {
 // fakeFeatures answers with the same features for every track, or nothing.
 type fakeFeatures struct {
 	features domain.AudioFeatures
-	calls    int
+	// matched answers for the first n tracks only, for thin coverage. Zero,
+	// the useful default, answers for every track.
+	matched int
+	// delay stands in for the rate-limited AcousticBrainz lookups, which are
+	// most of the analyzing phase's wall time and none of its writes.
+	delay time.Duration
+	calls int
 }
 
 func (f *fakeFeatures) Lookup(_ context.Context, tracks []domain.Track) []domain.AudioFeatures {
 	f.calls++
+	time.Sleep(f.delay)
 	out := make([]domain.AudioFeatures, len(tracks))
 	for i := range out {
-		out[i] = f.features
+		if f.matched == 0 || i < f.matched {
+			out[i] = f.features
+		}
 	}
 	return out
 }
@@ -389,10 +419,18 @@ type fakeEstimator struct {
 	features domain.AudioFeatures
 	err      error
 	calls    int
+	// lyrics records what the pipeline handed over, since reasoning from them
+	// is the whole point of this estimator.
+	lyrics []string
 }
 
-func (e *fakeEstimator) Estimate(context.Context, []domain.Track) (domain.AudioFeatures, error) {
+func (e *fakeEstimator) Estimate(
+	_ context.Context,
+	_ []domain.Track,
+	lyrics []string,
+) (domain.AudioFeatures, error) {
 	e.calls++
+	e.lyrics = lyrics
 	return e.features, e.err
 }
 
@@ -400,6 +438,16 @@ func (e *fakeEstimator) Estimate(context.Context, []domain.Track) (domain.AudioF
 // and the palette are computed rather than stubbed. That is the whole point:
 // these tests are about what reaches the palette.
 func withFeatures(src ports.FeatureSource, est ports.FeatureEstimator) (*Handler, *fakeCovers) {
+	return withTracks(src, est, nil)
+}
+
+// withTracks is withFeatures over a playlist of a given size, for the cases
+// where the ratio of matched to total is what is under test.
+func withTracks(
+	src ports.FeatureSource,
+	est ports.FeatureEstimator,
+	tracks []domain.Track,
+) (*Handler, *fakeCovers) {
 	users := &fakeUsers{user: &domain.User{
 		ID: "user-1",
 		Connections: map[domain.DSPPlatform]domain.DSPConnection{
@@ -408,7 +456,7 @@ func withFeatures(src ports.FeatureSource, est ports.FeatureEstimator) (*Handler
 	}}
 	covers := &fakeCovers{}
 	handler := NewHandler(
-		dspconn.NewResolver(users, fakeRegistry{provider: &fakeProvider{}}),
+		dspconn.NewResolver(users, fakeRegistry{provider: &fakeProvider{tracks: tracks}}),
 		covers,
 		lyrics.NewResolver(nullLyricsStore{}, fakeLyrics{}),
 		fakeSentiment{},
@@ -479,14 +527,17 @@ func TestTheEstimatorIsSkippedWhenFeaturesWereMeasured(t *testing.T) {
 	src := &fakeFeatures{features: domain.AudioFeatures{Energy: 0.7, Present: true}}
 	est := &fakeEstimator{features: domain.AudioFeatures{Energy: 0.1, Present: true}}
 
-	handler, covers := withFeatures(src, est)
+	// Enough tracks to clear both floors, since "measured" now means measured
+	// widely enough as well as measured at all.
+	handler, covers := withTracks(src, est, playlistOf(16))
 	generate(t, handler)
 
 	if est.calls != 0 {
 		t.Errorf("the estimator ran %d times despite measured features", est.calls)
 	}
-	if got := covers.saved[len(covers.saved)-1].Analysis; got.MeanFeatures.Energy != 0.7 {
-		t.Errorf("energy = %.2f, want the measured 0.70", got.MeanFeatures.Energy)
+	got := covers.saved[len(covers.saved)-1].Analysis
+	if math.Abs(got.MeanFeatures.Energy-0.7) > 1e-9 {
+		t.Errorf("energy = %v, want the measured 0.70", got.MeanFeatures.Energy)
 	}
 }
 
@@ -513,6 +564,102 @@ func TestTheEstimatorFillsInWhenNothingMatched(t *testing.T) {
 	// AnalyzedCount counts measured tracks, so an estimate must not inflate it.
 	if got.AnalyzedCount != 0 {
 		t.Errorf("AnalyzedCount = %d, want 0: nothing was actually measured", got.AnalyzedCount)
+	}
+}
+
+// The bug #73 exists to fix: a mean over a couple of matched tracks was treated
+// as authoritative purely for being non-zero. Two of seven matched has a
+// standard error near 0.2, and it produced danceability 0.99 for power metal.
+func TestThinCoverageBlendsTowardTheEstimate(t *testing.T) {
+	src := &fakeFeatures{
+		features: domain.AudioFeatures{Danceability: 1, Present: true},
+		matched:  2,
+	}
+	est := &fakeEstimator{features: domain.AudioFeatures{Danceability: 0, Present: true}}
+
+	handler, covers := withTracks(src, est, playlistOf(7))
+	generate(t, handler)
+
+	got := covers.saved[len(covers.saved)-1].Analysis
+	if est.calls != 1 {
+		t.Fatalf("the estimator ran %d times, want 1 at 2 of 7 matched", est.calls)
+	}
+	if !got.FeaturesEstimated {
+		t.Error("a blended estimate must be recorded as one")
+	}
+	// 2 of 7 clears neither floor. The count binds first (2 of 8), so the
+	// measurement keeps a quarter of the weight and the guess takes the rest.
+	if want := 2.0 / 8.0; math.Abs(got.MeanFeatures.Danceability-want) > 1e-9 {
+		t.Errorf("danceability = %v, want %v", got.MeanFeatures.Danceability, want)
+	}
+	// The count still reports what was measured, so the weight stays
+	// reconstructible from a stored analysis.
+	if got.AnalyzedCount != 2 {
+		t.Errorf("AnalyzedCount = %d, want 2", got.AnalyzedCount)
+	}
+}
+
+// Full coverage of a very short playlist is still a handful of tracks, and
+// AcousticBrainz's own per-track error does not average out over three of them.
+// A census clears the share floor and is still held back by the count.
+func TestAShortPlaylistIsStillBlended(t *testing.T) {
+	src := &fakeFeatures{features: domain.AudioFeatures{Danceability: 1, Present: true}}
+	est := &fakeEstimator{features: domain.AudioFeatures{Danceability: 0, Present: true}}
+
+	handler, covers := withTracks(src, est, playlistOf(3))
+	generate(t, handler)
+
+	if est.calls != 1 {
+		t.Fatalf("the estimator ran %d times, want 1 at three matched tracks", est.calls)
+	}
+	// Every track measured, so the share floor is cleared; 3 of 8 is what binds.
+	got := covers.saved[len(covers.saved)-1].Analysis
+	if want := 3.0 / 8.0; math.Abs(got.MeanFeatures.Danceability-want) > 1e-9 {
+		t.Errorf("danceability = %v, want %v", got.MeanFeatures.Danceability, want)
+	}
+}
+
+// The pipeline resolves lyrics a step before the estimator runs, so the
+// estimator reads them rather than paying for the same network twice.
+func TestTheEstimatorReceivesTheResolvedLyrics(t *testing.T) {
+	src := &fakeFeatures{features: domain.AudioFeatures{Present: false}}
+	est := &fakeEstimator{features: domain.AudioFeatures{Energy: 0.5, Present: true}}
+
+	handler, _ := withTracks(src, est, playlistOf(3))
+	generate(t, handler)
+
+	if len(est.lyrics) != 3 {
+		t.Fatalf("the estimator got %d lyric entries, want one per track", len(est.lyrics))
+	}
+	if est.lyrics[0] != "some words" {
+		t.Errorf("lyrics[0] = %q, want the resolved text", est.lyrics[0])
+	}
+}
+
+// The analyzing phase writes nothing of its own, so without a heartbeat
+// updated_at is frozen across it and the stuck-cover sweep in cmd/api would
+// eventually fail a generation that is still working (ADR 0019).
+func TestTheAnalyzingPhaseKeepsTheRowAlive(t *testing.T) {
+	defer func(d time.Duration) { heartbeatInterval = d }(heartbeatInterval)
+	heartbeatInterval = time.Millisecond
+
+	handler, covers := withFeatures(&fakeFeatures{delay: 50 * time.Millisecond}, nil)
+	generate(t, handler)
+
+	analyzing := 0
+	for _, c := range covers.saved {
+		if c.Status == domain.CoverStatusAnalyzing {
+			analyzing++
+		}
+	}
+	// One save enters the stage; every save past it is a heartbeat.
+	if analyzing < 2 {
+		t.Errorf("%d analyzing saves, want the entry save plus heartbeats", analyzing)
+	}
+	// A heartbeat outliving its phase would write the row back to analyzing
+	// after the pipeline had moved on.
+	if last := covers.saved[len(covers.saved)-1]; last.Status != domain.CoverStatusReady {
+		t.Errorf("status = %q, want the heartbeat to have stopped before the end", last.Status)
 	}
 }
 

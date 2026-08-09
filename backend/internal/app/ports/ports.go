@@ -181,15 +181,23 @@ type FeatureSource interface {
 	Lookup(ctx context.Context, tracks []domain.Track) []domain.AudioFeatures
 }
 
-// FeatureEstimator guesses one playlist's acoustic character from its track
-// titles, for when no track could be matched to a real features source at all.
+// FeatureEstimator guesses one playlist's acoustic character from its tracks
+// and their lyrics, for when too little of it could be matched to a real
+// features source to trust the mean (see docs/adr/0020-coverage-weighted-features.md).
 //
 // Deliberately playlist-level: the palette consumes only the mean, so estimating
 // per track would be a more expensive way to reach the same number. What it
 // returns is a guess, which is why domain.PlaylistAnalysis records that it was
 // used.
 type FeatureEstimator interface {
-	Estimate(ctx context.Context, tracks []domain.Track) (domain.AudioFeatures, error)
+	// Estimate reads lyrics index-aligned with tracks, as lyrics.Resolver
+	// returns them; empty strings are expected and a track with none
+	// contributes its artist and title alone.
+	Estimate(
+		ctx context.Context,
+		tracks []domain.Track,
+		lyrics []string,
+	) (domain.AudioFeatures, error)
 }
 
 // SentimentAnalyzer performs NLP sentiment analysis over lyric text.

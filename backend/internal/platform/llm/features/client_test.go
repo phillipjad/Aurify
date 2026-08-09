@@ -45,7 +45,7 @@ func TestFencedJSONIsParsed(t *testing.T) {
 	fenced := "```json\n{\"energy\": 0.7, \"valence\": 0.4, \"danceability\": 0.3, \"acousticness\": 0.6}\n```"
 	server, _ := reply(t, http.StatusOK, fenced)
 
-	got, err := New(server.URL, "m", "").Estimate(context.Background(), tracks(3))
+	got, err := New(server.URL, "m", "").Estimate(context.Background(), tracks(3), nil)
 	if err != nil {
 		t.Fatalf("Estimate: %v", err)
 	}
@@ -63,7 +63,7 @@ func TestValuesAreClamped(t *testing.T) {
 	server, _ := reply(t, http.StatusOK,
 		`{"energy": 1.8, "valence": -0.5, "danceability": 0.5, "acousticness": 0.5}`)
 
-	got, err := New(server.URL, "m", "").Estimate(context.Background(), tracks(2))
+	got, err := New(server.URL, "m", "").Estimate(context.Background(), tracks(2), nil)
 	if err != nil {
 		t.Fatalf("Estimate: %v", err)
 	}
@@ -80,7 +80,7 @@ func TestValuesAreClamped(t *testing.T) {
 func TestAnEmptyEstimateIsAFailure(t *testing.T) {
 	for _, content := range []string{`{}`, `{"tempo_bpm": 120}`, `{"nonsense": 1}`} {
 		server, _ := reply(t, http.StatusOK, content)
-		if _, err := New(server.URL, "m", "").Estimate(context.Background(), tracks(2)); err == nil {
+		if _, err := New(server.URL, "m", "").Estimate(context.Background(), tracks(2), nil); err == nil {
 			t.Errorf("%s was accepted as an estimate", content)
 		}
 	}
@@ -93,7 +93,7 @@ func TestReportsProviderFailures(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			server, _ := reply(t, http.StatusOK, tc.content)
-			_, err := New(server.URL, "m", "").Estimate(context.Background(), tracks(2))
+			_, err := New(server.URL, "m", "").Estimate(context.Background(), tracks(2), nil)
 			if err == nil {
 				t.Fatal("expected an error")
 			}
@@ -106,7 +106,7 @@ func TestReportsProviderFailures(t *testing.T) {
 
 // An unconfigured checkout keeps today's behaviour rather than failing.
 func TestNoBaseURLIsNotAnError(t *testing.T) {
-	got, err := New("", "m", "").Estimate(context.Background(), tracks(2))
+	got, err := New("", "m", "").Estimate(context.Background(), tracks(2), nil)
 	if err != nil {
 		t.Fatalf("an unconfigured estimator should not error: %v", err)
 	}
@@ -120,7 +120,7 @@ func TestNoBaseURLIsNotAnError(t *testing.T) {
 func TestTheTrackListIsCapped(t *testing.T) {
 	server, captured := reply(t, http.StatusOK, `{"energy":0.5,"valence":0.5,"danceability":0.5,"acousticness":0.5}`)
 
-	if _, err := New(server.URL, "m", "").Estimate(context.Background(), tracks(maxTracksInPrompt+60)); err != nil {
+	if _, err := New(server.URL, "m", "").Estimate(context.Background(), tracks(maxTracksInPrompt+60), nil); err != nil {
 		t.Fatalf("Estimate: %v", err)
 	}
 
@@ -139,11 +139,55 @@ func TestArtistsReachTheModel(t *testing.T) {
 
 	_, err := New(server.URL, "m", "").Estimate(context.Background(), []domain.Track{
 		{Title: "Nox Lux", Artists: []string{"Myth & Roid"}},
-	})
+	}, nil)
 	if err != nil {
 		t.Fatalf("Estimate: %v", err)
 	}
 	if user := captured.Messages[1].Content; !strings.Contains(user, "Myth & Roid - Nox Lux") {
 		t.Errorf("artist and title should both reach the model:\n%s", user)
+	}
+}
+
+// Lyrics are the reason this estimator beats a title-only guess, so they have to
+// arrive attached to the track they belong to.
+func TestLyricsReachTheModel(t *testing.T) {
+	server, captured := reply(t, http.StatusOK, `{"energy":0.5,"valence":0.5,"danceability":0.5,"acousticness":0.5}`)
+
+	_, err := New(server.URL, "m", "").Estimate(context.Background(), []domain.Track{
+		{Title: "Nox Lux", Artists: []string{"Myth & Roid"}},
+		{Title: "Yellow", Artists: []string{"Coldplay"}},
+	}, []string{"burn the whole sky down\n\nand rise", ""})
+	if err != nil {
+		t.Fatalf("Estimate: %v", err)
+	}
+
+	user := captured.Messages[1].Content
+	if !strings.Contains(user, "Myth & Roid - Nox Lux\n  burn the whole sky down\n  and rise\n") {
+		t.Errorf("lyrics should follow their own track, blank lines dropped:\n%s", user)
+	}
+	// A track lrclib found nothing for still contributes its title line, which
+	// is exactly what every track contributed before lyrics were passed at all.
+	if !strings.Contains(user, "- Coldplay - Yellow\n") {
+		t.Errorf("a track without lyrics should still be listed:\n%s", user)
+	}
+}
+
+// Nothing here sets num_ctx, so the ceiling is the provider's default (4k on
+// Ollama) and one long song must not eat the whole prompt.
+func TestLyricsAreExcerpted(t *testing.T) {
+	server, captured := reply(t, http.StatusOK, `{"energy":0.5,"valence":0.5,"danceability":0.5,"acousticness":0.5}`)
+
+	long := strings.Repeat("a line of lyrics\n", 200)
+	_, err := New(server.URL, "m", "").Estimate(context.Background(),
+		tracks(2), []string{long, long})
+	if err != nil {
+		t.Fatalf("Estimate: %v", err)
+	}
+
+	user := captured.Messages[1].Content
+	for _, excerpt := range strings.Split(user, "\n- ")[1:] {
+		if len(excerpt) > maxLyricChars+len("a line of lyrics")*2 {
+			t.Errorf("one track contributed %d characters, want roughly %d", len(excerpt), maxLyricChars)
+		}
 	}
 }
