@@ -158,14 +158,37 @@ export function useCoverGenerations(): (playlistId: string) => CoverGeneration {
   }
 }
 
-/** Delete a cover, then refresh the covers list. Returns 204 (no body). */
+/**
+ * Delete a cover and every run it has had, then refresh the covers list.
+ * Returns 204 (no body).
+ */
 export function useDeleteCover() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (id: string) => apiFetch<void>(`/covers/${encodeURIComponent(id)}`, { method: 'DELETE' }),
     onSuccess: (_data, id) => {
-      // Drop the detail cache for the gone cover and refetch the list.
-      qc.removeQueries({ queryKey: queryKeys.cover(id) })
+      // Drop the detail cache for the gone cover and refetch the list. The key
+      // is a prefix, so both variants of the failed-runs toggle go with it.
+      qc.removeQueries({ queryKey: ['covers', 'detail', id] })
+      void qc.invalidateQueries({ queryKey: queryKeys.covers() })
+    },
+  })
+}
+
+/**
+ * Delete one run, keeping the cover. Returns 204 (no body).
+ *
+ * The tile can change as a result — dropping the newest successful run falls
+ * back to the one before it — so this refreshes the list as well as the detail.
+ */
+export function useDeleteCoverRevision(coverId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (revisionId: string) =>
+      apiFetch<void>(`/covers/${encodeURIComponent(coverId)}/revisions/${encodeURIComponent(revisionId)}`, {
+        method: 'DELETE',
+      }),
+    onSuccess: () => {
       void qc.invalidateQueries({ queryKey: queryKeys.covers() })
     },
   })

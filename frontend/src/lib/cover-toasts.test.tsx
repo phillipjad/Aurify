@@ -16,8 +16,16 @@ const READY_COVER: Cover = {
   platform: 'spotify',
   playlistId: 'sp1',
   playlistName: 'Morning Coffee',
+  runCount: 1,
   createdAt: '2026-08-06T00:00:00Z',
+  updatedAt: '2026-08-06T00:05:00Z',
 }
+
+/**
+ * The id a toast is filed under: the cover names the playlist, so what
+ * identifies one announcement is the run that produced it.
+ */
+const runId = (coverId: string, updatedAt = READY_COVER.updatedAt) => `${coverId}:${updatedAt}`
 
 beforeEach(() => {
   // Sonner, the once-per-cover guard, the on-screen set and the unread badge
@@ -140,16 +148,16 @@ describe('maybeToastCoverSettled', () => {
 
       // Nothing leaves synchronously, and then one every 250ms.
       vi.advanceTimersByTime(0)
-      expect(dismissed()).toEqual(['first'])
+      expect(dismissed()).toEqual([runId('first')])
 
       vi.advanceTimersByTime(249)
-      expect(dismissed()).toEqual(['first'])
+      expect(dismissed()).toEqual([runId('first')])
 
       vi.advanceTimersByTime(1)
-      expect(dismissed()).toEqual(['first', 'second'])
+      expect(dismissed()).toEqual([runId('first'), runId('second')])
 
       vi.advanceTimersByTime(250)
-      expect(dismissed()).toEqual(['first', 'second', 'third'])
+      expect(dismissed()).toEqual([runId('first'), runId('second'), runId('third')])
     } finally {
       vi.useRealTimers()
       dismiss.mockRestore()
@@ -164,17 +172,19 @@ describe('maybeToastCoverSettled', () => {
       maybeToastCoverSettled({ ...READY_COVER, id })
     }
 
+    const burst = ['one', 'two', 'three'].map((id) => runId(id))
     const durations = toast
       .getToasts()
-      .filter((t) => ['one', 'two', 'three'].includes(String(t.id)))
+      .filter((t) => burst.includes(String(t.id)))
       .map((t) => ('duration' in t ? t.duration : undefined))
 
     expect(durations).toEqual([8_000, 8_250, 8_500])
   })
 
   // A reconnecting stream can replay a ready snapshot; the user finished one
-  // generation, not two.
-  it('fires once per cover', async () => {
+  // generation, not two. The replay carries the same updatedAt, which is what
+  // makes it recognisable as the same run.
+  it('fires once per run', async () => {
     await renderToaster()
     act(() => {
       maybeToastCoverSettled(READY_COVER)
@@ -182,5 +192,29 @@ describe('maybeToastCoverSettled', () => {
     })
 
     expect(await screen.findAllByText('Your cover is ready')).toHaveLength(1)
+  })
+
+  // A cover's id is now the playlist's, so it is the same across every
+  // regeneration. Guarding on it would have made every regeneration finish in
+  // silence, and told Sonner to update the previous card rather than raise a
+  // new one.
+  it('announces every regeneration of the same cover', async () => {
+    await renderToaster()
+    act(() => maybeToastCoverSettled(READY_COVER))
+    expect(await screen.findAllByText('Your cover is ready')).toHaveLength(1)
+
+    act(() => maybeToastCoverSettled({ ...READY_COVER, updatedAt: '2026-08-06T09:30:00Z' }))
+    // waitFor rather than findAllByText: that resolves on the first match, which
+    // is the card already on screen, and would pass whether or not a second one
+    // ever arrives.
+    await waitFor(() => expect(screen.getAllByText('Your cover is ready')).toHaveLength(2))
+  })
+
+  // The link goes to the playlist's cover; only the dismissal is per-run.
+  it('links a regenerated cover to the same detail page', async () => {
+    await renderToaster()
+    act(() => maybeToastCoverSettled({ ...READY_COVER, updatedAt: '2026-08-06T09:30:00Z' }))
+
+    expect(await screen.findByRole('link', { name: 'View it' })).toHaveAttribute('href', '/covers/cover1')
   })
 })

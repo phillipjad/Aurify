@@ -34,3 +34,22 @@ impeccable.json
 .impeccable
 .claude/
 .playwright-mcp/
+
+# Terraform / OpenTofu working files. `tofu init` writes .terraform/ into each
+# module, and state must never be committed: this project keeps it in a GCS
+# backend (deploy/README.md).
+#
+# .terraform.lock.hcl is deliberately absent from this list. It pins the exact
+# provider versions and hashes every checkout resolves, so it is committed —
+# see deploy/app/.terraform.lock.hcl.
+.terraform/
+.terraform.tfstate.lock.info
+*.tfstate
+*.tfstate.*
+crash.log
+crash.*.log
+
+# Variable files, which are where credentials end up by accident. The modules
+# take their inputs on the command line and from Secret Manager (ADR 0013).
+*.tfvars
+*.tfvars.json

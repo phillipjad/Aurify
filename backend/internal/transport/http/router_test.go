@@ -54,12 +54,10 @@ var knownCoverBytes = []byte{0x89, 'P', 'N', 'G', 0x00, 0xFF}
 // storedImage is a fake ports.ImageStore holding exactly one image.
 type storedImage struct{}
 
-func (storedImage) Put(context.Context, string, domain.GeneratedImage) (string, error) {
-	return "", nil
-}
+func (storedImage) Put(context.Context, string, domain.GeneratedImage) error { return nil }
 
-func (storedImage) Find(_ context.Context, coverID string) (domain.GeneratedImage, error) {
-	if coverID != knownCoverID {
+func (storedImage) Find(_ context.Context, revisionID string) (domain.GeneratedImage, error) {
+	if revisionID != knownCoverID {
 		return domain.GeneratedImage{}, domain.ErrNotFound
 	}
 	return domain.GeneratedImage{Bytes: knownCoverBytes, ContentType: "image/png"}, nil

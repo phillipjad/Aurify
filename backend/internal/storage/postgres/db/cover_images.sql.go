@@ -14,7 +14,7 @@ import (
 const findCoverImage = `-- name: FindCoverImage :one
 SELECT bytes, content_type
 FROM cover_images
-WHERE cover_id = $1
+WHERE revision_id = $1
 `
 
 type FindCoverImageRow struct {
@@ -22,34 +22,35 @@ type FindCoverImageRow struct {
 	ContentType string
 }
 
-func (q *Queries) FindCoverImage(ctx context.Context, coverID string) (FindCoverImageRow, error) {
-	row := q.db.QueryRow(ctx, findCoverImage, coverID)
+func (q *Queries) FindCoverImage(ctx context.Context, revisionID string) (FindCoverImageRow, error) {
+	row := q.db.QueryRow(ctx, findCoverImage, revisionID)
 	var i FindCoverImageRow
 	err := row.Scan(&i.Bytes, &i.ContentType)
 	return i, err
 }
 
 const saveCoverImage = `-- name: SaveCoverImage :exec
-INSERT INTO cover_images (cover_id, bytes, content_type, created_at)
+INSERT INTO cover_images (revision_id, bytes, content_type, created_at)
 VALUES ($1, $2, $3, $4)
-ON CONFLICT (cover_id) DO UPDATE SET
+ON CONFLICT (revision_id) DO UPDATE SET
     bytes = EXCLUDED.bytes,
     content_type = EXCLUDED.content_type,
     created_at = EXCLUDED.created_at
 `
 
 type SaveCoverImageParams struct {
-	CoverID     string
+	RevisionID  string
 	Bytes       []byte
 	ContentType string
 	CreatedAt   pgtype.Timestamptz
 }
 
-// Upsert, so regenerating a cover replaces its image rather than failing on the
-// primary key.
+// Keyed by revision, so each run keeps its own bytes and they cascade with it.
+// Still an upsert, so a retried store replaces the bytes rather than failing on
+// the primary key.
 func (q *Queries) SaveCoverImage(ctx context.Context, arg SaveCoverImageParams) error {
 	_, err := q.db.Exec(ctx, saveCoverImage,
-		arg.CoverID,
+		arg.RevisionID,
 		arg.Bytes,
 		arg.ContentType,
 		arg.CreatedAt,

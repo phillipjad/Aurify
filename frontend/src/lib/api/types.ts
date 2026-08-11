@@ -12,6 +12,8 @@ type Schemas = components['schemas']
 export type ColorWeight = Schemas['ColorWeightResponse']
 export type Playlist = Schemas['PlaylistResponse']
 export type Cover = Schemas['CoverResponse']
+/** One finished generation run. Only the detail endpoint returns these. */
+export type CoverRevision = Schemas['CoverRevisionResponse']
 export type GenerateCoverRequest = Schemas['GenerateCoverRequest']
 
 /** RFC 7807 error body returned by every failing endpoint. */

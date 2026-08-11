@@ -15,11 +15,22 @@ const TOAST_DURATION_MS = 8_000
 const DISMISS_STAGGER_MS = 250
 
 /**
+ * A cover's id names the playlist, not the run that just finished, so it cannot
+ * key an announcement: regenerating the same playlist would arrive carrying an
+ * id already announced, and every regeneration would settle in silence.
+ *
+ * `updatedAt` is what separates them. Every stage of a generation stamps it, so
+ * its terminal value names exactly one run, and a replay of that same snapshot
+ * repeats the value exactly — which is what the fire-once guard below needs.
+ */
+const runKey = (cover: Cover) => `${cover.id}:${cover.updatedAt}`
+
+/**
  * One toast per generation: a reconnecting stream can replay a terminal
- * snapshot. This keeps every id for the life of the tab, which is how long a
+ * snapshot. This keeps every key for the life of the tab, which is how long a
  * replay stays possible — cover-events.ts closes a cover's stream once it
  * settles, but a component mounting later reopens one and the server resends
- * the terminal snapshot. Only a finished generation adds an id, so it grows at
+ * the terminal snapshot. Only a finished generation adds a key, so it grows at
  * human pace and dies with the page.
  */
 export const toastedCovers = new Set<string>()
@@ -61,17 +72,23 @@ export function dismissCoverToasts(): void {
 export function maybeToastCoverSettled(cover: Cover): void {
   if (cover.status !== 'ready' && cover.status !== 'failed') return
   if (window.location.pathname.startsWith('/covers')) return
-  if (toastedCovers.has(cover.id)) return
-  toastedCovers.add(cover.id)
+
+  // Keyed by run, both here and as Sonner's own id: Sonner treats a repeated id
+  // as an update to the toast already on screen rather than as a new one, so a
+  // per-cover id would quietly re-style the previous announcement instead of
+  // making one.
+  const key = runKey(cover)
+  if (toastedCovers.has(key)) return
+  toastedCovers.add(key)
   // Counted before this one joins them, so the first toast keeps the plain duration.
   const ahead = outstandingCoverToasts.size
-  outstandingCoverToasts.add(cover.id)
+  outstandingCoverToasts.add(key)
   markCoverUnread()
 
   const playlist = cover.playlistName || 'Untitled playlist'
-  const forget = () => outstandingCoverToasts.delete(cover.id)
+  const forget = () => outstandingCoverToasts.delete(key)
   const common = {
-    id: cover.id,
+    id: key,
     description: playlist,
     // Generations that settle together would otherwise expire together eight
     // seconds later, which is the same wall of cards leaving at once that
@@ -91,7 +108,11 @@ export function maybeToastCoverSettled(cover: Cover): void {
       ...common,
       icon: <AlertTriangle aria-hidden="true" className="size-5 text-destructive-text" />,
       // The detail page already holds the reason and the Regenerate control.
-      action: <ToastLink coverID={cover.id}>See why</ToastLink>,
+      action: (
+        <ToastLink coverID={cover.id} toastID={key}>
+          See why
+        </ToastLink>
+      ),
     })
     return
   }
@@ -100,7 +121,11 @@ export function maybeToastCoverSettled(cover: Cover): void {
     ...common,
     // The artwork is what they waited for, so the toast carries it.
     icon: <CoverThumbnail cover={cover} />,
-    action: <ToastLink coverID={cover.id}>View it</ToastLink>,
+    action: (
+      <ToastLink coverID={cover.id} toastID={key}>
+        View it
+      </ToastLink>
+    ),
   })
 }
 
@@ -125,13 +150,16 @@ function CoverThumbnail({ cover }: { cover: Cover }) {
 }
 
 /** A real link rather than Sonner's action button, so middle-click and
- * open-in-new-tab keep working. Router context comes from the root layout. */
-function ToastLink({ coverID, children }: { coverID: string; children: string }) {
+ * open-in-new-tab keep working. Router context comes from the root layout.
+ *
+ * The two ids differ: the link goes to the playlist's cover, the dismissal names
+ * this one announcement of it. */
+function ToastLink({ coverID, toastID, children }: { coverID: string; toastID: string; children: string }) {
   return (
     <Link
       to="/covers/$coverId"
       params={{ coverId: coverID }}
-      onClick={() => toast.dismiss(coverID)}
+      onClick={() => toast.dismiss(toastID)}
       className="ml-auto shrink-0 rounded-md px-2.5 py-1.5 text-sm font-medium text-primary transition-colors hover:bg-primary/10 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-card focus-visible:outline-none"
     >
       {children}

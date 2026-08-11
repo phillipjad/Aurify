@@ -27,7 +27,9 @@ export const queryKeys = {
   // Broad prefix used to invalidate every covers query (list + detail).
   covers: () => ['covers'] as const,
   coversList: (filter: CoverFilter) => ['covers', 'list', filter] as const,
-  cover: (id: string) => ['covers', 'detail', id] as const,
+  // Keyed on the failed-runs toggle as well, so flipping it refetches rather
+  // than reading a cached response that answers the other question.
+  cover: (id: string, showFailedRuns = false) => ['covers', 'detail', id, showFailedRuns] as const,
 }
 
 interface PlaylistsArgs {
@@ -61,16 +63,39 @@ export const playlistsInfiniteQuery = ({ platform, search, sort }: PlaylistsArgs
 /** Cover statuses that will never change again without a new user action. */
 export const TERMINAL_STATUSES: ReadonlySet<CoverStatus> = new Set<CoverStatus>(['ready', 'failed'])
 
+/**
+ * The keyset position of the next page: the last cover of the one before it.
+ * Null is the first page.
+ *
+ * Offset paging cannot survive this list. A regeneration moves its playlist to
+ * the front, so by the time page two is asked for, the row that was at index 20
+ * has shifted and offset paging either repeats a tile or skips one. Naming the
+ * exact row to continue after has no such window. The cursor is read off the
+ * response rather than handed back in an envelope, since every cover already
+ * carries both halves of it.
+ */
+type CoverCursor = { before: string; beforeId: string } | null
+
+const nextCoverCursor = (lastPage: Cover[]): CoverCursor => {
+  if (lastPage.length < PAGE_SIZE) return null
+  const last = lastPage[lastPage.length - 1]
+  return last ? { before: last.updatedAt, beforeId: last.id } : null
+}
+
 export const coversInfiniteQuery = (filter: CoverFilter = 'all') =>
   infiniteQueryOptions({
     queryKey: queryKeys.coversList(filter),
     queryFn: ({ pageParam }) => {
-      const params = new URLSearchParams({ limit: String(PAGE_SIZE), offset: String(pageParam) })
+      const params = new URLSearchParams({ limit: String(PAGE_SIZE) })
       if (filter !== 'all') params.set('status', filter)
+      if (pageParam) {
+        params.set('before', pageParam.before)
+        params.set('before_id', pageParam.beforeId)
+      }
       return apiFetch<Cover[]>(`/covers?${params.toString()}`)
     },
-    initialPageParam: 0,
-    getNextPageParam: (lastPage, allPages) => (lastPage.length < PAGE_SIZE ? undefined : allPages.length * PAGE_SIZE),
+    initialPageParam: null as CoverCursor,
+    getNextPageParam: nextCoverCursor,
     // No refetchInterval: changes arrive over the SSE streams useCovers opens.
     // But a stream only reports *changes*, and a generation started elsewhere
     // has usually already announced its last one for the next half minute by
@@ -81,10 +106,18 @@ export const coversInfiniteQuery = (filter: CoverFilter = 'all') =>
     placeholderData: keepPreviousData,
   })
 
-export const coverQuery = (id: string) =>
+/**
+ * One cover with its run history. `showFailedRuns` widens the history to runs
+ * that produced no artwork; they are kept because their error is the only thing
+ * that explains an image-provider refusal.
+ */
+export const coverQuery = (id: string, showFailedRuns = false) =>
   queryOptions({
-    queryKey: queryKeys.cover(id),
-    queryFn: () => apiFetch<Cover>(`/covers/${encodeURIComponent(id)}`),
+    queryKey: queryKeys.cover(id, showFailedRuns),
+    queryFn: () => {
+      const query = showFailedRuns ? '?allow_failed_revisions=true' : ''
+      return apiFetch<Cover>(`/covers/${encodeURIComponent(id)}${query}`)
+    },
   })
 
 /**
@@ -95,7 +128,7 @@ export const coverQuery = (id: string) =>
 export const runningCoversQuery = () =>
   queryOptions({
     queryKey: ['covers', 'running'] as const,
-    queryFn: () => apiFetch<Cover[]>(`/covers?limit=${PAGE_SIZE}&offset=0`),
+    queryFn: () => apiFetch<Cover[]>(`/covers?limit=${PAGE_SIZE}`),
     // Seeds the streams at startup; from then on they are the source of truth.
     staleTime: Infinity,
     refetchOnWindowFocus: false,
@@ -123,9 +156,9 @@ export function useCovers(filter: CoverFilter = 'all') {
   return query
 }
 
-export function useCover(id: string) {
+export function useCover(id: string, showFailedRuns = false) {
   const queryClient = useQueryClient()
-  const query = useQuery(coverQuery(id))
+  const query = useQuery(coverQuery(id, showFailedRuns))
 
   // isLive flips once, so the stream opens and closes once per visit.
   const isLive = query.data != null && !TERMINAL_STATUSES.has(query.data.status)

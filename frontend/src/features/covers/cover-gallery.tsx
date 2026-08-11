@@ -115,9 +115,9 @@ export function CoverGallery() {
     )
   }
 
-  // Pages partition by offset, but dedupe by id anyway so a cover created or
-  // deleted between page refetches can never surface a duplicate React key.
-  const items = dedupeById(covers.data?.pages.flat() ?? [])
+  // No dedupe: covers are unique per playlist and the pages are keyset, so a
+  // repeated id here would be a bug worth seeing rather than one to absorb.
+  const items = covers.data?.pages.flat() ?? []
 
   // Genuinely empty (unfiltered) → the onboarding empty state.
   if (filter === 'all' && items.length === 0) {
@@ -188,18 +188,6 @@ function FilterBar({ value, onChange }: { value: CoverFilter; onChange: (filter:
       })}
     </div>
   )
-}
-
-function dedupeById(covers: Cover[]): Cover[] {
-  const seen = new Set<string>()
-  const out: Cover[] = []
-  for (const cover of covers) {
-    if (!seen.has(cover.id)) {
-      seen.add(cover.id)
-      out.push(cover)
-    }
-  }
-  return out
 }
 
 // A gallery tile is a pure navigation target: the whole card links to the cover
@@ -335,7 +323,18 @@ function CoverTile({ cover }: { cover: Cover }) {
             <h3 className="min-w-0 flex-1 truncate font-display text-sm font-semibold tracking-tight group-hover:underline">
               {cover.playlistName}
             </h3>
-            <StatusBadge status={cover.status} />
+            {/* Beside the badge rather than on a line of its own: the grid
+                virtualizes rows on the assumption that every tile is the same
+                height, and a count only some tiles carry would break it. */}
+            <div className="flex shrink-0 items-center gap-1.5">
+              {cover.runCount > 1 && (
+                <span className="text-xs tabular-nums text-muted-foreground">
+                  <span aria-hidden="true">{cover.runCount}×</span>
+                  <span className="sr-only">{cover.runCount} versions</span>
+                </span>
+              )}
+              <StatusBadge status={cover.status} />
+            </div>
           </div>
 
           {cover.status === 'failed' ? (
