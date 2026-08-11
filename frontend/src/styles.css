@@ -177,57 +177,71 @@ body {
 [data-scroll-container] {
   --scrollbar-thumb: color-mix(in oklab, var(--muted-foreground) 35%, transparent);
   --scrollbar-thumb-hover: color-mix(in oklab, var(--muted-foreground) 60%, transparent);
+}
 
+/* Everything below is for scrollbars a pointer can grab. Touch platforms draw
+   their own overlay indicator and fade it out, and styling it there is what
+   turns that transient hint into a permanent bar: naming a scrollbar-color
+   opts Android Chrome out of overlay scrollbars entirely, and a classic
+   scrollbar is what makes `scrollbar-gutter: stable` reserve a strip of dead
+   space down the side of every screen.
+
+   Gated on the pointer rather than a width breakpoint on purpose. A narrow
+   desktop window still has a classic scrollbar and still wants the gutter; a
+   large tablet has neither. Width is not what decides this. */
+@media (hover: hover) and (pointer: fine) {
   /* Reserve the track whether or not this surface currently overflows. Without
      it, moving between a route that scrolls and one that does not changes the
      content width, which re-wraps every balanced heading mid-transition. */
-  scrollbar-gutter: stable;
-}
-
-@supports (scrollbar-color: auto) {
   [data-scroll-container] {
-    scrollbar-width: thin;
-    /* Transparent track: the thumb is the only mark, so the scrollbar reads as
-       part of the surface rather than as a channel cut into it. */
-    scrollbar-color: var(--scrollbar-thumb) transparent;
+    scrollbar-gutter: stable;
   }
 
-  [data-scroll-container]:hover {
-    scrollbar-color: var(--scrollbar-thumb-hover) transparent;
-  }
-}
+  @supports (scrollbar-color: auto) {
+    [data-scroll-container] {
+      scrollbar-width: thin;
+      /* Transparent track: the thumb is the only mark, so the scrollbar reads
+         as part of the surface rather than as a channel cut into it. */
+      scrollbar-color: var(--scrollbar-thumb) transparent;
+    }
 
-/* Safari before 18.2 has no scrollbar-color. It gets the WebKit pseudo-elements
-   instead, which also buy an explicitly rounded thumb. Deliberately in a
-   negative feature query rather than alongside: Chrome ignores these entirely
-   once scrollbar-color is set, so specifying both would leave dead rules that
-   look like they are doing something. */
-@supports not (scrollbar-color: auto) {
-  [data-scroll-container]::-webkit-scrollbar {
-    width: 10px;
-    height: 10px;
+    [data-scroll-container]:hover {
+      scrollbar-color: var(--scrollbar-thumb-hover) transparent;
+    }
   }
 
-  [data-scroll-container]::-webkit-scrollbar-track {
-    background: transparent;
-  }
+  /* Safari before 18.2 has no scrollbar-color. It gets the WebKit
+     pseudo-elements instead, which also buy an explicitly rounded thumb.
+     Deliberately in a negative feature query rather than alongside: Chrome
+     ignores these entirely once scrollbar-color is set, so specifying both
+     would leave dead rules that look like they are doing something. */
+  @supports not (scrollbar-color: auto) {
+    [data-scroll-container]::-webkit-scrollbar {
+      width: 10px;
+      height: 10px;
+    }
 
-  /* A transparent border clipped to the content box insets the thumb from the
-     edge, which is what keeps a pill shape from reading as a square block
-     jammed against the rounded content beside it. */
-  [data-scroll-container]::-webkit-scrollbar-thumb {
-    background-color: var(--scrollbar-thumb);
-    background-clip: content-box;
-    border: 3px solid transparent;
-    border-radius: var(--radius);
-  }
+    [data-scroll-container]::-webkit-scrollbar-track {
+      background: transparent;
+    }
 
-  [data-scroll-container]:hover::-webkit-scrollbar-thumb {
-    background-color: var(--scrollbar-thumb-hover);
-  }
+    /* A transparent border clipped to the content box insets the thumb from the
+       edge, which is what keeps a pill shape from reading as a square block
+       jammed against the rounded content beside it. */
+    [data-scroll-container]::-webkit-scrollbar-thumb {
+      background-color: var(--scrollbar-thumb);
+      background-clip: content-box;
+      border: 3px solid transparent;
+      border-radius: var(--radius);
+    }
 
-  [data-scroll-container]::-webkit-scrollbar-corner {
-    background: transparent;
+    [data-scroll-container]:hover::-webkit-scrollbar-thumb {
+      background-color: var(--scrollbar-thumb-hover);
+    }
+
+    [data-scroll-container]::-webkit-scrollbar-corner {
+      background: transparent;
+    }
   }
 }
 

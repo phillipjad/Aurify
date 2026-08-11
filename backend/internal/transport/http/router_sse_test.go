@@ -30,6 +30,12 @@ func newMemCovers(covers ...*domain.Cover) *memCovers {
 	return m
 }
 
+func (m *memCovers) StartRun(ctx context.Context, cover *domain.Cover) error {
+	return m.Save(ctx, cover)
+}
+
+func (m *memCovers) Touch(context.Context, string) error { return nil }
+
 func (m *memCovers) Save(_ context.Context, cover *domain.Cover) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -49,10 +55,18 @@ func (m *memCovers) FindByID(_ context.Context, id string) (*domain.Cover, error
 	return &copied, nil
 }
 
-func (m *memCovers) ListByUser(context.Context, string, string, int, int) ([]domain.Cover, error) {
+func (m *memCovers) ListByUser(
+	context.Context, string, string, int, domain.CoverCursor,
+) ([]domain.Cover, error) {
 	return nil, nil
 }
 func (m *memCovers) Delete(context.Context, string, string) error { return nil }
+
+func (m *memCovers) SaveRevision(context.Context, *domain.CoverRevision) error { return nil }
+func (m *memCovers) ListRevisions(context.Context, string, bool) ([]domain.CoverRevision, error) {
+	return nil, nil
+}
+func (m *memCovers) DeleteRevision(context.Context, string, string, string) error { return nil }
 
 // setStatus mutates a stored cover the way the pipeline does: status forward,
 // updated_at bumped.

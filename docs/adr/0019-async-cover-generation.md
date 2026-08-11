@@ -1,7 +1,13 @@
 # 0019 — Cover generation off the request, progress over SSE
 
-- Status: Accepted
+- Status: Amended by [0022](0022-covers-by-playlist.md)
 - Date: 2026-08-06
+
+> **Amendment (0022).** The recovery timings below are superseded. The heartbeat
+> covers the whole run rather than only the analyzing phase, the sweep runs at a
+> 2-minute threshold every 30 seconds, startup reaps every in-flight cover
+> outright, and a run is capped at 15 minutes. An interrupted generation now
+> reports `failed` in seconds after a restart, not "within ~15 minutes".
 
 ## Context
 

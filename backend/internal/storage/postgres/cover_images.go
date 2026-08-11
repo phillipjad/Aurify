@@ -15,10 +15,14 @@ import (
 
 // imageURLFormat is the path that serves a stored image.
 //
-// The store builds it because the store is what decides where bytes live: a
-// bucket-backed implementation would return its own public URL here instead, and
+// The store owns it because the store is what decides where bytes live: a
+// bucket-backed implementation would build its own public URL here instead, and
 // nothing above this line would change. It is relative on purpose, so covers
 // generated against localhost still resolve once the API has a real origin.
+//
+// The id in it is a *revision* id, not a cover id. A cover's artwork changes as
+// it is regenerated, so a URL keyed by the cover could never be cached; keyed by
+// the run that produced it, the bytes behind a URL never change at all.
 const imageURLFormat = "/api/v1/covers/%s/image"
 
 // CoverImageRepository is the PostgreSQL-backed ports.ImageStore.
@@ -28,30 +32,27 @@ type CoverImageRepository struct {
 
 var _ ports.ImageStore = (*CoverImageRepository)(nil)
 
-// Put stores the image for a cover and returns the URL that serves it.
+// Put stores the image produced by one run. The revision row must already
+// exist: the bytes are keyed by it and cascade with it.
 func (r *CoverImageRepository) Put(
 	ctx context.Context,
-	coverID string,
+	revisionID string,
 	image domain.GeneratedImage,
-) (string, error) {
-	err := r.q.SaveCoverImage(ctx, db.SaveCoverImageParams{
-		CoverID:     coverID,
+) error {
+	return r.q.SaveCoverImage(ctx, db.SaveCoverImageParams{
+		RevisionID:  revisionID,
 		Bytes:       image.Bytes,
 		ContentType: image.ContentType,
 		CreatedAt:   tsFromTime(time.Now().UTC()),
 	})
-	if err != nil {
-		return "", err
-	}
-	return coverImageURL(coverID), nil
 }
 
-// Find returns a cover's stored image, mapping a miss to domain.ErrNotFound.
+// Find returns a run's stored image, mapping a miss to domain.ErrNotFound.
 func (r *CoverImageRepository) Find(
 	ctx context.Context,
-	coverID string,
+	revisionID string,
 ) (domain.GeneratedImage, error) {
-	row, err := r.q.FindCoverImage(ctx, coverID)
+	row, err := r.q.FindCoverImage(ctx, revisionID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return domain.GeneratedImage{}, domain.ErrNotFound
@@ -61,6 +62,6 @@ func (r *CoverImageRepository) Find(
 	return domain.GeneratedImage{Bytes: row.Bytes, ContentType: row.ContentType}, nil
 }
 
-func coverImageURL(coverID string) string {
-	return fmt.Sprintf(imageURLFormat, coverID)
+func coverImageURL(revisionID string) string {
+	return fmt.Sprintf(imageURLFormat, revisionID)
 }

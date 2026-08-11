@@ -9,6 +9,15 @@ var (
 	ErrUnauthorized        = errors.New("unauthorized")
 	ErrUnsupportedPlatform = errors.New("unsupported dsp platform")
 
+	// ErrGenerationInFlight is returned when a playlist already has a
+	// generation running. One run at a time per cover is enforced in the write
+	// that claims it, so this is the answer a caller that lost the race gets —
+	// including one racing an identical request in another tab or instance.
+	//
+	// It is not a dead end: the cover named by the request is the one already
+	// running, and its event stream reports that run to completion.
+	ErrGenerationInFlight = errors.New("a generation is already running for this playlist")
+
 	// ErrInvalidCredentials is the single answer to every failed sign-in,
 	// whether the address is unknown, the password is wrong, or the account has
 	// no password set. Distinguishing them in a response tells an attacker which

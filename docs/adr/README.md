@@ -23,9 +23,10 @@ lightweight [MADR](https://adr.github.io/madr/)-style records.
 | [0016](0016-generation-providers.md) | Generation providers: an OpenAI-compatible base URL, and images in PostgreSQL | Accepted |
 | [0017](0017-bounded-app-shell.md) | The app shell is bounded to the viewport, with `<main>` as the only scroll container | Accepted |
 | [0018](0018-audio-features.md) | Audio features from AcousticBrainz, estimated when absent | Amended by [0020](0020-coverage-weighted-features.md) |
-| [0019](0019-async-cover-generation.md) | Cover generation off the request, progress over SSE | Accepted |
+| [0019](0019-async-cover-generation.md) | Cover generation off the request, progress over SSE | Amended by [0022](0022-covers-by-playlist.md) |
 | [0020](0020-coverage-weighted-features.md) | Weight the measured palette by coverage, estimate from lyrics | Accepted |
 | [0021](0021-patched-sonner-unmount-delay.md) | Sonner is patched so toast exits can finish | Accepted |
+| [0022](0022-covers-by-playlist.md) | A cover is a playlist, and each generation is a revision of it | Accepted |
 
 ## Adding a new ADR
 

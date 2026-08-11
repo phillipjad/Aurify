@@ -10,6 +10,7 @@ import (
 
 	"github.com/phillipjad/aurify/backend/internal/app"
 	"github.com/phillipjad/aurify/backend/internal/app/command/deletecover"
+	"github.com/phillipjad/aurify/backend/internal/app/command/deleterevision"
 	"github.com/phillipjad/aurify/backend/internal/app/command/generatecover"
 	"github.com/phillipjad/aurify/backend/internal/app/query/getcover"
 	"github.com/phillipjad/aurify/backend/internal/app/query/getcoverimage"
@@ -70,18 +71,26 @@ func (h *Covers) Generate(c mux.RouteContext) {
 	c.Created(dto.NewCoverResponse(cover))
 }
 
-// Get returns a single cover by id (query).
-// GET /api/v1/covers/{id}
+// Get returns a single cover, with its run history, by id (query).
+// GET /api/v1/covers/{id}?allow_failed_revisions=
+//
+// Runs that produced no artwork are left out unless asked for. They are kept,
+// because their error is what explains the failure to the client (the prompt
+// that caused it stays internal, see dto.CoverResponse), but the history is
+// otherwise about renders that exist.
 func (h *Covers) Get(c mux.RouteContext) {
 	id, ok := c.Params().String("id")
 	if !ok {
 		c.BadRequest("missing id", "path parameter 'id' is required")
 		return
 	}
+	allowFailed, _ := c.Query().Bool("allow_failed_revisions")
 
 	cover, err := h.app.Queries.GetCover.Handle(c, getcover.Query{
-		CoverID: id,
-		UserID:  currentUser(c),
+		CoverID:                id,
+		UserID:                 currentUser(c),
+		WithRevisions:          true,
+		IncludeFailedRevisions: allowFailed,
 	})
 	if err != nil {
 		respondError(c, err)
@@ -187,12 +196,16 @@ func (h *Covers) Events(c mux.RouteContext) {
 	}
 }
 
-// Image serves the bytes behind a cover's imageUrl (query).
+// Image serves the bytes behind an imageUrl (query).
 // GET /api/v1/covers/{id}/image
+//
+// The id here names a generation *run*, not a cover, because each run keeps its
+// own bytes: that is what lets the detail page reach earlier artwork and what
+// keeps a tile showing the last good render while the next one is in flight.
 //
 // This route is anonymous, and deliberately so. It is what an <img> tag fetches,
 // and a tag loading cross-origin (the app on :5173, the API on :8080) does not
-// send credentials, so an authenticated route simply would not render. Cover ids
+// send credentials, so an authenticated route simply would not render. The ids
 // are UUIDv4, which is the unguessable-name trade
 // docs/adr/0014-hosted-generation-apis.md already accepted for its public
 // bucket.
@@ -207,7 +220,7 @@ func (h *Covers) Image(c mux.RouteContext) {
 		return
 	}
 
-	image, err := h.app.Queries.GetCoverImage.Handle(c, getcoverimage.Query{CoverID: id})
+	image, err := h.app.Queries.GetCoverImage.Handle(c, getcoverimage.Query{RevisionID: id})
 	if err != nil {
 		respondError(c, err)
 		return
@@ -215,8 +228,8 @@ func (h *Covers) Image(c mux.RouteContext) {
 
 	w := c.Response()
 	w.Header().Set("Content-Type", image.ContentType)
-	// The bytes for a given id never change: regenerating a playlist creates a
-	// new cover with a new id.
+	// The bytes for a given id never change: the id names one generation run,
+	// and regenerating a playlist produces a new run with a new id.
 	w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(image.Bytes)
@@ -254,8 +267,48 @@ func (h *Covers) Delete(c mux.RouteContext) {
 	c.NoContent()
 }
 
-// List returns the current user's covers (query).
-// GET /api/v1/covers?limit=&offset=
+// DeleteRevision removes one run from one of the current user's covers (command).
+// DELETE /api/v1/covers/{id}/revisions/{revisionId}
+//
+// The cover survives. Dropping the newest successful run falls back to the one
+// before it, because the current artwork is read as "the newest revision that is
+// ready"; dropping the last one leaves the tile on the placeholder.
+func (h *Covers) DeleteRevision(c mux.RouteContext) {
+	userID := currentUser(c)
+	if userID == "" {
+		c.Unauthorized()
+		return
+	}
+
+	id, ok := c.Params().String("id")
+	if !ok {
+		c.BadRequest("missing id", "path parameter 'id' is required")
+		return
+	}
+	revisionID, ok := c.Params().String("revisionId")
+	if !ok {
+		c.BadRequest("missing revisionId", "path parameter 'revisionId' is required")
+		return
+	}
+
+	if err := h.app.Commands.DeleteRevision.Handle(c, deleterevision.Command{
+		CoverID:    id,
+		RevisionID: revisionID,
+		UserID:     userID,
+	}); err != nil {
+		respondError(c, err)
+		return
+	}
+	c.NoContent()
+}
+
+// List returns the current user's covers, newest first (query).
+// GET /api/v1/covers?limit=&before=&before_id=&status=
+//
+// Paged by keyset rather than offset: a regeneration moves a playlist to the
+// front of the list, and an offset would then repeat or skip a tile. The cursor
+// is the last row of the previous page — its updatedAt and id, both echoed back
+// on every cover — so there is no envelope for the client to unwrap.
 func (h *Covers) List(c mux.RouteContext) {
 	userID := currentUser(c)
 	if userID == "" {
@@ -264,14 +317,20 @@ func (h *Covers) List(c mux.RouteContext) {
 	}
 
 	limit, _ := c.Query().Int("limit")
-	offset, _ := c.Query().Int("offset")
 	status, _ := c.Query().String("status")
+	before, _ := c.Query().String("before")
+	beforeID, _ := c.Query().String("before_id")
+
+	// An unparseable cursor is the zero time, which the query handler reads as
+	// "start at the top" rather than erroring: the alternative is a gallery
+	// that shows nothing because of one malformed parameter.
+	cursorAt, _ := time.Parse(time.RFC3339, before)
 
 	covers, err := h.app.Queries.ListCovers.Handle(c, listcovers.Query{
 		UserID: userID,
 		Status: domain.CoverStatus(status),
 		Limit:  limit,
-		Offset: offset,
+		After:  domain.CoverCursor{UpdatedAt: cursorAt, ID: beforeID},
 	})
 	if err != nil {
 		respondError(c, err)

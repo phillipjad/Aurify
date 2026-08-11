@@ -91,16 +91,51 @@ type EmailSender interface {
 	Send(ctx context.Context, to, subject, body string) error
 }
 
-// CoverRepository persists generated covers.
+// CoverRepository persists covers and their generation runs.
 type CoverRepository interface {
+	// StartRun claims a playlist for a new generation, returning
+	// domain.ErrGenerationInFlight when one is already running for it. This is
+	// the only way a run may begin, and implementations must make the check and
+	// the claim a single atomic write: one run per cover at a time is a
+	// guarantee the pipeline relies on, not an optimisation.
+	//
+	// Like Save, it upserts on the playlist and writes back the row's id.
+	StartRun(ctx context.Context, cover *domain.Cover) error
+	// Save records a stage change for a run already claimed by StartRun. It
+	// upserts on the playlist, not the id: regenerating updates the cover that
+	// already exists. It writes back the row's id, which for a regeneration is
+	// the existing one rather than the one it was handed.
 	Save(ctx context.Context, cover *domain.Cover) error
+	// Touch marks a claimed run as still alive and changes nothing else. It is
+	// what stops the stuck-cover sweep from reclaiming a playlist out from
+	// under a generation that is simply slow, and taking only the id is what
+	// makes it safe to call from a goroutine beside the running pipeline.
+	Touch(ctx context.Context, coverID string) error
+	// FindByID returns the cover with its current artwork, and no revisions.
 	FindByID(ctx context.Context, id string) (*domain.Cover, error)
-	// ListByUser returns a user's covers newest-first, paginated. An empty
+	// ListByUser returns a user's covers newest-first, one page at a time from
+	// the keyset position in after (the zero value starts at the top). An empty
 	// status returns every lifecycle state; otherwise it filters to that one.
-	ListByUser(ctx context.Context, userID, status string, limit, offset int) ([]domain.Cover, error)
-	// Delete removes a cover the user owns; it returns domain.ErrNotFound when
-	// no such cover exists for that user.
+	ListByUser(
+		ctx context.Context,
+		userID, status string,
+		limit int,
+		after domain.CoverCursor,
+	) ([]domain.Cover, error)
+	// Delete removes a cover the user owns, and every revision with it; it
+	// returns domain.ErrNotFound when no such cover exists for that user.
 	Delete(ctx context.Context, id, userID string) error
+
+	// SaveRevision records a finished run, assigning an id when it has none.
+	SaveRevision(ctx context.Context, revision *domain.CoverRevision) error
+	// ListRevisions returns a cover's run history newest-first. Failed runs are
+	// excluded unless asked for: they are kept because their error explains the
+	// failure to the client and their stored prompt explains it to us, but the
+	// history is otherwise about renders that exist.
+	ListRevisions(ctx context.Context, coverID string, includeFailed bool) ([]domain.CoverRevision, error)
+	// DeleteRevision removes one run from a cover the user owns, returning
+	// domain.ErrNotFound when either id does not resolve for that user.
+	DeleteRevision(ctx context.Context, coverID, revisionID, userID string) error
 }
 
 // DSPProvider is implemented by each platform integration (Spotify, Apple
@@ -231,12 +266,16 @@ type ImageGenerator interface {
 	GenerateImage(ctx context.Context, prompt string) (domain.GeneratedImage, error)
 }
 
-// ImageStore holds generated cover art. It is the seam between storing bytes in
+// ImageStore holds generated cover art, keyed by the revision that produced it
+// so each run keeps its own bytes. It is the seam between storing bytes in
 // PostgreSQL, which is what happens today, and putting them in a bucket later.
+//
+// There is no URL in either direction: the store owns where the bytes live, and
+// the adapter that knows that is also the one that maps a revision back into the
+// domain, so it builds the URL there rather than handing it up the pipeline.
 type ImageStore interface {
-	// Put stores the image and returns the stable URL that will serve it. The
-	// store owns that URL because only it knows where the bytes ended up.
-	Put(ctx context.Context, coverID string, image domain.GeneratedImage) (url string, err error)
+	// Put stores the image for a revision, replacing any bytes already held.
+	Put(ctx context.Context, revisionID string, image domain.GeneratedImage) error
 	// Find returns the stored image, or domain.ErrNotFound.
-	Find(ctx context.Context, coverID string) (domain.GeneratedImage, error)
+	Find(ctx context.Context, revisionID string) (domain.GeneratedImage, error)
 }

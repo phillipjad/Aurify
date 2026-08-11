@@ -94,7 +94,7 @@ function RootLayout() {
             switches the row to exactly one screen: that definite height is what
             gives the route's flex-1 something real to divide. Declared by the
             route rather than listed here, so this file needs no route table. */}
-        <div key={pathname} className="route-enter mx-auto flex w-full max-w-5xl flex-col px-4 py-10">
+        <div key={pathname} className="route-enter mx-auto flex w-full max-w-5xl flex-col px-4 py-2">
           <Outlet />
         </div>
       </main>

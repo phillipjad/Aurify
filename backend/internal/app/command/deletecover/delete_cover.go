@@ -1,4 +1,5 @@
-// Package deletecover removes a cover a user owns.
+// Package deletecover removes a cover a user owns, and with it every run that
+// cover has ever had. Its sibling deleterevision drops a single run.
 package deletecover
 
 import (

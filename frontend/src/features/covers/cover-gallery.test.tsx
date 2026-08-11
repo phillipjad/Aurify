@@ -20,7 +20,9 @@ const READY_COVER = {
   playlistId: 'pl1',
   playlistName: 'Morning Coffee',
   imageUrl: 'https://cdn.test/c1.png',
+  runCount: 1,
   createdAt: '2026-01-01T00:00:00Z',
+  updatedAt: '2026-01-01T00:00:00Z',
   palette: [
     { dimension: 'energetic', hexColor: '#ff5a36', weight: 0.8 },
     { dimension: 'introspective', hexColor: '#4f86c6', weight: 0.4 },
@@ -108,35 +110,60 @@ describe('CoverGallery', () => {
 
     expect(await screen.findByRole('heading', { name: 'Failed One' })).toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: 'Ready One' })).not.toBeInTheDocument()
-    expect(mockFetch).toHaveBeenCalledWith('/covers?limit=20&offset=0&status=failed')
+    expect(mockFetch).toHaveBeenCalledWith('/covers?limit=20&status=failed')
   })
 
-  it('pages through covers: a full first page reveals Load more, which fetches the next offset', async () => {
+  // Keyset, not offset: the next page is asked for by naming the last row of the
+  // one before it, which is what stops a regeneration reordering the list from
+  // repeating or skipping a tile mid-scroll.
+  it('pages through covers: a full first page reveals Load more, which asks for what follows its last row', async () => {
     const page = (start: number, count: number) =>
       Array.from({ length: count }, (_, i) => ({
         ...READY_COVER,
         id: `c${start + i}`,
         playlistName: `Playlist ${start + i}`,
+        updatedAt: `2026-01-01T00:00:${String(59 - start - i).padStart(2, '0')}Z`,
       }))
     mockFetch.mockImplementation((path: string) => {
-      const offset = Number(new URL(`http://x${path}`).searchParams.get('offset') ?? '0')
+      const cursor = new URL(`http://x${path}`).searchParams.get('before_id')
       // First page is full (20) so more exist; the second page is short (ends it).
-      return Promise.resolve(offset === 0 ? page(0, 20) : page(20, 3))
+      return Promise.resolve(cursor == null ? page(0, 20) : page(20, 3))
     })
     renderWithProviders(<CoverGallery />)
 
     await screen.findByRole('heading', { name: 'Playlist 0' })
-    expect(mockFetch).toHaveBeenCalledWith('/covers?limit=20&offset=0')
+    expect(mockFetch).toHaveBeenCalledWith('/covers?limit=20')
 
     await userEvent.click(await screen.findByRole('button', { name: /load more/i }))
 
     // The 23rd cover is deliberately outside the rendered window, so paging is
     // asserted on the request and on the size the grid reports, not on a tile that
     // windowing is supposed to leave out.
-    await waitFor(() => expect(mockFetch).toHaveBeenCalledWith('/covers?limit=20&offset=20'))
+    await waitFor(() =>
+      expect(mockFetch).toHaveBeenCalledWith('/covers?limit=20&before=2026-01-01T00%3A00%3A40Z&before_id=c19'),
+    )
     await waitFor(() => expect(screen.getAllByRole('listitem')[0]).toHaveAttribute('aria-setsize', '23'))
     // Short second page → no further Load more.
     expect(screen.queryByRole('button', { name: /load more/i })).not.toBeInTheDocument()
+  })
+
+  // The tile is one playlist, however many times it has been generated, so the
+  // count is what says the history is there to open.
+  it('marks a tile that has been generated more than once', async () => {
+    mockFetch.mockResolvedValue([
+      { ...READY_COVER, runCount: 3 },
+      { ...READY_COVER, id: 'c2', playlistName: 'Only Once', runCount: 1 },
+    ])
+    renderWithProviders(<CoverGallery />)
+
+    const many = (await screen.findByRole('heading', { name: 'Morning Coffee' })).closest(
+      '[role="listitem"]',
+    ) as HTMLElement
+    expect(within(many).getByText('3 versions')).toBeInTheDocument()
+
+    // A single run is the unremarkable case and stays unlabelled.
+    const once = screen.getByRole('heading', { name: 'Only Once' }).closest('[role="listitem"]') as HTMLElement
+    expect(within(once).queryByText(/versions?/i)).not.toBeInTheDocument()
   })
 
   it('renders the palette as readable text, not a hover-only tooltip', async () => {

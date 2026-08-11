@@ -6,6 +6,7 @@ package command
 import (
 	"github.com/phillipjad/aurify/backend/internal/app/command/connectdsp"
 	"github.com/phillipjad/aurify/backend/internal/app/command/deletecover"
+	"github.com/phillipjad/aurify/backend/internal/app/command/deleterevision"
 	"github.com/phillipjad/aurify/backend/internal/app/command/federatedsignin"
 	"github.com/phillipjad/aurify/backend/internal/app/command/generatecover"
 	"github.com/phillipjad/aurify/backend/internal/app/command/refreshsession"
@@ -19,9 +20,10 @@ import (
 
 // Bus aggregates every command handler. Add new commands as fields here.
 type Bus struct {
-	ConnectDSP    *connectdsp.Handler
-	GenerateCover *generatecover.Handler
-	DeleteCover   *deletecover.Handler
+	ConnectDSP     *connectdsp.Handler
+	GenerateCover  *generatecover.Handler
+	DeleteCover    *deletecover.Handler
+	DeleteRevision *deleterevision.Handler
 
 	// Authentication.
 	SignUp               *signup.Handler

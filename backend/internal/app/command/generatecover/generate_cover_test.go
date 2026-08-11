@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"sync"
 	"testing"
 	"time"
 
@@ -93,23 +94,117 @@ func (u *fakeUsers) FindByEmail(context.Context, string) (*domain.User, error) {
 }
 
 // fakeCovers records every save, so a test can inspect the cover as first written
-// rather than only its final state.
-type fakeCovers struct{ saved []domain.Cover }
+// rather than only its final state. Revisions are recorded the same way: a run's
+// output lands there, not on the cover.
+//
+// It models the real repository's one-run-per-cover claim, because the pipeline
+// depends on it: a fake that accepted every StartRun would let these tests pass
+// against a handler that had lost the guarantee. The mutex is real too — the
+// pipeline writes from its own goroutine while a test may be starting another.
+type fakeCovers struct {
+	mu        sync.Mutex
+	saved     []domain.Cover
+	revisions []domain.CoverRevision
+	// touched records heartbeats against the status the run was in when each
+	// landed, which is how a test checks that every phase keeps the row alive
+	// and not just the one that used to.
+	touched []domain.CoverStatus
+	// inFlight is the claim. One playlist per fake, which is all these tests use.
+	inFlight bool
+	// status is the run's current stage, for attributing those heartbeats.
+	status domain.CoverStatus
+}
 
 var _ ports.CoverRepository = (*fakeCovers)(nil)
 
-func (c *fakeCovers) Save(_ context.Context, cover *domain.Cover) error {
+func (c *fakeCovers) StartRun(ctx context.Context, cover *domain.Cover) error {
+	c.mu.Lock()
+	if c.inFlight {
+		c.mu.Unlock()
+		return domain.ErrGenerationInFlight
+	}
+	c.inFlight = true
+	c.mu.Unlock()
+	return c.Save(ctx, cover)
+}
+
+// Refuses a cancelled context, as a real database call would. That is what makes
+// the run-duration cap testable: the write recording the outcome has to be made
+// through a context other than the one that just expired.
+func (c *fakeCovers) Save(ctx context.Context, cover *domain.Cover) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	if cover.ID == "" {
 		cover.ID = "cover-1"
 	}
+	// Reaching a terminal status is what releases the claim.
+	if cover.Status.Terminal() {
+		c.inFlight = false
+	}
+	c.status = cover.Status
 	c.saved = append(c.saved, *cover)
 	return nil
 }
+
+func (c *fakeCovers) Touch(_ context.Context, _ string) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.touched = append(c.touched, c.status)
+	return nil
+}
+
+// beatsDuring reports how many heartbeats landed while the run was in a stage.
+func (c *fakeCovers) beatsDuring(status domain.CoverStatus) int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	n := 0
+	for _, s := range c.touched {
+		if s == status {
+			n++
+		}
+	}
+	return n
+}
 func (c *fakeCovers) FindByID(context.Context, string) (*domain.Cover, error) { return nil, nil }
-func (c *fakeCovers) ListByUser(context.Context, string, string, int, int) ([]domain.Cover, error) {
+func (c *fakeCovers) ListByUser(
+	context.Context, string, string, int, domain.CoverCursor,
+) ([]domain.Cover, error) {
 	return nil, nil
 }
 func (c *fakeCovers) Delete(context.Context, string, string) error { return nil }
+
+// Mints an id like the real repository does, since the pipeline keys the stored
+// image bytes by it.
+func (c *fakeCovers) SaveRevision(ctx context.Context, rev *domain.CoverRevision) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if rev.ID == "" {
+		rev.ID = "revision-1"
+	}
+	c.revisions = append(c.revisions, *rev)
+	return nil
+}
+
+func (c *fakeCovers) ListRevisions(context.Context, string, bool) ([]domain.CoverRevision, error) {
+	return nil, nil
+}
+func (c *fakeCovers) DeleteRevision(context.Context, string, string, string) error { return nil }
+
+// lastRevision is the run as finally recorded, which is what a terminal
+// assertion is about.
+func (c *fakeCovers) lastRevision(t *testing.T) domain.CoverRevision {
+	t.Helper()
+	if len(c.revisions) == 0 {
+		t.Fatal("no revision was recorded, so the run left no history")
+	}
+	return c.revisions[len(c.revisions)-1]
+}
 
 type fakeLyrics struct{}
 
@@ -155,20 +250,21 @@ func (fakeImages) GenerateImage(context.Context, string) (domain.GeneratedImage,
 }
 
 // fakeImageStore records what it was handed, so a test can check that the bytes
-// the generator produced are the bytes that got stored.
+// the generator produced are the bytes that got stored, under the run that
+// produced them.
 type fakeImageStore struct {
-	coverID string
-	image   domain.GeneratedImage
+	revisionID string
+	image      domain.GeneratedImage
 }
 
 func (s *fakeImageStore) Put(
 	_ context.Context,
-	coverID string,
+	revisionID string,
 	image domain.GeneratedImage,
-) (string, error) {
-	s.coverID = coverID
+) error {
+	s.revisionID = revisionID
 	s.image = image
-	return "/api/v1/covers/" + coverID + "/image", nil
+	return nil
 }
 
 func (s *fakeImageStore) Find(context.Context, string) (domain.GeneratedImage, error) {
@@ -229,6 +325,62 @@ func TestHandleAcceptsWithAPendingCover(t *testing.T) {
 	}
 }
 
+// One run at a time per cover. The accept has to be refused outright rather
+// than starting a second pipeline over the same row: two would interleave their
+// status writes, and whichever finished second could leave the cover stuck
+// non-terminal until the sweep cleared it.
+func TestASecondGenerationIsRefusedWhileOneIsRunning(t *testing.T) {
+	provider := &fakeProvider{playlist: domain.Playlist{ID: "PL1", Name: "Chill Vibes"}}
+	handler, covers, images := newHandler(provider)
+	// Blocks the first pipeline inside the image call, so it is genuinely still
+	// in flight when the second request arrives.
+	release := make(chan struct{})
+	handler.images = blockingImages{release: release}
+
+	cmd := Command{UserID: "user-1", Platform: domain.PlatformYouTubeMusic, PlaylistID: "PL1"}
+	if _, err := handler.Handle(context.Background(), cmd); err != nil {
+		t.Fatalf("first Handle: %v", err)
+	}
+
+	_, err := handler.Handle(context.Background(), cmd)
+	if !errors.Is(err, domain.ErrGenerationInFlight) {
+		t.Fatalf("second Handle = %v, want ErrGenerationInFlight", err)
+	}
+
+	close(release)
+	handler.Wait()
+
+	// Exactly one run happened: one revision, one stored image.
+	if len(covers.revisions) == 0 {
+		t.Fatal("no revision recorded")
+	}
+	ids := map[string]bool{}
+	for _, rev := range covers.revisions {
+		ids[rev.ID] = true
+	}
+	if len(ids) != 1 {
+		t.Errorf("%d distinct revisions, want the single run's", len(ids))
+	}
+	if images.revisionID == "" {
+		t.Error("the surviving run stored no image")
+	}
+
+	// And once it has finished, the playlist can be generated again.
+	if _, err := handler.Handle(context.Background(), cmd); err != nil {
+		t.Fatalf("Handle after the first run finished: %v", err)
+	}
+	handler.Wait()
+}
+
+// blockingImages holds a generation open until released, so a test can observe
+// the pipeline mid-flight.
+type blockingImages struct{ release chan struct{} }
+
+func (b blockingImages) GenerateImage(context.Context, string) (domain.GeneratedImage, error) {
+	<-b.release
+	return domain.GeneratedImage{Bytes: []byte("\x89PNG-ish"), ContentType: "image/png"}, nil
+}
+
 // The gallery labels each cover with this, and it used to be saved empty, so
 // every tile rendered untitled.
 func TestGeneratedCoverCarriesThePlaylistName(t *testing.T) {
@@ -261,10 +413,11 @@ func TestGeneratedCoverCarriesThePlaylistName(t *testing.T) {
 	}
 }
 
-// The generator hands back bytes and the store decides where they live, so the
-// cover's ImageURL has to come from the store rather than from the generator.
-// Getting this wrong produces covers that reach "ready" pointing at nothing.
-func TestTheStoredImageIsWhatTheCoverPointsAt(t *testing.T) {
+// The bytes belong to the run that produced them, not to the playlist: that is
+// what lets earlier artwork stay reachable and what keeps a tile showing its
+// last good render while the next run is in flight. Storing them under the cover
+// id would overwrite the previous run's image on every regeneration.
+func TestTheStoredImageIsKeyedByTheRunThatProducedIt(t *testing.T) {
 	provider := &fakeProvider{playlist: domain.Playlist{ID: "PL1", Name: "Chill Vibes"}}
 	handler, covers, images := newHandler(provider)
 
@@ -278,8 +431,12 @@ func TestTheStoredImageIsWhatTheCoverPointsAt(t *testing.T) {
 	}
 	handler.Wait()
 
-	if images.coverID != id {
-		t.Errorf("stored under %q, want the cover's own id %q", images.coverID, id)
+	rev := covers.lastRevision(t)
+	if images.revisionID != rev.ID {
+		t.Errorf("stored under %q, want the revision's id %q", images.revisionID, rev.ID)
+	}
+	if images.revisionID == id {
+		t.Errorf("stored under the cover id %q, which a regeneration would overwrite", id)
 	}
 	if string(images.image.Bytes) != "\x89PNG-ish" {
 		t.Errorf("stored bytes = %q, want what the generator produced", images.image.Bytes)
@@ -288,9 +445,39 @@ func TestTheStoredImageIsWhatTheCoverPointsAt(t *testing.T) {
 		t.Errorf("stored content type = %q, want the generator's", images.image.ContentType)
 	}
 
-	last := covers.saved[len(covers.saved)-1]
-	if want := "/api/v1/covers/" + id + "/image"; last.ImageURL != want {
-		t.Errorf("cover ImageURL = %q, want the store's URL %q", last.ImageURL, want)
+	// The revision has to exist before the bytes are keyed to it, or the
+	// foreign key rejects them.
+	if rev.CoverID != id {
+		t.Errorf("revision belongs to %q, want the cover %q", rev.CoverID, id)
+	}
+	if rev.Status != domain.CoverStatusReady {
+		t.Errorf("revision status = %q, want ready", rev.Status)
+	}
+}
+
+// A run's analysis and prompt belong to the revision. Publishing them on the
+// cover mid-run is what would swap a tile's palette to the new run's before it
+// has any artwork to go with it.
+func TestTheRunsOutputLandsOnTheRevisionNotTheCover(t *testing.T) {
+	provider := &fakeProvider{playlist: domain.Playlist{ID: "PL1", Name: "Chill Vibes"}}
+	handler, covers, _ := newHandler(provider)
+
+	if _, err := handler.Handle(context.Background(), Command{
+		UserID:     "user-1",
+		Platform:   domain.PlatformYouTubeMusic,
+		PlaylistID: "PL1",
+	}); err != nil {
+		t.Fatalf("Handle: %v", err)
+	}
+	handler.Wait()
+
+	if got := covers.lastRevision(t).Prompt; got != "a prompt" {
+		t.Errorf("revision prompt = %q, want the generated one", got)
+	}
+	for i, c := range covers.saved {
+		if c.ImageURL != "" || len(c.Analysis.Palette) > 0 {
+			t.Errorf("save %d wrote run output onto the cover: %+v", i, c)
+		}
 	}
 }
 
@@ -317,8 +504,17 @@ func TestAFailedImageStillRecordsThePrompt(t *testing.T) {
 	if last.Status != domain.CoverStatusFailed {
 		t.Errorf("status = %q, want failed", last.Status)
 	}
-	if last.Prompt != "a prompt" {
-		t.Errorf("prompt = %q, want it kept so the refusal can be diagnosed", last.Prompt)
+	// On the revision now, which is the whole reason failed runs are recorded
+	// at all rather than only counted.
+	rev := covers.lastRevision(t)
+	if rev.Status != domain.CoverStatusFailed {
+		t.Errorf("revision status = %q, want failed", rev.Status)
+	}
+	if rev.Prompt != "a prompt" {
+		t.Errorf("prompt = %q, want it kept so the refusal can be diagnosed", rev.Prompt)
+	}
+	if rev.Error == "" {
+		t.Error("the failed run records no cause")
 	}
 }
 
@@ -330,7 +526,12 @@ func (refusingImages) GenerateImage(context.Context, string) (domain.GeneratedIm
 
 // A cover that reaches "ready" with no retrievable image is worse than a visible
 // failure, because the gallery renders it as a permanently broken tile.
-func TestAFailedStoreFailsTheCover(t *testing.T) {
+//
+// The revision is written before the bytes are, so this is also the case where a
+// row already recorded as ready has to be walked back: a ready revision is what
+// the tile picks as its current artwork, and one pointing at nothing would stick
+// there until the user deleted it.
+func TestAFailedStoreFailsTheCoverAndItsRevision(t *testing.T) {
 	provider := &fakeProvider{playlist: domain.Playlist{ID: "PL1"}}
 	handler, covers, _ := newHandler(provider)
 	handler.imageStore = failingImageStore{}
@@ -348,12 +549,21 @@ func TestAFailedStoreFailsTheCover(t *testing.T) {
 	if last.Status != domain.CoverStatusFailed {
 		t.Errorf("status = %q, want failed", last.Status)
 	}
+	rev := covers.lastRevision(t)
+	if rev.Status != domain.CoverStatusFailed {
+		t.Errorf("revision status = %q, want the ready row rewritten as failed", rev.Status)
+	}
+	// Rewritten, not added: the run is one revision however it ended.
+	if rev.ID != covers.revisions[0].ID {
+		t.Errorf("revision id changed from %q to %q, so the run left two rows",
+			covers.revisions[0].ID, rev.ID)
+	}
 }
 
 type failingImageStore struct{}
 
-func (failingImageStore) Put(context.Context, string, domain.GeneratedImage) (string, error) {
-	return "", errors.New("disk is unhappy")
+func (failingImageStore) Put(context.Context, string, domain.GeneratedImage) error {
+	return errors.New("disk is unhappy")
 }
 
 func (failingImageStore) Find(context.Context, string) (domain.GeneratedImage, error) {
@@ -492,7 +702,7 @@ func TestWithoutFeaturesThePaletteIsTheConstantOne(t *testing.T) {
 	handler, covers := withFeatures(nil, nil)
 	generate(t, handler)
 
-	got := covers.saved[len(covers.saved)-1].Analysis
+	got := covers.lastRevision(t).Analysis
 	if d := dominant(got); d != "melancholic" {
 		t.Fatalf("dominant dimension = %q, expected the known-constant %q", d, "melancholic")
 	}
@@ -509,7 +719,7 @@ func TestMeasuredFeaturesChangeThePalette(t *testing.T) {
 	handler, covers := withFeatures(src, nil)
 	generate(t, handler)
 
-	got := covers.saved[len(covers.saved)-1].Analysis
+	got := covers.lastRevision(t).Analysis
 	if d := dominant(got); d == "melancholic" {
 		t.Errorf("an energetic, danceable, happy playlist still came out melancholic: %+v", got.Palette)
 	}
@@ -535,7 +745,7 @@ func TestTheEstimatorIsSkippedWhenFeaturesWereMeasured(t *testing.T) {
 	if est.calls != 0 {
 		t.Errorf("the estimator ran %d times despite measured features", est.calls)
 	}
-	got := covers.saved[len(covers.saved)-1].Analysis
+	got := covers.lastRevision(t).Analysis
 	if math.Abs(got.MeanFeatures.Energy-0.7) > 1e-9 {
 		t.Errorf("energy = %v, want the measured 0.70", got.MeanFeatures.Energy)
 	}
@@ -551,7 +761,7 @@ func TestTheEstimatorFillsInWhenNothingMatched(t *testing.T) {
 	handler, covers := withFeatures(src, est)
 	generate(t, handler)
 
-	got := covers.saved[len(covers.saved)-1].Analysis
+	got := covers.lastRevision(t).Analysis
 	if est.calls != 1 {
 		t.Errorf("the estimator ran %d times, want 1", est.calls)
 	}
@@ -580,7 +790,7 @@ func TestThinCoverageBlendsTowardTheEstimate(t *testing.T) {
 	handler, covers := withTracks(src, est, playlistOf(7))
 	generate(t, handler)
 
-	got := covers.saved[len(covers.saved)-1].Analysis
+	got := covers.lastRevision(t).Analysis
 	if est.calls != 1 {
 		t.Fatalf("the estimator ran %d times, want 1 at 2 of 7 matched", est.calls)
 	}
@@ -613,7 +823,7 @@ func TestAShortPlaylistIsStillBlended(t *testing.T) {
 		t.Fatalf("the estimator ran %d times, want 1 at three matched tracks", est.calls)
 	}
 	// Every track measured, so the share floor is cleared; 3 of 8 is what binds.
-	got := covers.saved[len(covers.saved)-1].Analysis
+	got := covers.lastRevision(t).Analysis
 	if want := 3.0 / 8.0; math.Abs(got.MeanFeatures.Danceability-want) > 1e-9 {
 		t.Errorf("danceability = %v, want %v", got.MeanFeatures.Danceability, want)
 	}
@@ -639,28 +849,81 @@ func TestTheEstimatorReceivesTheResolvedLyrics(t *testing.T) {
 // The analyzing phase writes nothing of its own, so without a heartbeat
 // updated_at is frozen across it and the stuck-cover sweep in cmd/api would
 // eventually fail a generation that is still working (ADR 0019).
-func TestTheAnalyzingPhaseKeepsTheRowAlive(t *testing.T) {
+func TestEveryPhaseKeepsTheRowAlive(t *testing.T) {
 	defer func(d time.Duration) { heartbeatInterval = d }(heartbeatInterval)
 	heartbeatInterval = time.Millisecond
 
+	// Both long phases stalled: the feature lookup inside analyzing, and the
+	// image call inside generating. Generating is the one that used to beat not
+	// at all, and it is the phase whose real upstreams are slowest.
 	handler, covers := withFeatures(&fakeFeatures{delay: 50 * time.Millisecond}, nil)
+	handler.images = slowImages{delay: 50 * time.Millisecond}
 	generate(t, handler)
 
-	analyzing := 0
-	for _, c := range covers.saved {
-		if c.Status == domain.CoverStatusAnalyzing {
-			analyzing++
+	for _, stage := range []domain.CoverStatus{domain.CoverStatusAnalyzing, domain.CoverStatusGenerating} {
+		if n := covers.beatsDuring(stage); n == 0 {
+			t.Errorf("no heartbeat during %s, so the sweep would reclaim a run that is simply slow", stage)
 		}
 	}
-	// One save enters the stage; every save past it is a heartbeat.
-	if analyzing < 2 {
-		t.Errorf("%d analyzing saves, want the entry save plus heartbeats", analyzing)
+
+	// A beat outliving the run would keep a finished cover looking alive, and
+	// with it the claim on that playlist.
+	if n := covers.beatsDuring(domain.CoverStatusReady); n > 0 {
+		t.Errorf("%d heartbeats after the run finished, want none", n)
 	}
-	// A heartbeat outliving its phase would write the row back to analyzing
-	// after the pipeline had moved on.
 	if last := covers.saved[len(covers.saved)-1]; last.Status != domain.CoverStatusReady {
-		t.Errorf("status = %q, want the heartbeat to have stopped before the end", last.Status)
+		t.Errorf("status = %q, want ready", last.Status)
 	}
+}
+
+type slowImages struct{ delay time.Duration }
+
+func (s slowImages) GenerateImage(ctx context.Context, _ string) (domain.GeneratedImage, error) {
+	select {
+	case <-time.After(s.delay):
+		return domain.GeneratedImage{Bytes: []byte("\x89PNG-ish"), ContentType: "image/png"}, nil
+	case <-ctx.Done():
+		return domain.GeneratedImage{}, ctx.Err()
+	}
+}
+
+// A run that never returns would hold its playlist's claim for as long as the
+// process lived: the heartbeat it relies on to stay alive is exactly what keeps
+// the sweep off it. The cap is the only thing that ends one.
+func TestARunThatOverrunsIsFailedAndReleasesItsClaim(t *testing.T) {
+	defer func(d time.Duration) { maxRunDuration = d }(maxRunDuration)
+	maxRunDuration = 20 * time.Millisecond
+
+	provider := &fakeProvider{playlist: domain.Playlist{ID: "PL1", Name: "Chill Vibes"}}
+	handler, covers, _ := newHandler(provider)
+	// Far longer than the cap, and cancellable, like a real upstream call.
+	handler.images = slowImages{delay: time.Minute}
+
+	cmd := Command{UserID: "user-1", Platform: domain.PlatformYouTubeMusic, PlaylistID: "PL1"}
+	if _, err := handler.Handle(context.Background(), cmd); err != nil {
+		t.Fatalf("Handle: %v", err)
+	}
+	handler.Wait()
+
+	// The outcome has to be written through a context that is not the one that
+	// just expired, or the cover stays claimed and the cap achieves nothing.
+	last := covers.saved[len(covers.saved)-1]
+	if last.Status != domain.CoverStatusFailed {
+		t.Fatalf("status = %q, want failed", last.Status)
+	}
+	if last.Error == "" {
+		t.Error("an overrun run records no cause")
+	}
+	if rev := covers.lastRevision(t); rev.Status != domain.CoverStatusFailed {
+		t.Errorf("revision status = %q, want failed", rev.Status)
+	}
+
+	// Released: the playlist can be generated again straight away.
+	handler.images = fakeImages{}
+	if _, err := handler.Handle(context.Background(), cmd); err != nil {
+		t.Fatalf("Handle after the overrun: %v", err)
+	}
+	handler.Wait()
 }
 
 // Both sources are best effort. Neither failing may cost the user their cover.

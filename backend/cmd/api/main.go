@@ -19,6 +19,7 @@ import (
 	"github.com/phillipjad/aurify/backend/internal/app/command"
 	"github.com/phillipjad/aurify/backend/internal/app/command/connectdsp"
 	"github.com/phillipjad/aurify/backend/internal/app/command/deletecover"
+	"github.com/phillipjad/aurify/backend/internal/app/command/deleterevision"
 	"github.com/phillipjad/aurify/backend/internal/app/command/federatedsignin"
 	"github.com/phillipjad/aurify/backend/internal/app/command/generatecover"
 	"github.com/phillipjad/aurify/backend/internal/app/command/refreshsession"
@@ -190,7 +191,8 @@ func run() error {
 				lyricsResolver, sentiment, engine, prompts, images, store.CoverImages(),
 				trackFeatures, featureEstimator,
 			),
-			DeleteCover: deletecover.NewHandler(store.Covers()),
+			DeleteCover:    deletecover.NewHandler(store.Covers()),
+			DeleteRevision: deleterevision.NewHandler(store.Covers()),
 
 			SignUp: signup.NewHandler(
 				store.Users(), store.Credentials(), store.EmailTokens(), mailer, cfg.AppBaseURL,
@@ -246,26 +248,25 @@ func run() error {
 		return err
 	}
 
-	// Generation runs in-process (ADR 0019), so a crash orphans in-flight covers
-	// in a non-terminal status. The cutoff is far beyond the longest real run, so
-	// another instance's active pipeline is never swept.
-	go func() {
-		const staleAfter = 10 * time.Minute
-		ticker := time.NewTicker(5 * time.Minute)
-		defer ticker.Stop()
-		for {
-			if n, err := store.Covers().FailStuck(ctx, time.Now().UTC().Add(-staleAfter)); err != nil {
-				slog.Warn("sweeping stuck covers failed", "error", err)
-			} else if n > 0 {
-				slog.Info("failed stuck covers", "count", n)
-			}
-			select {
-			case <-ctx.Done():
-				return
-			case <-ticker.C:
-			}
-		}
-	}()
+	// A cover claims its playlist for as long as its generation runs (ADR 0022),
+	// and generation runs in-process (ADR 0019), so anything that stops a
+	// pipeline without it reaching a terminal status leaves that playlist
+	// claimed by nobody. The sweeper is what releases those.
+	//
+	// Two minutes of silence is the threshold because every phase of a live run
+	// heartbeats every 30s, so a quiet cover has missed four beats. It used to
+	// be ten minutes, sized for the generating phase writing nothing across a
+	// prompt call and an image call; that phase beats now, so the threshold
+	// answers to the beat rather than to the slowest upstream.
+	sweeper := coverSweeper{
+		covers:     store.Covers(),
+		staleAfter: 2 * time.Minute,
+		interval:   30 * time.Second,
+	}
+	// Synchronous, and before the server accepts anything, so the reap can never
+	// race a run this process has just claimed.
+	sweeper.Reap(ctx)
+	go sweeper.Sweep(ctx)
 
 	slog.Info("starting aurify api", "addr", cfg.HTTPAddr)
 	server := mux.NewServer(cfg.HTTPAddr, router)

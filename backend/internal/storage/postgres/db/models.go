@@ -23,19 +23,27 @@ type Cover struct {
 	PlaylistID   string
 	PlaylistName string
 	Status       string
-	Prompt       string
-	ImageUrl     string
-	Analysis     []byte
 	Error        string
 	CreatedAt    pgtype.Timestamptz
 	UpdatedAt    pgtype.Timestamptz
 }
 
 type CoverImage struct {
-	CoverID     string
+	RevisionID  string
 	Bytes       []byte
 	ContentType string
 	CreatedAt   pgtype.Timestamptz
+}
+
+type CoverRevision struct {
+	ID             string
+	CoverID        string
+	RevisionNumber int32
+	Status         string
+	Prompt         string
+	Analysis       []byte
+	Error          string
+	CompletedAt    pgtype.Timestamptz
 }
 
 type DspConnection struct {

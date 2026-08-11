@@ -103,6 +103,24 @@ resource "google_cloud_run_v2_service" "aurify" {
   template {
     service_account = google_service_account.run.email
 
+    # One instance, deliberately. Cover generation runs in-process (ADR 0019)
+    # and a cover is claimed by the run generating it (ADR 0022), so a claim is
+    # only ever held by a goroutine in *this* process. That is what lets startup
+    # reap every in-flight cover outright instead of waiting out a staleness
+    # threshold, which is the difference between a playlist being stuck for
+    # seconds after a crash and being stuck for a quarter of an hour.
+    #
+    # The cost is horizontal scale, which this workload does not need: the
+    # expensive part of a generation is waiting on rate-limited upstreams, not
+    # CPU. Raising this means giving the reap a threshold again, because a
+    # booting instance would otherwise fail its peers' live runs.
+    #
+    # min_instance_count stays at its default of 0, so the service still scales
+    # to zero when idle (ADR 0013).
+    scaling {
+      max_instance_count = 1
+    }
+
     containers {
       image = var.image
 

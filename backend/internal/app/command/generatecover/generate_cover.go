@@ -16,15 +16,28 @@ import (
 	"github.com/phillipjad/aurify/backend/internal/domain"
 )
 
-// heartbeatInterval is how often the analyzing phase touches the cover row.
+// heartbeatInterval is how often a run stamps its cover row as still alive.
 //
-// Against the ten-minute staleness threshold in cmd/api this is a wide margin
-// on purpose: it costs two writes on a typical run and it is what lets the
-// AcousticBrainz lookup cap be chosen for how long a user will watch a stage
-// rather than for how long the sweep will tolerate one.
+// It sets the sweep's staleness threshold in cmd/api, which has to clear the
+// longest gap a *live* run can leave between writes. That used to be the
+// generating phase, which wrote nothing across a 60s prompt call and a 120s
+// image call, and it is why the threshold was ten minutes. With every phase
+// beating, the threshold is a small multiple of this instead, and a run that
+// dies holds its playlist for a fraction as long.
 //
 // A var only so a test can shorten it; nothing reassigns it in production.
-var heartbeatInterval = time.Minute
+var heartbeatInterval = 30 * time.Second
+
+// maxRunDuration is the ceiling on one generation.
+//
+// A backstop, not a policy: every upstream call already has its own timeout, and
+// the worst legitimate run is around nine minutes if every one of them runs to
+// its ceiling. What this catches is the case the heartbeat cannot, because the
+// heartbeat is what keeps it alive — a pipeline that never returns holds its
+// playlist's claim against the sweep indefinitely.
+//
+// A var only so a test can shorten it; nothing reassigns it in production.
+var maxRunDuration = 15 * time.Minute
 
 // Command requests a cover for one of a user's playlists.
 type Command struct {
@@ -79,8 +92,23 @@ func NewHandler(
 	}
 }
 
-// Handle accepts the generation and returns the pending cover's id; the
-// pipeline runs in the background and reports over SSE (see ADR 0019).
+// Handle accepts the generation and returns the cover's id; the pipeline runs in
+// the background and reports over SSE (see ADR 0019).
+//
+// The id is the *playlist's* cover, so regenerating returns the same id it
+// returned last time rather than minting a second tile. The claim upserts on
+// (user, platform, playlist) and writes the row's own id back.
+//
+// One run at a time per cover. StartRun refuses while the cover is non-terminal
+// and returns domain.ErrGenerationInFlight, so a double-click, a second tab and
+// a second API instance all lose the race in the database rather than each
+// starting a pipeline. Two overlapping runs would interleave their status writes
+// on one row, and the one that finished second could leave the cover
+// non-terminal until the stuck sweep cleared it.
+//
+// The claim is released by reaching a terminal status, which every exit from run
+// does, or by the sweep in cmd/api if the process dies first (ADR 0019). A run
+// killed mid-flight therefore holds its playlist until the sweep clears it.
 func (h *Handler) Handle(ctx context.Context, cmd Command) (string, error) {
 	provider, conn, err := h.connections.Resolve(ctx, cmd.UserID, cmd.Platform)
 	if err != nil {
@@ -103,15 +131,19 @@ func (h *Handler) Handle(ctx context.Context, cmd Command) (string, error) {
 		Status:       domain.CoverStatusPending,
 		CreatedAt:    time.Now().UTC(),
 	}
-	if err := h.covers.Save(ctx, cover); err != nil {
+	// Nothing may start a pipeline except a claim that succeeded.
+	if err := h.covers.StartRun(ctx, cover); err != nil {
 		return "", err
 	}
 
-	// The request context dies with the response; the pipeline outlives it.
-	bg := context.WithoutCancel(ctx)
+	// The request context dies with the response; the pipeline outlives it, but
+	// not indefinitely — an unbounded run would hold this playlist's claim for
+	// as long as the process lived.
+	bg, cancel := context.WithTimeout(context.WithoutCancel(ctx), maxRunDuration)
 	h.running.Add(1)
 	go func() {
 		defer h.running.Done()
+		defer cancel()
 		h.run(bg, provider, conn, cover, cmd)
 	}()
 	return cover.ID, nil
@@ -121,8 +153,13 @@ func (h *Handler) Handle(ctx context.Context, cmd Command) (string, error) {
 // does not wait: interrupted covers are failed by the sweep in cmd/api.
 func (h *Handler) Wait() { h.running.Wait() }
 
-// run executes the pipeline, recording the outcome on the cover row. No caller
-// to return to, so every failure ends at h.fail.
+// run executes the pipeline, recording the run as a revision and its outcome on
+// the cover row. No caller to return to, so every failure ends at h.fail.
+//
+// What the run produces accumulates on rev, not on cover: the cover's prompt,
+// artwork and analysis are read from its newest successful revision, so writing
+// this run's part-finished output onto the cover is what would blank the tile
+// mid-regeneration.
 func (h *Handler) run(
 	ctx context.Context,
 	provider ports.DSPProvider,
@@ -130,22 +167,31 @@ func (h *Handler) run(
 	cover *domain.Cover,
 	cmd Command,
 ) {
+	// Held across the whole pipeline, not just the long phase. Every stage can
+	// go quiet for longer than the sweep should have to tolerate — generating
+	// spans a prompt call and an image call and writes nothing between them —
+	// and the claim on this playlist lasts until the run ends, so the row has to
+	// keep saying so throughout.
+	defer h.heartbeat(ctx, cover.ID)()
+
+	rev := &domain.CoverRevision{CoverID: cover.ID}
+
 	cover.Status = domain.CoverStatusAnalyzing
 	if err := h.covers.Save(ctx, cover); err != nil {
-		h.fail(ctx, cover, err)
+		h.fail(ctx, cover, rev, err)
 		return
 	}
 
-	result, err := h.analyze(ctx, provider, conn, cover, cmd)
+	result, err := h.analyze(ctx, provider, conn, cmd)
 	if err != nil {
-		h.fail(ctx, cover, err)
+		h.fail(ctx, cover, rev, err)
 		return
 	}
 
-	cover.Analysis = result
+	rev.Analysis = result
 	cover.Status = domain.CoverStatusGenerating
 	if err := h.covers.Save(ctx, cover); err != nil {
-		h.fail(ctx, cover, err)
+		h.fail(ctx, cover, rev, err)
 		return
 	}
 
@@ -154,48 +200,54 @@ func (h *Handler) run(
 	// where it lives is the store's job.
 	prompt, err := h.prompts.GeneratePrompt(ctx, result)
 	if err != nil {
-		h.fail(ctx, cover, err)
+		h.fail(ctx, cover, rev, err)
 		return
 	}
 	// Recorded before it is used, so a failure downstream keeps it. Image
 	// providers refuse prompts, and the prompt is the only thing that explains
 	// why; assigning it after the call discarded exactly the evidence needed.
-	cover.Prompt = prompt
+	rev.Prompt = prompt
 
 	image, err := h.images.GenerateImage(ctx, prompt)
 	if err != nil {
-		h.fail(ctx, cover, err)
-		return
-	}
-	imageURL, err := h.imageStore.Put(ctx, cover.ID, image)
-	if err != nil {
-		h.fail(ctx, cover, err)
+		h.fail(ctx, cover, rev, err)
 		return
 	}
 
-	cover.ImageURL = imageURL
+	// The revision lands before the bytes do, because the bytes are keyed by its
+	// id and cascade with it. Storing them is the last thing that can fail, and
+	// h.fail rewrites this same row as failed if it does, so a revision can
+	// never sit at "ready" pointing at nothing.
+	rev.Status = domain.CoverStatusReady
+	if err := h.covers.SaveRevision(ctx, rev); err != nil {
+		h.fail(ctx, cover, rev, err)
+		return
+	}
+	if err := h.imageStore.Put(ctx, rev.ID, image); err != nil {
+		h.fail(ctx, cover, rev, err)
+		return
+	}
+
+	// Last, because this write is the one the notify trigger fires on: by the
+	// time a watching client re-reads the cover, the new artwork is already
+	// there to be read.
 	cover.Status = domain.CoverStatusReady
 	if err := h.covers.Save(ctx, cover); err != nil {
-		h.fail(ctx, cover, err)
+		h.fail(ctx, cover, rev, err)
 	}
 }
 
 // analyze produces the playlist's analysis: tracks in, palette out.
 //
-// It is a function rather than the first half of run because of the heartbeat.
-// This phase is the long one, it writes nothing to the cover of its own, and
-// stopping the heartbeat has to happen on every exit from it; a defer at this
-// scope is what guarantees that, and what guarantees the writer is dead before
-// run touches the cover again.
+// A function rather than the first half of run because it is the phase with the
+// most steps and the least to say about the cover; keeping it separate is what
+// leaves run readable as the lifecycle it drives.
 func (h *Handler) analyze(
 	ctx context.Context,
 	provider ports.DSPProvider,
 	conn domain.DSPConnection,
-	cover *domain.Cover,
 	cmd Command,
 ) (domain.PlaylistAnalysis, error) {
-	defer h.heartbeat(ctx, cover)()
-
 	// 1. Ingest the playlist's tracks (normalized audio features included).
 	tracks, err := provider.ListTracks(ctx, conn, cmd.PlaylistID)
 	if err != nil {
@@ -258,20 +310,26 @@ func (h *Handler) analyze(
 	return result, nil
 }
 
-// heartbeat re-saves the cover on a timer, returning a stop that blocks until
+// heartbeat stamps the cover row on a timer, returning a stop that blocks until
 // the writer has exited.
 //
-// It exists because the analyzing phase writes nothing of its own: run saves the
-// cover as analyzing and does not save again until generating, which leaves
-// updated_at frozen across lyric resolution and the rate-limited feature
-// lookups. The sweep in cmd/api fails non-terminal covers untouched for ten
-// minutes, so without this the ceiling on that phase is a deadline rather than a
-// choice (see docs/adr/0019-async-cover-generation.md).
+// The pipeline's own writes are too far apart to keep a claim alive: analyzing
+// spans lyric resolution and the rate-limited feature lookups, generating spans
+// a prompt call and an image call, and neither writes anything in between. The
+// sweep in cmd/api reclaims a playlist whose cover has gone quiet, so without
+// this the ceiling on a phase would be a deadline rather than a choice (see
+// docs/adr/0019-async-cover-generation.md).
 //
-// Reads of the cover are safe because the caller writes nothing to it until stop
-// has returned. Each save fires the notify trigger, so a watching client simply
-// re-receives the snapshot it already has.
-func (h *Handler) heartbeat(ctx context.Context, cover *domain.Cover) (stop func()) {
+// It takes the id and not the cover, which is what makes it safe to run beside
+// the pipeline for the whole generation: the id is fixed once the run is
+// claimed, while the cover struct is being mutated stage by stage. Passing the
+// struct would be a data race, and a beat could write back a status the run had
+// already moved on from.
+//
+// Each beat bumps updated_at and so fires the notify trigger; a watching client
+// re-receives the snapshot it already has, which costs it a parse and a render
+// it was doing every second anyway for the stage label.
+func (h *Handler) heartbeat(ctx context.Context, coverID string) (stop func()) {
 	done, stopped := make(chan struct{}), make(chan struct{})
 	go func() {
 		defer close(stopped)
@@ -282,9 +340,9 @@ func (h *Handler) heartbeat(ctx context.Context, cover *domain.Cover) (stop func
 			case <-done:
 				return
 			case <-ticker.C:
-				// A heartbeat that cannot be written is not worth failing a
+				// A beat that cannot be written is not worth failing a
 				// generation over; the sweep is the backstop for that.
-				_ = h.covers.Save(ctx, cover)
+				_ = h.covers.Touch(ctx, coverID)
 			}
 		}
 	}()
@@ -294,9 +352,29 @@ func (h *Handler) heartbeat(ctx context.Context, cover *domain.Cover) (stop func
 	}
 }
 
-// fail marks the cover failed and persists the cause; the log is for operators.
-func (h *Handler) fail(ctx context.Context, cover *domain.Cover, cause error) {
+// fail records the run as a failed revision and marks the cover failed; the log
+// is for operators.
+//
+// The revision goes first, and the cover second, so the write that fires the
+// notify trigger is the one after the history is complete. A failed run keeps
+// whatever prompt and analysis it got as far as, which is the only evidence
+// that explains an image-provider refusal — and it leaves the cover's *artwork*
+// alone, so the tile still shows the last render that worked.
+func (h *Handler) fail(ctx context.Context, cover *domain.Cover, rev *domain.CoverRevision, cause error) {
 	slog.Error("cover generation failed", "cover", cover.ID, "error", cause)
+
+	// Detached, because the most likely reason to be here is that ctx is the
+	// thing that died: the run hit maxRunDuration, or an upstream call was
+	// cancelled with it. Writing the outcome through a cancelled context would
+	// fail both writes and leave the cover claimed until the sweep, which is
+	// exactly the wedge the cap exists to avoid.
+	ctx = context.WithoutCancel(ctx)
+
+	rev.Status = domain.CoverStatusFailed
+	rev.Error = cause.Error()
+	rev.CompletedAt = time.Now().UTC()
+	_ = h.covers.SaveRevision(ctx, rev)
+
 	cover.Status = domain.CoverStatusFailed
 	cover.Error = cause.Error()
 	_ = h.covers.Save(ctx, cover)

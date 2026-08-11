@@ -24,12 +24,12 @@ var validStatuses = map[domain.CoverStatus]bool{
 }
 
 // Query is a paginated request for a user's covers, optionally filtered by
-// status.
+// status. After is the keyset position; its zero value is the first page.
 type Query struct {
 	UserID string
 	Status domain.CoverStatus
 	Limit  int
-	Offset int
+	After  domain.CoverCursor
 }
 
 // Handler executes the ListCovers query.
@@ -49,13 +49,16 @@ func (h *Handler) Handle(ctx context.Context, q Query) ([]domain.Cover, error) {
 	if q.Limit <= 0 || q.Limit > maxLimit {
 		q.Limit = defaultLimit
 	}
-	if q.Offset < 0 {
-		q.Offset = 0
+	// Half a cursor is not a position. Falling back to the first page beats
+	// paging from an arbitrary one, and it is what a client that sent only a
+	// timestamp meant anyway.
+	if q.After.UpdatedAt.IsZero() || q.After.ID == "" {
+		q.After = domain.CoverCursor{}
 	}
 
 	status := ""
 	if validStatuses[q.Status] {
 		status = string(q.Status)
 	}
-	return h.covers.ListByUser(ctx, q.UserID, status, q.Limit, q.Offset)
+	return h.covers.ListByUser(ctx, q.UserID, status, q.Limit, q.After)
 }

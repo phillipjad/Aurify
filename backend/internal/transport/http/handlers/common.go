@@ -51,6 +51,10 @@ func respondError(c mux.RouteContext, err error) {
 		})
 	case errors.Is(err, domain.ErrEmailTaken):
 		c.Conflict("Email already registered", "An account with that email already exists. Try signing in instead.")
+	case errors.Is(err, domain.ErrGenerationInFlight):
+		// The existing run is the one the caller wanted; its stream is already
+		// reporting, so this says "wait", not "that failed".
+		c.Conflict("Already generating", "This playlist is already being generated. Watch that run finish first.")
 	case errors.Is(err, signup.ErrWeakPassword):
 		c.BadRequest("Password too short", err.Error())
 	case errors.Is(err, signup.ErrInvalidEmail):

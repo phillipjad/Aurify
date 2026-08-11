@@ -5,7 +5,7 @@ import type { InfiniteData, QueryClient } from '@tanstack/react-query'
 
 import { maybeToastCoverSettled } from '../cover-toasts'
 import { BASE_URL } from './client'
-import { queryKeys, TERMINAL_STATUSES } from './queries'
+import { TERMINAL_STATUSES } from './queries'
 import type { Cover } from './types'
 
 interface CoverStream {
@@ -59,7 +59,14 @@ function closeStream(id: string) {
 
 /** Write one cover snapshot into the detail cache and every loaded list page. */
 function applyCover(queryClient: QueryClient, cover: Cover) {
-  queryClient.setQueryData(queryKeys.cover(cover.id), cover)
+  // Merged rather than replaced, and across both toggle variants of the key:
+  // the stream carries no run history (resending an unchanged one with every
+  // heartbeat buys nothing), so assigning the snapshot outright would empty the
+  // list the detail page is showing.
+  queryClient.setQueriesData<Cover>({ queryKey: ['covers', 'detail', cover.id] }, (previous) => ({
+    ...cover,
+    revisions: previous?.revisions,
+  }))
   queryClient.setQueriesData<InfiniteData<Cover[]>>({ queryKey: ['covers', 'list'] }, (data) => {
     if (!data) return data
     return {
@@ -68,9 +75,15 @@ function applyCover(queryClient: QueryClient, cover: Cover) {
     }
   })
 
+  // A settled run is a new entry in that history, and the merge above cannot
+  // invent it. Refetching is what puts it there.
+  if (TERMINAL_STATUSES.has(cover.status)) {
+    void queryClient.invalidateQueries({ queryKey: ['covers', 'detail', cover.id] })
+  }
+
   // A generation started after the gallery loaded is in none of its pages, so
   // updating in place cannot reach it. Refetch once per cover and let the server
-  // place the row, rather than splicing into an offset-paginated list.
+  // place the row, rather than splicing it in at a guessed position.
   if (!seenCovers.has(cover.id)) {
     seenCovers.add(cover.id)
     void queryClient.invalidateQueries({ queryKey: ['covers', 'list'] })
