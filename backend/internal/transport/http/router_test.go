@@ -159,7 +159,7 @@ func TestDSPLoginRejectsAnonymousCallers(t *testing.T) {
 }
 
 // The image route must serve an anonymous caller. An <img> tag fetching this
-// cross-origin (app on :5173, API on :8080) sends no credentials, so requiring a
+// cross-origin (app on :5173, API on :18080) sends no credentials, so requiring a
 // session would mean every cover in the gallery renders as a broken image.
 func TestCoverImageServesAnonymousCallers(t *testing.T) {
 	router, _ := newTestRouter(t)

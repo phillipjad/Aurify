@@ -155,7 +155,7 @@ user is, and sharing a client would let a data connection imply a login.
 The redirect points at the API's own port, matching the DSP callbacks, so the
 container stack can complete a sign-in with no frontend dev server running.
 Cookies are scoped by host and ignore the port, so a session cookie set on
-`localhost:8080` is still sent to the app on `localhost:5173`.
+`localhost:18080` is still sent to the app on `localhost:5173`.
 
 Google requires HTTPS for every non-localhost redirect URI, so a deployment sets
 its real public URL, for example

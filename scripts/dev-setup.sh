@@ -58,7 +58,7 @@ AURIFY_SUPPORT_EMAIL=support@aurify.local
 # stack can complete a sign-in with no frontend dev server running. Cookies are
 # scoped by host and ignore the port, so this still reaches the app on :5173.
 # Register this exact string in Google Cloud; it is matched exactly.
-AURIFY_GOOGLE_REDIRECT_URL=http://localhost:8080/api/v1/auth/federated/google/callback
+AURIFY_GOOGLE_REDIRECT_URL=http://localhost:18080/api/v1/auth/federated/google/callback
 CONFIG
 
 echo "✓ wrote $TARGET"

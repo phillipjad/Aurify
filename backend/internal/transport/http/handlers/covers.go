@@ -204,7 +204,7 @@ func (h *Covers) Events(c mux.RouteContext) {
 // keeps a tile showing the last good render while the next one is in flight.
 //
 // This route is anonymous, and deliberately so. It is what an <img> tag fetches,
-// and a tag loading cross-origin (the app on :5173, the API on :8080) does not
+// and a tag loading cross-origin (the app on :5173, the API on :18080) does not
 // send credentials, so an authenticated route simply would not render. The ids
 // are UUIDv4, which is the unguessable-name trade
 // docs/adr/0014-hosted-generation-apis.md already accepted for its public
