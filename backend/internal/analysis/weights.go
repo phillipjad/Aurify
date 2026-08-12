@@ -47,6 +47,37 @@ var palette = []dimension{
 	{"intimate", "#C46BAE", func(f domain.AudioFeatures, _ domain.Sentiment) float64 {
 		return f.Speechiness
 	}},
+	{"driving", "#31C3B3", func(f domain.AudioFeatures, _ domain.Sentiment) float64 {
+		return normalizePace(f.OnsetRate)
+	}},
+}
+
+// paceFloor and paceCeiling bound the onset rate the palette can tell apart, in
+// onsets per second.
+//
+// Measured over 19 AcousticBrainz recordings chosen across the tempo range: the
+// slowest thing sampled was a beatless ambient piece at 0.66, the busiest a
+// Burial track at 5.28, and the middle half of the sample fell between 2.41 and
+// 3.47. A curve has to be steep across that middle to separate anything, so it
+// saturates well inside the observed extremes rather than at them. Argued in
+// docs/adr/0023-pace-from-onset-rate.md.
+//
+// ponytail: 19 recordings picked to span the tempo range, not sampled from a
+// library. Retune from the onset rates in track_features once enough real
+// playlists have been analyzed to have a distribution rather than a spread.
+const (
+	paceFloor   = 1.5
+	paceCeiling = 4.5
+)
+
+// normalizePace maps an onset rate onto [0,1].
+//
+// Zero is not a slow track, it is an unmeasured one: a track AcousticBrainz
+// classified but never had its rhythm submitted for, or a playlist nothing
+// matched. Both land below the floor and contribute no weight, which in a
+// palette normalized to sum to 1 means the driving color simply does not show.
+func normalizePace(onsetRate float64) float64 {
+	return clamp01((onsetRate - paceFloor) / (paceCeiling - paceFloor))
 }
 
 // BuildPalette derives the weighted color palette from the aggregate features

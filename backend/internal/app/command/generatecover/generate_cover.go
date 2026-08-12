@@ -172,7 +172,12 @@ func (h *Handler) run(
 	// spans a prompt call and an image call and writes nothing between them —
 	// and the claim on this playlist lasts until the run ends, so the row has to
 	// keep saying so throughout.
-	defer h.heartbeat(ctx, cover.ID)()
+	//
+	// Deferred as the catch-all for the paths that return early, and stopped
+	// explicitly before the write that ends the run: a defer fires after that
+	// write, which leaves the writer alive across it.
+	stopHeartbeat := h.heartbeat(ctx, cover.ID)
+	defer stopHeartbeat()
 
 	rev := &domain.CoverRevision{CoverID: cover.ID}
 
@@ -227,6 +232,11 @@ func (h *Handler) run(
 		h.fail(ctx, cover, rev, err)
 		return
 	}
+
+	// The writer goes first: this is the write that ends the run, and a beat
+	// landing after it would keep a finished cover looking alive, and with it
+	// the claim on its playlist.
+	stopHeartbeat()
 
 	// Last, because this write is the one the notify trigger fires on: by the
 	// time a watching client re-reads the cover, the new artwork is already
@@ -340,15 +350,30 @@ func (h *Handler) heartbeat(ctx context.Context, coverID string) (stop func()) {
 			case <-done:
 				return
 			case <-ticker.C:
+				// Re-checked because a select whose cases are both ready picks
+				// one at random: a tick pending at the moment stop() closes
+				// done wins that toss half the time and beats once more, after
+				// the run has finished with the row. stop() blocking on the
+				// writer is not enough on its own to make it dead.
+				select {
+				case <-done:
+					return
+				default:
+				}
 				// A beat that cannot be written is not worth failing a
 				// generation over; the sweep is the backstop for that.
 				_ = h.covers.Touch(ctx, coverID)
 			}
 		}
 	}()
+	// Idempotent, so a run can stop the writer at the point it matters and still
+	// leave the deferred stop in place to cover every path that returns early.
+	var once sync.Once
 	return func() {
-		close(done)
-		<-stopped
+		once.Do(func() {
+			close(done)
+			<-stopped
+		})
 	}
 }
 

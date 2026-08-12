@@ -25,7 +25,9 @@ type Track struct {
 
 // AudioFeatures is the normalized acoustic feature model. Values are in the
 // range [0,1] and are mapped from each platform's own feature endpoint (for
-// example Spotify's /v1/audio-features). TempoBPM is in beats-per-minute.
+// example Spotify's /v1/audio-features). OnsetRate is the exception: it is
+// onsets per second, unbounded above, and analysis.normalizePace is what turns
+// it into a palette weight.
 //
 // Present reports whether the source DSP actually supplied features for the
 // track; the analysis pipeline ignores tracks where Present is false.
@@ -41,6 +43,6 @@ type AudioFeatures struct {
 	Loudness         float64 `json:"loudness"`
 	Speechiness      float64 `json:"speechiness"`
 	Valence          float64 `json:"valence"`
-	TempoBPM         float64 `json:"tempo_bpm"`
+	OnsetRate        float64 `json:"onset_rate"`
 	Present          bool    `json:"present"`
 }

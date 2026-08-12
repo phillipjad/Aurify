@@ -14,6 +14,18 @@ type document struct {
 	HighLevel map[string]highLevel `json:"highlevel"`
 }
 
+// lowLevelDocument is the shape of one recording's low-level data, of which
+// Aurify reads one number. The rest of the document is the raw Essentia dump
+// and is an order of magnitude larger than everything else in this package.
+type lowLevelDocument struct {
+	Rhythm struct {
+		// OnsetRate is onsets per second: how many note or percussive events
+		// the track fires. See docs/adr/0023-pace-from-onset-rate.md for why
+		// this and not rhythm.bpm.
+		OnsetRate float64 `json:"onset_rate"`
+	} `json:"rhythm"`
+}
+
 // score converts one classifier into a [0,1] value.
 //
 // The classifiers are binary with a probability, so "not_danceable at p=0.75"

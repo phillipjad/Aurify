@@ -97,8 +97,13 @@ func (c *Client) Lookup(ctx context.Context, tracks []domain.Track) []domain.Aud
 	// about it twice would spend the budget on a known answer.
 	pending := make([]int, 0, len(tracks))
 	seen := make(map[string]bool, len(tracks))
+	now := time.Now().UTC()
 	for i, key := range keys {
-		if entry, ok := cached[key]; ok {
+		// Fresh is what enforces both expiries: the negative TTL, and the
+		// version stamp that retires rows written before the extractor changed
+		// shape. A row that fails it is a miss, so it is looked up again and
+		// the upsert overwrites it in place.
+		if entry, ok := cached[key]; ok && entry.Fresh(now) {
 			out[i] = entry.Features
 			continue
 		}
@@ -188,38 +193,105 @@ func (c *Client) resolveAll(
 }
 
 // features turns one track's candidate recordings into its features.
+//
+// The two endpoints are independent, and only the MusicBrainz search upstream is
+// rate limited, so they go out together rather than in sequence. That is what
+// makes the pace signal free: the low-level fetch finishes inside the second the
+// search is already spending, and the analyzing phase stays on the rate limit's
+// floor. Measured in docs/adr/0023-pace-from-onset-rate.md.
 func (c *Client) features(ctx context.Context, ids []string) (domain.AudioFeatures, error) {
 	if len(ids) == 0 {
 		// A real answer: nothing in MusicBrainz matches this closely enough.
 		return domain.AudioFeatures{Present: false}, nil
 	}
-	return c.highLevel(ctx, ids)
+
+	var rate float64
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		// A failed low-level fetch is not a failed lookup. The classifiers are
+		// most of the palette and stand on their own; a track that comes back
+		// without a pace contributes to no other dimension differently.
+		rate, _ = c.onsetRate(ctx, ids)
+	}()
+
+	features, err := c.highLevel(ctx, ids)
+	<-done
+	if err != nil || !features.Present {
+		return features, err
+	}
+	features.OnsetRate = rate
+	return features, nil
 }
 
-// highLevel asks AcousticBrainz about every candidate recording at once and
-// takes the first that carries usable data.
+// highLevel takes the first candidate recording that carries usable classifiers.
+// Present false with a nil error is a real answer: the recording matched, but
+// nobody ever submitted an analysis for it.
 func (c *Client) highLevel(ctx context.Context, ids []string) (domain.AudioFeatures, error) {
-	endpoint := fmt.Sprintf("%s/api/v1/high-level?recording_ids=%s", c.acousticBrainzURL, joinIDs(ids))
+	var out domain.AudioFeatures
+	err := c.eachDocument(ctx, "high-level", ids, func(raw json.RawMessage) bool {
+		var doc document
+		if err := json.Unmarshal(raw, &doc); err != nil {
+			return false
+		}
+		features := toFeatures(doc)
+		if !features.Present {
+			return false
+		}
+		out = features
+		return true
+	})
+	return out, err
+}
+
+// onsetRate takes the first candidate recording that was analyzed for rhythm.
+// Zero means nobody measured one, which analysis.normalizePace reads as no
+// weight rather than as a motionless track.
+func (c *Client) onsetRate(ctx context.Context, ids []string) (float64, error) {
+	var rate float64
+	err := c.eachDocument(ctx, "low-level", ids, func(raw json.RawMessage) bool {
+		var doc lowLevelDocument
+		if err := json.Unmarshal(raw, &doc); err != nil {
+			return false
+		}
+		rate = doc.Rhythm.OnsetRate
+		return rate > 0
+	})
+	return rate, err
+}
+
+// eachDocument asks one of the AcousticBrainz batch endpoints about every
+// candidate recording at once, and hands each submission to use until it reports
+// it has what it wanted.
+func (c *Client) eachDocument(
+	ctx context.Context,
+	endpointPath string,
+	ids []string,
+	use func(json.RawMessage) bool,
+) error {
+	endpoint := fmt.Sprintf(
+		"%s/api/v1/%s?recording_ids=%s", c.acousticBrainzURL, endpointPath, joinIDs(ids),
+	)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
-		return domain.AudioFeatures{}, err
+		return err
 	}
 	req.Header.Set("User-Agent", c.userAgent)
 
 	resp, err := c.client.Do(req)
 	if err != nil {
-		return domain.AudioFeatures{}, err
+		return err
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
-		return domain.AudioFeatures{}, fmt.Errorf("acousticbrainz: status %d", resp.StatusCode)
+		return fmt.Errorf("acousticbrainz: status %d", resp.StatusCode)
 	}
 
 	// Keyed by recording id, then by submission offset. mbid_mapping is
 	// bookkeeping rather than a recording.
 	var body map[string]json.RawMessage
 	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
-		return domain.AudioFeatures{}, err
+		return err
 	}
 
 	// Candidate order is MusicBrainz's relevance order, so preferring it over
@@ -229,16 +301,15 @@ func (c *Client) highLevel(ctx context.Context, ids []string) (domain.AudioFeatu
 		if !ok {
 			continue
 		}
-		var submissions map[string]document
+		var submissions map[string]json.RawMessage
 		if err := json.Unmarshal(raw, &submissions); err != nil {
 			continue
 		}
 		for _, doc := range submissions {
-			if features := toFeatures(doc); features.Present {
-				return features, nil
+			if use(doc) {
+				return nil
 			}
 		}
 	}
-	// Matched a recording, but nobody ever submitted an analysis for it.
-	return domain.AudioFeatures{Present: false}, nil
+	return nil
 }

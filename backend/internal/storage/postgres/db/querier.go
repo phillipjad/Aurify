@@ -59,7 +59,7 @@ type Querier interface {
 	// 194 conversations with the database before doing any work.
 	FindLyricsByKeys(ctx context.Context, keys []string) ([]LyricsCache, error)
 	// One round trip for a whole playlist, as with lyrics.
-	FindTrackFeaturesByKeys(ctx context.Context, keys []string) ([]TrackFeature, error)
+	FindTrackFeaturesByKeys(ctx context.Context, keys []string) ([]FindTrackFeaturesByKeysRow, error)
 	GetAuthBlock(ctx context.Context, arg GetAuthBlockParams) (AuthBlock, error)
 	// The lateral join misses entirely until a run has succeeded, and sqlc cannot
 	// see that, so the coalesces are what keep the scan from failing on a NULL. An
