@@ -39,12 +39,14 @@ func (r *TrackFeatureRepository) FindMany(
 		out[row.TrackKey] = domain.CachedFeatures{
 			Key: row.TrackKey,
 			Features: domain.AudioFeatures{
-				Danceability: row.Danceability,
-				Acousticness: row.Acousticness,
-				Energy:       row.Energy,
-				Valence:      row.Valence,
-				OnsetRate:    row.OnsetRate,
-				Present:      row.Present,
+				Danceability:     row.Danceability,
+				Acousticness:     row.Acousticness,
+				Energy:           row.Energy,
+				Valence:          row.Valence,
+				Instrumentalness: row.Instrumentalness,
+				OnsetRate:        row.OnsetRate,
+				Tonality:         row.Tonality,
+				Present:          row.Present,
 			},
 			FetchedAt: timeFromTS(row.FetchedAt),
 			Version:   int(row.FeaturesVersion),
@@ -75,7 +77,9 @@ func (r *TrackFeatureRepository) SaveMany(ctx context.Context, entries []domain.
 		params.Acousticness = append(params.Acousticness, entry.Features.Acousticness)
 		params.Energy = append(params.Energy, entry.Features.Energy)
 		params.Valence = append(params.Valence, entry.Features.Valence)
+		params.Instrumentalness = append(params.Instrumentalness, entry.Features.Instrumentalness)
 		params.OnsetRate = append(params.OnsetRate, entry.Features.OnsetRate)
+		params.Tonality = append(params.Tonality, entry.Features.Tonality)
 		// Stamped here rather than taken from the entry: what a row was written
 		// under is a fact about this build, not something a caller should be
 		// able to claim. Writing an inflated version would make a stale row look

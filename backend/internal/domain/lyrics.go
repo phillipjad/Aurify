@@ -54,7 +54,10 @@ const NegativeFeaturesTTL = 90 * 24 * time.Hour
 //
 //	1: onset rate from AcousticBrainz's low-level endpoint, for the driving
 //	   dimension (docs/adr/0023-pace-from-onset-rate.md).
-const FeaturesVersion = 1
+//	2: key scale from the same document and voice_instrumental from the
+//	   high-level one, for the rebuilt palette
+//	   (docs/adr/0025-palette-from-measured-signals.md).
+const FeaturesVersion = 2
 
 // CachedFeatures is one remembered feature lookup.
 type CachedFeatures struct {

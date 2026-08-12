@@ -10,10 +10,9 @@ export interface Dimension {
 export const DIMENSIONS: Dimension[] = [
   { name: 'energetic', hex: '#FF5A36', signal: 'energy' },
   { name: 'danceable', hex: '#FFB23E', signal: 'danceability' },
-  { name: 'euphoric', hex: '#FFE15D', signal: 'valence + lyric polarity' },
+  { name: 'euphoric', hex: '#FFE15D', signal: 'major-key share + lyric polarity' },
   { name: 'organic', hex: '#7FB069', signal: 'acousticness' },
-  { name: 'introspective', hex: '#4F86C6', signal: 'instrumentalness' },
-  { name: 'melancholic', hex: '#5C4D7D', signal: 'low valence + negative lyrics' },
-  { name: 'intimate', hex: '#C46BAE', signal: 'speechiness' },
+  { name: 'introspective', hex: '#4F86C6', signal: 'voice/instrumental' },
+  { name: 'melancholic', hex: '#5C4D7D', signal: 'minor-key share + bleak lyrics' },
   { name: 'driving', hex: '#31C3B3', signal: 'onset rate' },
 ]

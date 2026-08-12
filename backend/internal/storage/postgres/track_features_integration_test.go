@@ -17,11 +17,14 @@ func TestTrackFeaturesRoundTrip(t *testing.T) {
 		Key: "blake shelton\ngod's country",
 		Features: domain.AudioFeatures{
 			Danceability: 0.71, Acousticness: 0.03, Energy: 0.62, Valence: 0.44,
+			Instrumentalness: 0.19,
 			// Deliberately outside [0,1] and outside every other column's range:
 			// the save is a positional unnest() and the read is a positional
 			// scan, so a column added in the wrong slot has to be visible here
-			// rather than passing as a plausible-looking probability.
+			// rather than passing as a plausible-looking probability. Tonality
+			// is negative for the same reason; no other column can be.
 			OnsetRate: 5.28,
+			Tonality:  -1,
 			Present:   true,
 		},
 		FetchedAt: time.Now().UTC(),
@@ -52,6 +55,10 @@ func TestTrackFeaturesRoundTrip(t *testing.T) {
 	}
 	if math.Abs(hit.OnsetRate-5.28) > 1e-9 {
 		t.Errorf("onset rate = %v, want 5.28", hit.OnsetRate)
+	}
+	if math.Abs(hit.Tonality+1) > 1e-9 || math.Abs(hit.Instrumentalness-0.19) > 1e-9 {
+		t.Errorf("tonality = %v and instrumentalness = %v, want -1 and 0.19",
+			hit.Tonality, hit.Instrumentalness)
 	}
 	if math.Abs(got[entries[0].Key].FetchedAt.Sub(entries[0].FetchedAt).Seconds()) > 1 {
 		t.Errorf("fetched_at = %v, want %v: the new column displaced a later one",

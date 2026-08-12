@@ -65,6 +65,15 @@ func CoverageWeight(analyzed, total int) float64 {
 // weight on the measurement. w == 0 returns the estimate untouched, which is
 // exactly the behaviour when nothing at all matched.
 func BlendFeatures(measured, estimated domain.AudioFeatures, w float64) domain.AudioFeatures {
+	// The estimator is never asked for a key: a text model has no way to hear
+	// one. Valence and tonality are the same bright-to-dark axis on different
+	// scales, though, so its valence stands in, and it has to do so before the
+	// early returns below. A playlist that matched nothing at all takes the
+	// estimate whole, and that is precisely the playlist that would otherwise
+	// have no bright or dark colour.
+	if estimated.Present {
+		estimated.Tonality = 2*estimated.Valence - 1
+	}
 	if !measured.Present {
 		return estimated
 	}
@@ -87,7 +96,11 @@ func BlendFeatures(measured, estimated domain.AudioFeatures, w float64) domain.A
 		// the zero it therefore always reports would read a thinly matched
 		// playlist as motionless rather than as unmeasured.
 		OnsetRate: measured.OnsetRate,
-		Present:   true,
+		// Blended, unlike the pace, because the estimator does have something to
+		// say here: both sides are the same axis on the same scale by the time
+		// this reads them.
+		Tonality: mix(measured.Tonality, estimated.Tonality),
+		Present:  true,
 	}
 }
 
@@ -95,7 +108,7 @@ func BlendFeatures(measured, estimated domain.AudioFeatures, w float64) domain.A
 // returns the mean and the count of tracks that contributed.
 func meanAudioFeatures(tracks []domain.Track) (domain.AudioFeatures, int) {
 	var sum domain.AudioFeatures
-	var n, paced int
+	var n, paced, keyed int
 	for _, t := range tracks {
 		if !t.Features.Present {
 			continue
@@ -118,6 +131,15 @@ func meanAudioFeatures(tracks []domain.Track) (domain.AudioFeatures, int) {
 			paced++
 			sum.OnsetRate += t.Features.OnsetRate
 		}
+		// Averaged over its own count for the same reason, and it comes from
+		// the same document. Per track this is +1 or -1, never 0, so a zero is
+		// a track nobody submitted a key for: divided by n it would read as a
+		// track sitting exactly between major and minor, pulling the whole
+		// playlist toward the middle of the axis.
+		if t.Features.Tonality != 0 {
+			keyed++
+			sum.Tonality += t.Features.Tonality
+		}
 	}
 	if n == 0 {
 		return domain.AudioFeatures{}, 0
@@ -136,6 +158,9 @@ func meanAudioFeatures(tracks []domain.Track) (domain.AudioFeatures, int) {
 	}
 	if paced > 0 {
 		out.OnsetRate = sum.OnsetRate / float64(paced)
+	}
+	if keyed > 0 {
+		out.Tonality = sum.Tonality / float64(keyed)
 	}
 	return out, n
 }

@@ -76,7 +76,9 @@ Reply with the prompt itself and nothing else: no preamble, no explanation, no `
 //
 // ponytail: an unknown dimension is skipped rather than failing. Adding one in
 // weights.go without adding it here quietly loses its contribution to the look;
-// the palette still carries its color.
+// the palette still carries its color. TestEveryPaletteDimensionHasAVisualLanguage
+// enumerates the real palette rather than a copy of it, so the drift is caught
+// in the test rather than in a cover.
 var visualLanguage = map[string]string{
 	"energetic":     "sharp angular fragments, kinetic diagonals, hard edges",
 	"danceable":     "repeating rhythmic geometry, pattern and pulse",
@@ -84,7 +86,6 @@ var visualLanguage = map[string]string{
 	"organic":       "natural grain, fibre and weathered surfaces",
 	"introspective": "sparse minimal geometry, wide negative space, stillness",
 	"melancholic":   "soft diffuse washes, heavy atmosphere, low light",
-	"intimate":      "close fine detail, delicate line work, small scale",
 	"driving":       "insistent forward motion, streaked repetition, momentum",
 }
 
