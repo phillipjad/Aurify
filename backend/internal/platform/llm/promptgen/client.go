@@ -85,6 +85,7 @@ var visualLanguage = map[string]string{
 	"introspective": "sparse minimal geometry, wide negative space, stillness",
 	"melancholic":   "soft diffuse washes, heavy atmosphere, low light",
 	"intimate":      "close fine detail, delicate line work, small scale",
+	"driving":       "insistent forward motion, streaked repetition, momentum",
 }
 
 type chatMessage struct {

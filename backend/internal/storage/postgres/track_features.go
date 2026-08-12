@@ -43,9 +43,11 @@ func (r *TrackFeatureRepository) FindMany(
 				Acousticness: row.Acousticness,
 				Energy:       row.Energy,
 				Valence:      row.Valence,
+				OnsetRate:    row.OnsetRate,
 				Present:      row.Present,
 			},
 			FetchedAt: timeFromTS(row.FetchedAt),
+			Version:   int(row.FeaturesVersion),
 		}
 	}
 	return out, nil
@@ -73,6 +75,12 @@ func (r *TrackFeatureRepository) SaveMany(ctx context.Context, entries []domain.
 		params.Acousticness = append(params.Acousticness, entry.Features.Acousticness)
 		params.Energy = append(params.Energy, entry.Features.Energy)
 		params.Valence = append(params.Valence, entry.Features.Valence)
+		params.OnsetRate = append(params.OnsetRate, entry.Features.OnsetRate)
+		// Stamped here rather than taken from the entry: what a row was written
+		// under is a fact about this build, not something a caller should be
+		// able to claim. Writing an inflated version would make a stale row look
+		// current and defeat the whole invalidation.
+		params.FeaturesVersion = append(params.FeaturesVersion, int32(domain.FeaturesVersion))
 		params.FetchedAt = append(params.FetchedAt, tsFromTime(entry.FetchedAt))
 	}
 	return r.q.SaveTrackFeatures(ctx, params)

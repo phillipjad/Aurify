@@ -81,10 +81,13 @@ func BlendFeatures(measured, estimated domain.AudioFeatures, w float64) domain.A
 		Loudness:         mix(measured.Loudness, estimated.Loudness),
 		Speechiness:      mix(measured.Speechiness, estimated.Speechiness),
 		Valence:          mix(measured.Valence, estimated.Valence),
-		// Not blended: the estimator answers in [0,1] and has no opinion on
-		// tempo at all, so mixing in its zero would just drag a real BPM down.
-		TempoBPM: measured.TempoBPM,
-		Present:  true,
+		// Not blended, and the one exemption left. The estimator answers in
+		// [0,1]; onsets per second is not that, and a text model has nothing to
+		// ground a DSP event rate in, so it is never asked for one. Mixing in
+		// the zero it therefore always reports would read a thinly matched
+		// playlist as motionless rather than as unmeasured.
+		OnsetRate: measured.OnsetRate,
+		Present:   true,
 	}
 }
 
@@ -92,7 +95,7 @@ func BlendFeatures(measured, estimated domain.AudioFeatures, w float64) domain.A
 // returns the mean and the count of tracks that contributed.
 func meanAudioFeatures(tracks []domain.Track) (domain.AudioFeatures, int) {
 	var sum domain.AudioFeatures
-	var n int
+	var n, paced int
 	for _, t := range tracks {
 		if !t.Features.Present {
 			continue
@@ -106,13 +109,21 @@ func meanAudioFeatures(tracks []domain.Track) (domain.AudioFeatures, int) {
 		sum.Loudness += t.Features.Loudness
 		sum.Speechiness += t.Features.Speechiness
 		sum.Valence += t.Features.Valence
-		sum.TempoBPM += t.Features.TempoBPM
+		// Averaged over its own count. The rhythm data comes from a second
+		// endpoint that can miss on its own, and a track classified but never
+		// analyzed for rhythm reports zero: divided by n it would read as a
+		// motionless track dragging the playlist down rather than as silence
+		// about one.
+		if t.Features.OnsetRate > 0 {
+			paced++
+			sum.OnsetRate += t.Features.OnsetRate
+		}
 	}
 	if n == 0 {
 		return domain.AudioFeatures{}, 0
 	}
 	inv := 1 / float64(n)
-	return domain.AudioFeatures{
+	out := domain.AudioFeatures{
 		Acousticness:     sum.Acousticness * inv,
 		Danceability:     sum.Danceability * inv,
 		Energy:           sum.Energy * inv,
@@ -121,9 +132,12 @@ func meanAudioFeatures(tracks []domain.Track) (domain.AudioFeatures, int) {
 		Loudness:         sum.Loudness * inv,
 		Speechiness:      sum.Speechiness * inv,
 		Valence:          sum.Valence * inv,
-		TempoBPM:         sum.TempoBPM * inv,
 		Present:          true,
-	}, n
+	}
+	if paced > 0 {
+		out.OnsetRate = sum.OnsetRate / float64(paced)
+	}
+	return out, n
 }
 
 // meanSentiment averages sentiment over tracks that had lyrics.

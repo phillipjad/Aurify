@@ -50,15 +50,25 @@ func (c *memoryCache) SaveMany(_ context.Context, entries []domain.CachedFeature
 	return nil
 }
 
+// lowLevelDoc is the rhythm block of a real low-level document, cut down to the
+// one field this package reads. The rate is the one AcousticBrainz measured for
+// Burial's "Archangel", the busiest recording in the ADR 0023 sample.
+const lowLevelDoc = `{"rhythm":{"bpm":135.3,"onset_rate":5.28}}`
+
 // stub serves both upstreams and counts what was asked of each.
 type stub struct {
-	server   *httptest.Server
-	mbCalls  int
-	abCalls  int
-	mu       sync.Mutex
-	mbScore  int
-	abData   bool
-	lastPath string
+	server *httptest.Server
+	// abCalls counts high-level requests, abLowCalls low-level ones. Separate
+	// because the two go out concurrently and one failing must not be read as
+	// the other failing.
+	mbCalls    int
+	abCalls    int
+	abLowCalls int
+	mu         sync.Mutex
+	mbScore    int
+	abData     bool
+	lowStatus  int
+	lastPath   string
 }
 
 func newStub(t *testing.T, score int, withData bool) *stub {
@@ -72,13 +82,28 @@ func newStub(t *testing.T, score int, withData bool) *stub {
 			s.mbCalls++
 		case strings.HasPrefix(r.URL.Path, "/api/v1/high-level"):
 			s.abCalls++
+		case strings.HasPrefix(r.URL.Path, "/api/v1/low-level"):
+			s.abLowCalls++
 		}
+		lowStatus := s.lowStatus
 		s.mu.Unlock()
 
 		w.Header().Set("Content-Type", "application/json")
 		if strings.HasPrefix(r.URL.Path, "/ws/2/recording") {
 			fmt.Fprintf(w, `{"recordings":[{"id":"mbid-1","score":%d},{"id":"mbid-2","score":%d}]}`,
 				s.mbScore, s.mbScore)
+			return
+		}
+		if strings.HasPrefix(r.URL.Path, "/api/v1/low-level") {
+			if lowStatus != 0 {
+				w.WriteHeader(lowStatus)
+				return
+			}
+			if !s.abData {
+				fmt.Fprint(w, `{"mbid_mapping":{}}`)
+				return
+			}
+			fmt.Fprint(w, `{"mbid-1":{"0":`+lowLevelDoc+`}}`)
 			return
 		}
 		if !s.abData {
@@ -120,6 +145,39 @@ func TestLooksUpAndCachesFeatures(t *testing.T) {
 	}
 }
 
+// The pace signal comes from a second endpoint, so it has its own way of going
+// missing and its own way of reaching the cache.
+func TestTheOnsetRateIsFetchedAndCached(t *testing.T) {
+	cache, s := newCache(), newStub(t, 100, true)
+	got := clientFor(s, cache).Lookup(context.Background(), tracks(1))
+
+	if s.abLowCalls != 1 {
+		t.Errorf("made %d low-level calls, want 1 alongside the high-level one", s.abLowCalls)
+	}
+	if got[0].OnsetRate != 5.28 {
+		t.Errorf("OnsetRate = %v, want the measured 5.28", got[0].OnsetRate)
+	}
+	if len(cache.saved) != 1 || cache.saved[0].Features.OnsetRate != 5.28 {
+		t.Errorf("the rate did not reach the cache: %+v", cache.saved)
+	}
+}
+
+// The classifiers are most of the palette. A rhythm endpoint having a bad day
+// must cost the driving dimension only, not the whole track.
+func TestAFailedOnsetRateKeepsTheClassifiers(t *testing.T) {
+	cache, s := newCache(), newStub(t, 100, true)
+	s.lowStatus = http.StatusBadGateway
+
+	got := clientFor(s, cache).Lookup(context.Background(), tracks(1))
+
+	if !got[0].Present || got[0].Danceability == 0 {
+		t.Fatalf("lost the high-level features to a low-level failure: %+v", got[0])
+	}
+	if got[0].OnsetRate != 0 {
+		t.Errorf("OnsetRate = %v, want 0: nobody measured one", got[0].OnsetRate)
+	}
+}
+
 // Without a negative entry, a library full of non-music (this one is full of car
 // repair videos) re-pays a second of MusicBrainz rate limit per track on every
 // single generation, forever.
@@ -140,6 +198,7 @@ func TestCachedTracksNeverReachTheNetwork(t *testing.T) {
 	cache.entries[domain.LyricsKey(tracks(1)[0])] = domain.CachedFeatures{
 		Key:      domain.LyricsKey(tracks(1)[0]),
 		Features: domain.AudioFeatures{Energy: 0.5, Present: true},
+		Version:  domain.FeaturesVersion,
 	}
 
 	got := clientFor(s, cache).Lookup(context.Background(), tracks(1))
@@ -149,6 +208,74 @@ func TestCachedTracksNeverReachTheNetwork(t *testing.T) {
 	}
 	if got[0].Energy != 0.5 {
 		t.Errorf("energy = %.2f, want the cached 0.5", got[0].Energy)
+	}
+}
+
+// The invalidation lever from migration 00010. A row written before the
+// extractor gained a field is Present and looks perfectly good, so nothing but
+// the version stamp can tell it apart from a current one.
+func TestAnOlderExtractorsRowIsRefetched(t *testing.T) {
+	cache, s := newCache(), newStub(t, 100, true)
+	key := domain.LyricsKey(tracks(1)[0])
+	cache.entries[key] = domain.CachedFeatures{
+		Key: key,
+		// Everything the previous build knew how to write, and no onset rate.
+		Features:  domain.AudioFeatures{Energy: 0.5, Danceability: 0.5, Present: true},
+		FetchedAt: time.Now().UTC(),
+		Version:   domain.FeaturesVersion - 1,
+	}
+
+	got := clientFor(s, cache).Lookup(context.Background(), tracks(1))
+
+	if s.abLowCalls != 1 {
+		t.Errorf("made %d low-level calls, want the stale row re-fetched", s.abLowCalls)
+	}
+	if got[0].OnsetRate != 5.28 {
+		t.Errorf("OnsetRate = %v, want the re-fetched 5.28 rather than the stale row's 0", got[0].OnsetRate)
+	}
+	if cache.entries[key].Features.OnsetRate != 5.28 {
+		t.Errorf("the stale row was not overwritten in place: %+v", cache.entries[key])
+	}
+}
+
+// The negative TTL, which until now was written but never consulted: nothing
+// called CachedFeatures.Fresh, so a miss was remembered forever.
+func TestExpiredNegativeEntriesAreRetried(t *testing.T) {
+	cache, s := newCache(), newStub(t, 100, true)
+	key := domain.LyricsKey(tracks(1)[0])
+	cache.entries[key] = domain.CachedFeatures{
+		Key:       key,
+		Features:  domain.AudioFeatures{Present: false},
+		FetchedAt: time.Now().UTC().Add(-domain.NegativeFeaturesTTL - time.Hour),
+		Version:   domain.FeaturesVersion,
+	}
+
+	got := clientFor(s, cache).Lookup(context.Background(), tracks(1))
+
+	if s.mbCalls != 1 {
+		t.Errorf("made %d lookups, want the expired miss retried", s.mbCalls)
+	}
+	if !got[0].Present {
+		t.Error("the retry found features and should report them")
+	}
+}
+
+// The other half of that: a miss inside its TTL still costs nothing.
+func TestFreshNegativeEntriesAreNotRetried(t *testing.T) {
+	cache, s := newCache(), newStub(t, 100, true)
+	key := domain.LyricsKey(tracks(1)[0])
+	cache.entries[key] = domain.CachedFeatures{
+		Key:       key,
+		Features:  domain.AudioFeatures{Present: false},
+		FetchedAt: time.Now().UTC(),
+		Version:   domain.FeaturesVersion,
+	}
+
+	if got := clientFor(s, cache).Lookup(context.Background(), tracks(1)); got[0].Present {
+		t.Error("a fresh negative entry should stay negative")
+	}
+	if s.mbCalls != 0 {
+		t.Errorf("made %d lookups, want the fresh miss trusted", s.mbCalls)
 	}
 }
 

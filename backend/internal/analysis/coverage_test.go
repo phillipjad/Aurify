@@ -31,7 +31,7 @@ func TestCoverageWeight(t *testing.T) {
 }
 
 func TestBlendFeatures(t *testing.T) {
-	measured := domain.AudioFeatures{Danceability: 1, Valence: 0.5, TempoBPM: 140, Present: true}
+	measured := domain.AudioFeatures{Danceability: 1, Valence: 0.5, OnsetRate: 4, Present: true}
 	estimated := domain.AudioFeatures{Danceability: 0, Valence: 0.1, Present: true}
 
 	t.Run("w is the weight on the measurement", func(t *testing.T) {
@@ -44,11 +44,20 @@ func TestBlendFeatures(t *testing.T) {
 		}
 	})
 
-	// The estimator answers in [0,1] and never reports tempo, so blending its
-	// zero in would quietly halve a real BPM.
-	t.Run("tempo stays measured", func(t *testing.T) {
-		if got := BlendFeatures(measured, estimated, 0.25); got.TempoBPM != 140 {
-			t.Errorf("TempoBPM = %v, want the measured 140", got.TempoBPM)
+	// The estimator answers in [0,1] and is never asked for an onset rate, so
+	// blending its zero in would quietly quarter a real one. Blended at 0.25
+	// this would read 1, which normalizePace floors to no weight at all: a
+	// well-paced playlist would lose its driving color for being thinly matched.
+	t.Run("pace stays measured", func(t *testing.T) {
+		got := BlendFeatures(measured, estimated, 0.25)
+		if got.OnsetRate != 4 {
+			t.Errorf("OnsetRate = %v, want the measured 4", got.OnsetRate)
+		}
+		if w := normalizePace(got.OnsetRate); w <= 0 {
+			t.Errorf("normalizePace(%v) = %v, want a real weight", got.OnsetRate, w)
+		}
+		if diluted := normalizePace(measured.OnsetRate * 0.25); diluted != 0 {
+			t.Errorf("blending in the estimator's zero leaves %v, want it to prove the floor", diluted)
 		}
 	})
 

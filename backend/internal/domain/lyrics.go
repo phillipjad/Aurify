@@ -41,6 +41,21 @@ func (c CachedLyrics) Fresh(now time.Time) bool {
 // match itself may improve as MusicBrainz gains releases.
 const NegativeFeaturesTTL = 90 * 24 * time.Hour
 
+// FeaturesVersion is the shape of what a feature lookup currently produces.
+//
+// Bump it whenever that changes: a new field, a different source, a retuned
+// mapping. Rows written by an older build carry a lower number, Fresh rejects
+// them, and the cache refills itself rather than serving answers the code would
+// no longer give. Nothing is deleted, so a bump costs re-fetching rather than
+// data, and a rollback finds its own rows still valid.
+//
+// Prefer bumping this to writing a DELETE into a migration, which is not safe
+// during a rolling deploy: docs/adr/0024-feature-cache-versioning.md.
+//
+//	1: onset rate from AcousticBrainz's low-level endpoint, for the driving
+//	   dimension (docs/adr/0023-pace-from-onset-rate.md).
+const FeaturesVersion = 1
+
 // CachedFeatures is one remembered feature lookup.
 type CachedFeatures struct {
 	// Key is domain.LyricsKey(track): the same normalized "artist\ntitle" the
@@ -50,11 +65,21 @@ type CachedFeatures struct {
 	// which is a real answer worth storing rather than an absence of one.
 	Features  AudioFeatures
 	FetchedAt time.Time
+	// Version is the FeaturesVersion the row was written under. Set when an
+	// entry is read; ignored when one is written, because the repository stamps
+	// the current version itself rather than trusting a caller to.
+	Version int
 }
 
 // Fresh reports whether an entry may still be used. Measured features never
 // expire, because a recording's audio does not change.
 func (c CachedFeatures) Fresh(now time.Time) bool {
+	// An older extractor's row is not a stale answer, it is an incomplete one:
+	// it predates a field the palette now reads. Checked before Present,
+	// because a row can be perfectly Present and still be missing that field.
+	if c.Version < FeaturesVersion {
+		return false
+	}
 	if c.Features.Present {
 		return true
 	}

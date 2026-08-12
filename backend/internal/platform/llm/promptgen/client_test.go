@@ -247,7 +247,7 @@ func TestEveryPaletteDimensionHasAVisualLanguage(t *testing.T) {
 	// adapter reaching into the analysis engine would invert the dependency rule.
 	for _, dimension := range []string{
 		"energetic", "danceable", "euphoric", "organic",
-		"introspective", "melancholic", "intimate",
+		"introspective", "melancholic", "intimate", "driving",
 	} {
 		if _, ok := visualLanguage[dimension]; !ok {
 			t.Errorf("dimension %q has no visual language", dimension)
@@ -256,7 +256,7 @@ func TestEveryPaletteDimensionHasAVisualLanguage(t *testing.T) {
 }
 
 // A negligible dimension is noise in an 80-word prompt, and the palette lists
-// all seven every time.
+// all eight every time.
 func TestNegligibleDimensionsAreOmitted(t *testing.T) {
 	a := domain.PlaylistAnalysis{
 		Palette: []domain.ColorWeight{
