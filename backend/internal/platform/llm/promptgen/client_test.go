@@ -211,6 +211,43 @@ func TestDescribesAPlaylistWithoutLyrics(t *testing.T) {
 	}
 }
 
+// A playlist nothing was measured for now reaches here with no palette at all,
+// rather than with the constant 76% melancholic one. The system prompt forbids
+// the model falling back on a look of its own, so the absence has to be stated
+// or it is being asked to disobey that quietly.
+func TestDescribesAPlaylistWithNoPalette(t *testing.T) {
+	a := testAnalysis()
+	a.Palette = nil
+
+	got := describeAnalysis(a)
+	if !strings.Contains(got, "Nothing measurable is known") {
+		t.Errorf("an absent palette should be stated:\n%s", got)
+	}
+	if strings.Contains(got, "Visual language") {
+		t.Errorf("an empty visual language section reached the prompt:\n%s", got)
+	}
+	// What is known still goes, and the lyrics were resolved for most of these.
+	if !strings.Contains(got, "polarity") {
+		t.Errorf("the sentiment that was available should still be described:\n%s", got)
+	}
+}
+
+func TestPlaceholderWithoutAPalette(t *testing.T) {
+	a := testAnalysis()
+	a.Palette = nil
+
+	prompt, err := New("", "m", "").GeneratePrompt(context.Background(), a)
+	if err != nil {
+		t.Fatalf("GeneratePrompt: %v", err)
+	}
+	if strings.Contains(prompt, "palette of ;") {
+		t.Errorf("the placeholder is malformed without a palette: %q", prompt)
+	}
+	if !strings.HasSuffix(prompt, "no text.") {
+		t.Errorf("the placeholder should still be a whole prompt: %q", prompt)
+	}
+}
+
 // Style is derived from the palette weights rather than chosen by the model, so
 // a dominant dimension must reach the prompt as a dominant look. Without this
 // the model falls back on a house style and every cover looks alike regardless

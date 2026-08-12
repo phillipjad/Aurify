@@ -696,15 +696,17 @@ func dominant(a domain.PlaylistAnalysis) string {
 	return a.Palette[0].Dimension
 }
 
-// The bug this change exists to fix: with no features every playlist analyzes to
-// the zero value, five of seven dimensions score 0, and melancholic always wins.
-func TestWithoutFeaturesThePaletteIsTheConstantOne(t *testing.T) {
+// No features and no estimate means no palette. This used to analyze to the zero
+// value, where five of seven dimensions score 0 and melancholic always wins:
+// measured on the dev database, 26 of 87 completed revisions rendered as roughly
+// 76% melancholic and 24% euphoric for no reason but that.
+func TestWithoutFeaturesThereIsNoPalette(t *testing.T) {
 	handler, covers := withFeatures(nil, nil)
 	generate(t, handler)
 
 	got := covers.lastRevision(t).Analysis
-	if d := dominant(got); d != "melancholic" {
-		t.Fatalf("dominant dimension = %q, expected the known-constant %q", d, "melancholic")
+	if len(got.Palette) != 0 {
+		t.Fatalf("palette = %+v, want none: nothing was measured or estimated", got.Palette)
 	}
 	if got.AnalyzedCount != 0 {
 		t.Errorf("AnalyzedCount = %d, want 0 when no track carries features", got.AnalyzedCount)

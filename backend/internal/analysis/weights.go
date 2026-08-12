@@ -33,6 +33,13 @@ var palette = []dimension{
 		return f.Danceability
 	}},
 	{"euphoric", "#FFE15D", func(f domain.AudioFeatures, s domain.Sentiment) float64 {
+		// Averaged over the terms actually available. normalizePolarity(0) is
+		// 0.5, so a playlist nobody wrote lyrics for was being handed an
+		// invented neutral one and having its measured valence pulled halfway
+		// toward it.
+		if !s.HasLyrics {
+			return f.Valence
+		}
 		return (f.Valence + normalizePolarity(s.Polarity)) / 2
 	}},
 	{"organic", "#7FB069", func(f domain.AudioFeatures, _ domain.Sentiment) float64 {
@@ -42,6 +49,11 @@ var palette = []dimension{
 		return f.Instrumentalness
 	}},
 	{"melancholic", "#5C4D7D", func(f domain.AudioFeatures, s domain.Sentiment) float64 {
+		// Same, and this is the dimension the invented neutral flattered: an
+		// absent lyric was worth 0.2 of melancholy on its own.
+		if !s.HasLyrics {
+			return 1 - f.Valence
+		}
 		return (1-f.Valence)*0.6 + (1-normalizePolarity(s.Polarity))*0.4
 	}},
 	{"intimate", "#C46BAE", func(f domain.AudioFeatures, _ domain.Sentiment) float64 {
@@ -83,7 +95,22 @@ func normalizePace(onsetRate float64) float64 {
 // BuildPalette derives the weighted color palette from the aggregate features
 // and sentiment. Weights are normalized so they sum to 1, and the result is
 // sorted by descending weight (dominant colors first).
+//
+// A playlist with no features has no palette. Measured on the dev database, 26
+// of 87 completed revisions had none, and every one of them rendered as roughly
+// 76% melancholic and 24% euphoric, because those two formulas carry constant
+// terms and the rest of the palette was zero. Aurify knowing nothing about a
+// playlist is not the same as the playlist being sad.
+//
+// Lyrics alone are not enough to build one from either. Sixteen of those 26 did
+// have lyrics, and their polarity comes from a 24-word lexicon that matches
+// about 1.4% of a song, so normalizing it against six zeroes would promote a
+// couple of word hits to the whole cover.
 func BuildPalette(f domain.AudioFeatures, s domain.Sentiment) []domain.ColorWeight {
+	if !f.Present {
+		return nil
+	}
+
 	weights := make([]domain.ColorWeight, 0, len(palette))
 	var total float64
 	for _, d := range palette {
