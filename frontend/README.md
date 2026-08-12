@@ -47,7 +47,7 @@ Then, from this directory:
 
 ```bash
 vp install        # install dependencies (pnpm under the hood)
-vp dev            # dev server on http://localhost:5173 (proxies /api -> :8080)
+vp dev            # dev server on http://localhost:5173 (proxies /api -> :18080)
 vp check          # format + lint + type-check (Oxfmt + Oxlint + tsgolint)
 vp check --fix    # auto-fix formatting + lint
 vp test           # run the Vitest suite (jsdom + Testing Library)

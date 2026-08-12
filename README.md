@@ -81,10 +81,10 @@ every environment, so generate the local config:
 # 1. Storage + mail (schema is created/migrated automatically on API startup)
 ./start_container.sh -dm postgres mailpit
 
-# 2. API  (http://localhost:8080)
+# 2. API  (http://localhost:18080)
 cd backend && go mod tidy && go run build.go && ./bin/aurify
 
-# 3. PWA  (http://localhost:5173, proxies /api -> :8080)
+# 3. PWA  (http://localhost:5173, proxies /api -> :18080)
 cd frontend && vp install && vp dev
 ```
 

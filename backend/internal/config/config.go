@@ -111,7 +111,7 @@ type OAuthConfig struct {
 // Load reads configuration from environment variables, applying defaults.
 func Load() Config {
 	return Config{
-		HTTPAddr: env("AURIFY_HTTP_ADDR", ":8080"),
+		HTTPAddr: env("AURIFY_HTTP_ADDR", ":18080"),
 		DatabaseURL: env(
 			"AURIFY_DATABASE_URL",
 			"postgres://aurify:aurify@localhost:5432/aurify?sslmode=disable",
@@ -157,7 +157,7 @@ func Load() Config {
 			ClientSecret: env("AURIFY_GOOGLE_CLIENT_SECRET", ""),
 			RedirectURL: env(
 				"AURIFY_GOOGLE_REDIRECT_URL",
-				"http://localhost:8080/api/v1/auth/federated/google/callback",
+				"http://localhost:18080/api/v1/auth/federated/google/callback",
 			),
 		},
 		DSP: DSPConfig{
@@ -166,7 +166,7 @@ func Load() Config {
 				ClientSecret: env("AURIFY_SPOTIFY_CLIENT_SECRET", ""),
 				RedirectURL: env(
 					"AURIFY_SPOTIFY_REDIRECT_URL",
-					"http://localhost:8080/api/v1/auth/spotify/callback",
+					"http://localhost:18080/api/v1/auth/spotify/callback",
 				),
 			},
 			AppleMusic: OAuthConfig{
@@ -174,7 +174,7 @@ func Load() Config {
 				ClientSecret: env("AURIFY_APPLE_CLIENT_SECRET", ""),
 				RedirectURL: env(
 					"AURIFY_APPLE_REDIRECT_URL",
-					"http://localhost:8080/api/v1/auth/apple_music/callback",
+					"http://localhost:18080/api/v1/auth/apple_music/callback",
 				),
 			},
 			YouTubeMusic: OAuthConfig{
@@ -182,7 +182,7 @@ func Load() Config {
 				ClientSecret: env("AURIFY_YOUTUBE_CLIENT_SECRET", ""),
 				RedirectURL: env(
 					"AURIFY_YOUTUBE_REDIRECT_URL",
-					"http://localhost:8080/api/v1/auth/youtube_music/callback",
+					"http://localhost:18080/api/v1/auth/youtube_music/callback",
 				),
 			},
 		},

@@ -43,12 +43,12 @@ services:
     # wrong inside the container, where it must be the compose service hostname.
     environment:
       AURIFY_DATABASE_URL: postgres://aurify:aurify@postgres:5432/aurify?sslmode=disable
-      AURIFY_HTTP_ADDR: :8080
+      AURIFY_HTTP_ADDR: :18080
     # So AURIFY_PROMPTGEN_URL can reach Ollama on the host. Linux needs this.
     extra_hosts:
       - 'host.docker.internal:host-gateway'
     ports:
-      - '8080:8080'
+      - '18080:18080'
     depends_on:
       postgres:
         condition: service_healthy

@@ -57,7 +57,7 @@ concrete adapters.
 ../scripts/dev-setup.sh      # generates backend/.env.dev (Mailpit + a signing key)
 go mod tidy                 # resolve dependencies
 go run build.go             # compile -> bin/aurify (version stamped; defaults to "dev")
-./bin/aurify                # starts on :8080
+./bin/aurify                # starts on :18080
 ```
 
 For a quick iteration loop you can also `go run ./cmd/api` — but note the binary

@@ -69,7 +69,7 @@ export default defineConfig({
     port: 5173,
     proxy: {
       // Proxy API calls to the Go backend during development.
-      '/api': { target: 'http://localhost:8080', changeOrigin: true },
+      '/api': { target: 'http://localhost:18080', changeOrigin: true },
     },
   },
   fmt: {
