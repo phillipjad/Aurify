@@ -1,7 +1,8 @@
 package analysis
 
 import (
-	"context"
+	"maps"
+	"slices"
 	"testing"
 
 	"github.com/phillipjad/aurify/backend/internal/domain"
@@ -46,17 +47,14 @@ var genreSets = []genreSet{
 // take, since one of the pair is always zero. Everything but the axis is held
 // identical between the sets, so the whole difference is the key scale's doing.
 func TestKeyScaleSeparatesPlaylists(t *testing.T) {
-	var darkest, brightest float64
 	byName := map[string]float64{}
 	for _, set := range genreSets {
-		share := brightShare(t, proportionToTonality(set.major))
-		byName[set.name] = share
-		darkest = min(darkest, share)
-		brightest = max(brightest, share)
+		byName[set.name] = brightShare(proportionToTonality(set.major))
 	}
+	shares := slices.Collect(maps.Values(byName))
 
 	// Measured: metal -0.322 against folk 0.307.
-	if spread := brightest - darkest; spread < 0.5 {
+	if spread := slices.Max(shares) - slices.Min(shares); spread < 0.5 {
 		t.Errorf("the sets spread over %.3f of the palette, want at least 0.5: %v", spread, byName)
 	}
 	if byName["metal and dark"] >= 0 {
@@ -85,13 +83,14 @@ func TestValenceDoesNotSeparatePlaylists(t *testing.T) {
 		if set.name == "upbeat pop" {
 			continue
 		}
-		byKey = append(byKey, brightShare(t, proportionToTonality(set.major)))
+		byKey = append(byKey, brightShare(proportionToTonality(set.major)))
 		// Valence is [0,1] where the axis is [-1,1], so it is mapped the way
 		// BlendFeatures maps the estimator's.
-		byValence = append(byValence, brightShare(t, 2*set.valence-1))
+		byValence = append(byValence, brightShare(2*set.valence-1))
 	}
 
-	keySpread, valenceSpread := spread(byKey), spread(byValence)
+	keySpread := slices.Max(byKey) - slices.Min(byKey)
+	valenceSpread := slices.Max(byValence) - slices.Min(byValence)
 	if valenceSpread > 0.10 {
 		t.Errorf("valence separates the four sets by %.3f, so it is a usable signal after all", valenceSpread)
 	}
@@ -127,39 +126,24 @@ func TestMeanAudioFeaturesUnmeasuredKey(t *testing.T) {
 
 func proportionToTonality(major float64) float64 { return 2*major - 1 }
 
-func spread(values []float64) float64 {
-	lo, hi := values[0], values[0]
-	for _, v := range values {
-		lo, hi = min(lo, v), max(hi, v)
-	}
-	return hi - lo
-}
-
-// brightShare analyzes a playlist whose tracks are identical apart from their
-// key, and returns how much of the palette the bright colour takes less how much
-// the dark one takes. One of the two is always zero, so the result is a signed
-// share in [-1,1].
-func brightShare(t *testing.T, tonality float64) float64 {
-	t.Helper()
-
-	// Ten tracks, all measured, everything but the key held equal.
-	playlist := make([]domain.Track, 10)
-	for i := range playlist {
-		playlist[i] = domain.Track{
-			Features: domain.AudioFeatures{
-				Acousticness: 0.5,
-				Danceability: 0.5,
-				Energy:       0.5,
-				Tonality:     tonality,
-				Present:      true,
-			},
-		}
-	}
-
-	result, err := NewEngine().Analyze(context.Background(), "p", playlist, nil)
-	if err != nil {
-		t.Fatalf("Analyze: %v", err)
-	}
-	weights := weightsByDimension(result.Palette)
+// brightShare is how much of the palette the bright colour takes less how much
+// the dark one takes, for a playlist whose tracks are identical apart from
+// their key. One of the two is always zero, so the result is a signed share in
+// [-1,1].
+//
+// The mean is skipped and the palette built from the aggregate directly, since
+// ten identical tracks average to themselves; that the mean carries a key at
+// all is TestMeanAudioFeaturesUnmeasuredKey's job.
+func brightShare(tonality float64) float64 {
+	weights := weightsByDimension(BuildPalette(
+		domain.AudioFeatures{
+			Acousticness: 0.5,
+			Danceability: 0.5,
+			Energy:       0.5,
+			Tonality:     tonality,
+			Present:      true,
+		},
+		domain.Sentiment{},
+	))
 	return weights["euphoric"] - weights["melancholic"]
 }
