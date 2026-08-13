@@ -190,24 +190,35 @@ func stripThinking(s string) string {
 // what they are, where three decimal places read as false precision.
 func describeAnalysis(a domain.PlaylistAnalysis) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "A playlist of %d tracks.\n\nPalette, most dominant first:\n", a.TrackCount)
-	for _, c := range a.Palette {
-		if c.Weight < 0.01 {
-			continue
-		}
-		fmt.Fprintf(&b, "- %s, %s, %.0f%%\n", c.Dimension, c.HexColor, c.Weight*100)
-	}
+	fmt.Fprintf(&b, "A playlist of %d tracks.\n", a.TrackCount)
 
-	// The same weights again, as look rather than color. Emitted as its own
-	// section so the model is asked to blend two aligned things rather than to
-	// infer a style from hex codes.
-	b.WriteString("\nVisual language, blend in these proportions:\n")
-	for _, c := range a.Palette {
-		if c.Weight < 0.01 {
-			continue
+	// An absent palette has to be said out loud. The system prompt forbids the
+	// model falling back on a look of its own, so leaving the section empty
+	// asks it to disobey that or to invent the playlist's character silently.
+	if len(a.Palette) == 0 {
+		b.WriteString("\nNothing measurable is known about how this playlist sounds: " +
+			"no track matched an acoustic analysis and no estimate was available. " +
+			"Compose something neutral and abstract that commits to no particular mood.\n")
+	} else {
+		b.WriteString("\nPalette, most dominant first:\n")
+		for _, c := range a.Palette {
+			if c.Weight < 0.01 {
+				continue
+			}
+			fmt.Fprintf(&b, "- %s, %s, %.0f%%\n", c.Dimension, c.HexColor, c.Weight*100)
 		}
-		if language, ok := visualLanguage[c.Dimension]; ok {
-			fmt.Fprintf(&b, "- %.0f%% %s\n", c.Weight*100, language)
+
+		// The same weights again, as look rather than color. Emitted as its own
+		// section so the model is asked to blend two aligned things rather than
+		// to infer a style from hex codes.
+		b.WriteString("\nVisual language, blend in these proportions:\n")
+		for _, c := range a.Palette {
+			if c.Weight < 0.01 {
+				continue
+			}
+			if language, ok := visualLanguage[c.Dimension]; ok {
+				fmt.Fprintf(&b, "- %.0f%% %s\n", c.Weight*100, language)
+			}
 		}
 	}
 
@@ -227,19 +238,20 @@ func describeAnalysis(a domain.PlaylistAnalysis) string {
 // dimensions and their colors, for when no model is configured.
 func placeholderPrompt(a domain.PlaylistAnalysis) string {
 	var b strings.Builder
-	b.WriteString("Abstract album cover: a pleasing amalgamation of geometric shapes, ")
-	b.WriteString("composed from a palette of ")
+	b.WriteString("Abstract album cover: a pleasing amalgamation of geometric shapes")
 
-	limit := len(a.Palette)
-	if limit > 3 {
-		limit = 3
-	}
-	for i := 0; i < limit; i++ {
-		c := a.Palette[i]
-		if i > 0 {
-			b.WriteString(", ")
+	// Guarded: a playlist with no palette would otherwise be composed "from a
+	// palette of ; balanced atmosphere".
+	if len(a.Palette) > 0 {
+		b.WriteString(", composed from a palette of ")
+		limit := min(len(a.Palette), 3)
+		for i := 0; i < limit; i++ {
+			c := a.Palette[i]
+			if i > 0 {
+				b.WriteString(", ")
+			}
+			fmt.Fprintf(&b, "%s (%s)", c.Dimension, c.HexColor)
 		}
-		fmt.Fprintf(&b, "%s (%s)", c.Dimension, c.HexColor)
 	}
 
 	mood := "balanced"
