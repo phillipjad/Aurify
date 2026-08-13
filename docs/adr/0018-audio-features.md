@@ -98,6 +98,11 @@ everything.
   palettes across genres, not by reading the code.
 - `introspective` and `intimate` stay flat, since nothing honest measures
   instrumentalness or speechiness. A known gap rather than an oversight.
+
+  > Amended by [ADR 0025](0025-palette-from-measured-signals.md). Measured, both
+  > were zero on 92% of runs. `voice_instrumental` was reconsidered on 24
+  > recordings rather than the one below and now feeds `introspective`;
+  > `intimate` is deleted. The mapping table above is superseded there.
 - Both sources are best effort. A generation completes with AcousticBrainz
   unreachable, the estimator unconfigured, or the cache unreadable.
 - Negative results are cached. This library is full of things that are not songs

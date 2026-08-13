@@ -15,7 +15,7 @@ type document struct {
 }
 
 // lowLevelDocument is the shape of one recording's low-level data, of which
-// Aurify reads one number. The rest of the document is the raw Essentia dump
+// Aurify reads two numbers. The rest of the document is the raw Essentia dump
 // and is an order of magnitude larger than everything else in this package.
 type lowLevelDocument struct {
 	Rhythm struct {
@@ -24,6 +24,27 @@ type lowLevelDocument struct {
 		// this and not rhythm.bpm.
 		OnsetRate float64 `json:"onset_rate"`
 	} `json:"rhythm"`
+	Tonal struct {
+		// KeyScale is "major" or "minor". A measurement of the audio rather
+		// than a trained classifier, and near-binary per track, so its mean
+		// over a playlist is a proportion and survives the averaging that
+		// flattens valence (docs/adr/0025-palette-from-measured-signals.md).
+		KeyScale string `json:"key_scale"`
+	} `json:"tonal"`
+}
+
+// tonality maps a key scale onto the signed axis the palette reads. An
+// unrecognized or absent scale is 0, which is "nothing to say" rather than
+// "minor".
+func tonality(keyScale string) float64 {
+	switch keyScale {
+	case "major":
+		return 1
+	case "minor":
+		return -1
+	default:
+		return 0
+	}
 }
 
 // score converts one classifier into a [0,1] value.
@@ -70,16 +91,22 @@ func optional(v float64, ok bool) float64 {
 
 // toFeatures maps AcousticBrainz's classifiers onto Aurify's feature model.
 //
-// Only the descriptors that survived inspection are used. The genre and voice
-// classifiers are deliberately ignored: on a vocal country ballad,
-// voice_instrumental answered "instrumental" at p=0.72 and gender answered
-// "female" at p=0.94, and genre_electronic called both that track and
-// Radiohead's "Creep" ambient. The mood classifiers, danceability and timbre
-// held up on the same samples, so those are what the palette is built from.
+// Only the descriptors that survived inspection are used. The genre and gender
+// classifiers are still ignored: gender answered "female" at p=0.94 on a male
+// country vocal, and genre_electronic called both that track and Radiohead's
+// "Creep" ambient.
 //
-// Instrumentalness, liveness and speechiness are left at zero because nothing
-// here measures them honestly. That keeps the introspective and intimate
-// dimensions flat, which is a known and deliberate gap rather than an oversight.
+// voice_instrumental is read again, which ADR 0018 rejected on the evidence of
+// that one country ballad it called instrumental at p=0.72. Over 24 recordings
+// whose vocal status is not in dispute it was right about 71% of them and
+// separated the two groups by 0.442, which is a floor rather than an accuracy:
+// the labels are per song and the data is per recording, so an instrumental
+// cover in the candidate list is scored as the song being wrong. It is
+// near-binary per track, so its mean is a proportion of the playlist that is
+// instrumental. Argued in docs/adr/0025-palette-from-measured-signals.md.
+//
+// Liveness and speechiness are left at zero because nothing here measures them
+// honestly, and no dimension reads them any more.
 func toFeatures(doc document) domain.AudioFeatures {
 	hl := doc.HighLevel
 	if len(hl) == 0 {
@@ -88,6 +115,7 @@ func toFeatures(doc document) domain.AudioFeatures {
 
 	danceability, hasDance := score(hl, "danceability", "danceable")
 	acoustic, hasAcoustic := score(hl, "mood_acoustic", "acoustic")
+	instrumental, hasInstrumental := score(hl, "voice_instrumental", "instrumental")
 
 	// Energy has no single classifier. Aggression and party-ness raise it and
 	// relaxation lowers it, so it is the mean of what is available.
@@ -107,13 +135,14 @@ func toFeatures(doc document) domain.AudioFeatures {
 
 	// Present reports whether anything at all was measured. Without it a
 	// recording that exists but classified nothing would average in as silence.
-	present := hasDance || hasAcoustic || hasEnergy || hasValence
+	present := hasDance || hasAcoustic || hasEnergy || hasValence || hasInstrumental
 	return domain.AudioFeatures{
-		Danceability: danceability,
-		Acousticness: acoustic,
-		Energy:       energy,
-		Valence:      valence,
-		Present:      present,
+		Danceability:     danceability,
+		Acousticness:     acoustic,
+		Energy:           energy,
+		Valence:          valence,
+		Instrumentalness: instrumental,
+		Present:          present,
 	}
 }
 

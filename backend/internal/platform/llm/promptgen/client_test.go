@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/phillipjad/aurify/backend/internal/analysis"
 	"github.com/phillipjad/aurify/backend/internal/domain"
 )
 
@@ -279,21 +280,31 @@ func TestVisualLanguageIsWeightedByTheSameDimensions(t *testing.T) {
 
 // Every dimension the analysis engine can produce needs a look, or its weight
 // silently contributes color without contributing style.
+//
+// The list is the engine's own output rather than a copy of it. A hand-written
+// copy passes whether or not it is up to date, which is the failure mode this
+// mirror has: a dimension missing here reaches a cover as color with no style,
+// and nothing says so. Only the test file imports the analysis package, so no
+// adapter depends on the engine at build time.
 func TestEveryPaletteDimensionHasAVisualLanguage(t *testing.T) {
-	// Mirrors internal/analysis/weights.go. Duplicated rather than imported: an
-	// adapter reaching into the analysis engine would invert the dependency rule.
-	for _, dimension := range []string{
-		"energetic", "danceable", "euphoric", "organic",
-		"introspective", "melancholic", "intimate", "driving",
-	} {
-		if _, ok := visualLanguage[dimension]; !ok {
-			t.Errorf("dimension %q has no visual language", dimension)
+	built := analysis.BuildPalette(domain.AudioFeatures{Present: true}, domain.Sentiment{})
+	if len(built) == 0 {
+		t.Fatal("the palette produced no dimensions, so this test proves nothing")
+	}
+
+	for _, c := range built {
+		if _, ok := visualLanguage[c.Dimension]; !ok {
+			t.Errorf("dimension %q has no visual language", c.Dimension)
 		}
+	}
+	if len(visualLanguage) != len(built) {
+		t.Errorf("%d visual languages for %d dimensions: one of them is for a dimension that no longer exists",
+			len(visualLanguage), len(built))
 	}
 }
 
 // A negligible dimension is noise in an 80-word prompt, and the palette lists
-// all eight every time.
+// all seven every time.
 func TestNegligibleDimensionsAreOmitted(t *testing.T) {
 	a := domain.PlaylistAnalysis{
 		Palette: []domain.ColorWeight{

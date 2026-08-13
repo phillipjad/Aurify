@@ -17,7 +17,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"net/http"
+	"slices"
 	"time"
 
 	"github.com/phillipjad/aurify/backend/internal/app/ports"
@@ -205,14 +207,15 @@ func (c *Client) features(ctx context.Context, ids []string) (domain.AudioFeatur
 		return domain.AudioFeatures{Present: false}, nil
 	}
 
-	var rate float64
+	var rate, tone float64
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
 		// A failed low-level fetch is not a failed lookup. The classifiers are
 		// most of the palette and stand on their own; a track that comes back
-		// without a pace contributes to no other dimension differently.
-		rate, _ = c.onsetRate(ctx, ids)
+		// without a pace or a key contributes to no other dimension
+		// differently.
+		rate, tone, _ = c.lowLevel(ctx, ids)
 	}()
 
 	features, err := c.highLevel(ctx, ids)
@@ -221,6 +224,7 @@ func (c *Client) features(ctx context.Context, ids []string) (domain.AudioFeatur
 		return features, err
 	}
 	features.OnsetRate = rate
+	features.Tonality = tone
 	return features, nil
 }
 
@@ -244,20 +248,29 @@ func (c *Client) highLevel(ctx context.Context, ids []string) (domain.AudioFeatu
 	return out, err
 }
 
-// onsetRate takes the first candidate recording that was analyzed for rhythm.
-// Zero means nobody measured one, which analysis.normalizePace reads as no
-// weight rather than as a motionless track.
-func (c *Client) onsetRate(ctx context.Context, ids []string) (float64, error) {
-	var rate float64
+// lowLevel takes the first candidate recording that was analyzed for rhythm,
+// and reads both numbers Aurify wants out of that one submission.
+//
+// Both in one pass deliberately. eachDocument stops at the first submission the
+// callback accepts, so two callbacks would be two independent searches and
+// could take the pace from one recording and the key from another: a karaoke
+// version's tempo against the original's key, presented as one track.
+//
+// Zero rate means nobody measured one, which analysis.normalizePace reads as no
+// weight rather than as a motionless track. Zero tonality means the same for
+// the bright/dark axis.
+func (c *Client) lowLevel(ctx context.Context, ids []string) (float64, float64, error) {
+	var rate, tone float64
 	err := c.eachDocument(ctx, "low-level", ids, func(raw json.RawMessage) bool {
 		var doc lowLevelDocument
 		if err := json.Unmarshal(raw, &doc); err != nil {
 			return false
 		}
 		rate = doc.Rhythm.OnsetRate
+		tone = tonality(doc.Tonal.KeyScale)
 		return rate > 0
 	})
-	return rate, err
+	return rate, tone, err
 }
 
 // eachDocument asks one of the AcousticBrainz batch endpoints about every
@@ -305,8 +318,13 @@ func (c *Client) eachDocument(
 		if err := json.Unmarshal(raw, &submissions); err != nil {
 			continue
 		}
-		for _, doc := range submissions {
-			if use(doc) {
+		// Sorted because ranging a map is ranging in a random order, and this
+		// picks which submission of a recording answers for it. Observed live
+		// before this: the same Burial recording read 5.18 then 5.28 onsets per
+		// second on consecutive runs. The order itself carries no meaning; that
+		// it is the same order every time does.
+		for _, offset := range slices.Sorted(maps.Keys(submissions)) {
+			if use(submissions[offset]) {
 				return nil
 			}
 		}

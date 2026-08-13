@@ -1,14 +1,17 @@
 import { DIMENSIONS } from './dimensions'
 
-// Four archetypal weight distributions across the eight dimensions, purely to
+// Four archetypal weight distributions across the seven dimensions, purely to
 // preview the palette step of the pipeline on the landing page. Real cover
 // art still comes from the imagegen sidecar, which is a SCAFFOLD (see
 // backend/internal/platform/llm/imagegen/client.go). Showing the palette
 // itself is the honest "example output" until that's wired up.
+//
+// Each is a shape the real palette can now take: euphoric and melancholic are
+// two ends of one axis, so no example carries both.
 const EXAMPLES: { name: string; weights: Record<string, number> }[] = [
   { name: 'Late-night drive', weights: { energetic: 0.45, introspective: 0.3, melancholic: 0.25 } },
-  { name: 'Sunday acoustic', weights: { organic: 0.5, intimate: 0.3, introspective: 0.2 } },
-  { name: 'Breakup on repeat', weights: { melancholic: 0.5, introspective: 0.3, intimate: 0.2 } },
+  { name: 'Sunday acoustic', weights: { organic: 0.5, euphoric: 0.3, introspective: 0.2 } },
+  { name: 'Breakup on repeat', weights: { melancholic: 0.5, introspective: 0.3, organic: 0.2 } },
   { name: 'Festival warmup', weights: { energetic: 0.35, danceable: 0.3, driving: 0.2, euphoric: 0.15 } },
 ]
 

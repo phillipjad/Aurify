@@ -92,15 +92,17 @@ type Session struct {
 }
 
 type TrackFeature struct {
-	TrackKey        string
-	Present         bool
-	Danceability    float64
-	Acousticness    float64
-	Energy          float64
-	Valence         float64
-	FetchedAt       pgtype.Timestamptz
-	OnsetRate       float64
-	FeaturesVersion int32
+	TrackKey         string
+	Present          bool
+	Danceability     float64
+	Acousticness     float64
+	Energy           float64
+	Valence          float64
+	FetchedAt        pgtype.Timestamptz
+	OnsetRate        float64
+	FeaturesVersion  int32
+	Tonality         float64
+	Instrumentalness float64
 }
 
 type User struct {

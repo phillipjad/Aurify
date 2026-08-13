@@ -10,9 +10,15 @@ import (
 // function that derives its raw weight in [0,1] from the aggregate signals.
 //
 // This is the heart of the "weighing" described in the product vision: a high
-// mean liveness/energy contributes weight to the energetic color, a low valence
-// (plus negative lyric polarity) pushes weight toward the melancholic color,
-// and so on. Add or retune dimensions here.
+// mean energy contributes weight to the energetic color, a playlist mostly in
+// minor keys pushes weight toward the melancholic one, and so on. Add or retune
+// dimensions here.
+//
+// Every dimension reads something a source measures. Two used to read features
+// nothing reachable does: intimate was dropped for it, and introspective was
+// given a real source instead (docs/adr/0025-palette-from-measured-signals.md).
+// A dimension scored from an always-zero field is not a quiet gap, it is a
+// colour that can never appear and a share of the palette permanently spent.
 type dimension struct {
 	name  string
 	hex   string
@@ -33,35 +39,51 @@ var palette = []dimension{
 		return f.Danceability
 	}},
 	{"euphoric", "#FFE15D", func(f domain.AudioFeatures, s domain.Sentiment) float64 {
-		// Averaged over the terms actually available. normalizePolarity(0) is
-		// 0.5, so a playlist nobody wrote lyrics for was being handed an
-		// invented neutral one and having its measured valence pulled halfway
-		// toward it.
-		if !s.HasLyrics {
-			return f.Valence
-		}
-		return (f.Valence + normalizePolarity(s.Polarity)) / 2
+		return max(0, brightness(f, s))
 	}},
 	{"organic", "#7FB069", func(f domain.AudioFeatures, _ domain.Sentiment) float64 {
 		return f.Acousticness
 	}},
 	{"introspective", "#4F86C6", func(f domain.AudioFeatures, _ domain.Sentiment) float64 {
+		// Measured since ADR 0025, from voice_instrumental. Near-binary per
+		// track, so the mean is the proportion of the playlist with no singing.
 		return f.Instrumentalness
 	}},
 	{"melancholic", "#5C4D7D", func(f domain.AudioFeatures, s domain.Sentiment) float64 {
-		// Same, and this is the dimension the invented neutral flattered: an
-		// absent lyric was worth 0.2 of melancholy on its own.
-		if !s.HasLyrics {
-			return 1 - f.Valence
-		}
-		return (1-f.Valence)*0.6 + (1-normalizePolarity(s.Polarity))*0.4
-	}},
-	{"intimate", "#C46BAE", func(f domain.AudioFeatures, _ domain.Sentiment) float64 {
-		return f.Speechiness
+		return max(0, -brightness(f, s))
 	}},
 	{"driving", "#31C3B3", func(f domain.AudioFeatures, _ domain.Sentiment) float64 {
 		return normalizePace(f.OnsetRate)
 	}},
+}
+
+// polarityWeight is how much of the bright/dark axis the lyrics carry.
+//
+// A minority share, set by what the analyzer can currently see rather than by a
+// measurement: nlp.Analyzer holds 24 words and matches about 1.4% of a song, so
+// a playlist polarity of 0.8 is a ratio over roughly four matched words. The
+// signal is real but thin, and the key scale is a measurement of the audio.
+//
+// ponytail: raise it when the analyzer measures more than a lexicon's worth of
+// the words. The socket is here so that improving it needs no palette change.
+const polarityWeight = 0.25
+
+// brightness is the bright/dark axis, in [-1,1].
+//
+// The tonal term carries it. Major/minor is a measurement rather than a trained
+// classifier and is near-binary per track, so its mean over a playlist is a
+// proportion and survives averaging: five constructed genre sets spread over a
+// range of 0.690, where valence pinned four of the five into 0.44 to 0.50.
+// Argued in docs/adr/0025-palette-from-measured-signals.md.
+//
+// The lyric term keeps its fixed share instead of taking the whole axis when the
+// tonal one is unmeasured. A playlist that matched nothing acoustically should
+// not have its cover decided by a word count.
+func brightness(f domain.AudioFeatures, s domain.Sentiment) float64 {
+	if !s.HasLyrics {
+		return f.Tonality
+	}
+	return f.Tonality*(1-polarityWeight) + s.Polarity*polarityWeight
 }
 
 // paceFloor and paceCeiling bound the onset rate the palette can tell apart, in
@@ -98,13 +120,13 @@ func normalizePace(onsetRate float64) float64 {
 //
 // A playlist with no features has no palette. Measured on the dev database, 26
 // of 87 completed revisions had none, and every one of them rendered as roughly
-// 76% melancholic and 24% euphoric, because those two formulas carry constant
-// terms and the rest of the palette was zero. Aurify knowing nothing about a
-// playlist is not the same as the playlist being sad.
+// 76% melancholic and 24% euphoric, from constant terms that are now gone.
+// Aurify knowing nothing about a playlist is not the same as the playlist being
+// sad.
 //
 // Lyrics alone are not enough to build one from either. Sixteen of those 26 did
 // have lyrics, and their polarity comes from a 24-word lexicon that matches
-// about 1.4% of a song, so normalizing it against six zeroes would promote a
+// about 1.4% of a song, so normalizing it against five zeroes would promote a
 // couple of word hits to the whole cover.
 func BuildPalette(f domain.AudioFeatures, s domain.Sentiment) []domain.ColorWeight {
 	if !f.Present {
@@ -127,11 +149,6 @@ func BuildPalette(f domain.AudioFeatures, s domain.Sentiment) []domain.ColorWeig
 		return weights[i].Weight > weights[j].Weight
 	})
 	return weights
-}
-
-// normalizePolarity maps sentiment polarity from [-1,1] into [0,1].
-func normalizePolarity(p float64) float64 {
-	return clamp01((p + 1) / 2)
 }
 
 func clamp01(v float64) float64 {

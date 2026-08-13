@@ -81,19 +81,67 @@ func TestRealTracksAreDiscriminated(t *testing.T) {
 	}
 }
 
-// These classifiers were wrong on the very samples above: a vocal ballad called
-// instrumental, and a male singer called female. Nothing may start reading them
-// without this failing first.
+// gender and the genre classifiers were wrong on the very sample above: a male
+// singer called female at p=0.94, and an acoustic country ballad called ambient.
+// Nothing may start reading them without this failing first.
+//
+// Liveness and speechiness stay zero for a different reason: no classifier here
+// measures either, and since intimate was dropped no dimension reads them.
 func TestUnreliableClassifiersAreIgnored(t *testing.T) {
 	f := toFeatures(parse(t, dieAHappyMan))
 
-	if f.Instrumentalness != 0 {
-		t.Errorf("instrumentalness = %.2f, want 0: voice_instrumental called this vocal track instrumental",
-			f.Instrumentalness)
-	}
 	if f.Liveness != 0 || f.Speechiness != 0 {
 		t.Errorf("liveness=%.2f speechiness=%.2f, want 0: nothing here measures them",
 			f.Liveness, f.Speechiness)
+	}
+}
+
+// voice_instrumental is read, which ADR 0018 rejected and ADR 0025 reversed on
+// 24 recordings rather than this one.
+//
+// The ballad is the known miss and is asserted as one: it is a sung country
+// track and the classifier answers instrumental at p=0.72. Kept as a test so the
+// cost of the decision is visible rather than remembered.
+func TestVoiceInstrumentalIsRead(t *testing.T) {
+	ballad := toFeatures(parse(t, dieAHappyMan))
+	if math.Abs(ballad.Instrumentalness-0.72) > 0.001 {
+		t.Errorf("instrumentalness = %.2f, want the classifier's 0.72", ballad.Instrumentalness)
+	}
+
+	// And a recording nobody submitted it for reads zero rather than "vocal",
+	// so a missing classifier contributes nothing to the mean either way.
+	if got := toFeatures(parse(t, godsCountry)).Instrumentalness; got != 0 {
+		t.Errorf("instrumentalness = %.2f with no such classifier, want 0", got)
+	}
+}
+
+// A recording with nothing but the voice classifier is still a measurement.
+func TestVoiceInstrumentalAloneIsPresent(t *testing.T) {
+	f := toFeatures(parse(t, `{"highlevel":{"voice_instrumental":{"value":"instrumental","probability":0.91}}}`))
+
+	if !f.Present {
+		t.Error("a recording classified only for voice reported Present false")
+	}
+	if math.Abs(f.Instrumentalness-0.91) > 0.001 {
+		t.Errorf("instrumentalness = %.2f, want 0.91", f.Instrumentalness)
+	}
+}
+
+// An absent key is not a minor one. Zero is the same number an evenly split
+// playlist averages to, and both mean the bright/dark axis has nothing to say.
+func TestTonality(t *testing.T) {
+	for _, c := range []struct {
+		scale string
+		want  float64
+	}{
+		{"major", 1},
+		{"minor", -1},
+		{"", 0},
+		{"Minor", 0},
+	} {
+		if got := tonality(c.scale); got != c.want {
+			t.Errorf("tonality(%q) = %v, want %v", c.scale, got, c.want)
+		}
 	}
 }
 

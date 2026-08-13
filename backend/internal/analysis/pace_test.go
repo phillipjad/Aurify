@@ -156,11 +156,5 @@ func drivingWeight(t *testing.T, tracks []sample) float64 {
 	if err != nil {
 		t.Fatalf("Analyze: %v", err)
 	}
-	for _, c := range result.Palette {
-		if c.Dimension == "driving" {
-			return c.Weight
-		}
-	}
-	t.Fatal("the palette has no driving dimension")
-	return 0
+	return weightsByDimension(result.Palette)["driving"]
 }

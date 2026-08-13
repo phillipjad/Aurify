@@ -23,9 +23,11 @@ DSP login ─▶ ingest tracks ─▶ per track: ─▶ aggregate + weight ─�
                               via lrclib.net    [0,1] weights
 ```
 
-Example of the weighting: a playlist with a mean liveness of `0.78` contributes
-`0.78` (pre-normalization) to the *energetic* color; low valence plus negative
-lyric polarity pushes weight toward the *melancholic* color. See
+Example of the weighting: a playlist with a mean energy of `0.78` contributes
+`0.78` (pre-normalization) to the *energetic* color; a playlist mostly in minor
+keys, with bleak lyrics, pushes weight toward the *melancholic* color. Every
+dimension reads something a source actually measures
+([ADR 0025](docs/adr/0025-palette-from-measured-signals.md)). See
 [`backend/internal/analysis/weights.go`](backend/internal/analysis/weights.go).
 
 ## Stack
@@ -113,8 +115,10 @@ Toolchain versions: Go 1.26.3 · Node 24.16.0 · pnpm 11.5.0 · PostgreSQL 17.
 - **Lyrics + sentiment** — the lrclib client is real; sentiment uses a naive
   lexicon placeholder.
 - **Audio features** — measured, from AcousticBrainz where a track matches
-  ([ADR 0018](docs/adr/0018-audio-features.md)). `introspective` and `intimate`
-  stay flat: nothing reachable measures them.
+  ([ADR 0018](docs/adr/0018-audio-features.md)). All seven palette dimensions
+  now read a measured signal: `intimate` was dropped because nothing reachable
+  measures speech, and the bright/dark pair reads major/minor rather than a mean
+  of mood classifiers ([ADR 0025](docs/adr/0025-palette-from-measured-signals.md)).
 
 ## Deploying
 

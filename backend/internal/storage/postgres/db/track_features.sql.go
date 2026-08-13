@@ -12,21 +12,23 @@ import (
 )
 
 const findTrackFeaturesByKeys = `-- name: FindTrackFeaturesByKeys :many
-SELECT track_key, present, danceability, acousticness, energy, valence, onset_rate, features_version, fetched_at
+SELECT track_key, present, danceability, acousticness, energy, valence, instrumentalness, onset_rate, tonality, features_version, fetched_at
 FROM track_features
 WHERE track_key = ANY($1::TEXT[])
 `
 
 type FindTrackFeaturesByKeysRow struct {
-	TrackKey        string
-	Present         bool
-	Danceability    float64
-	Acousticness    float64
-	Energy          float64
-	Valence         float64
-	OnsetRate       float64
-	FeaturesVersion int32
-	FetchedAt       pgtype.Timestamptz
+	TrackKey         string
+	Present          bool
+	Danceability     float64
+	Acousticness     float64
+	Energy           float64
+	Valence          float64
+	Instrumentalness float64
+	OnsetRate        float64
+	Tonality         float64
+	FeaturesVersion  int32
+	FetchedAt        pgtype.Timestamptz
 }
 
 // One round trip for a whole playlist, as with lyrics.
@@ -46,7 +48,9 @@ func (q *Queries) FindTrackFeaturesByKeys(ctx context.Context, keys []string) ([
 			&i.Acousticness,
 			&i.Energy,
 			&i.Valence,
+			&i.Instrumentalness,
 			&i.OnsetRate,
+			&i.Tonality,
 			&i.FeaturesVersion,
 			&i.FetchedAt,
 		); err != nil {
@@ -62,7 +66,7 @@ func (q *Queries) FindTrackFeaturesByKeys(ctx context.Context, keys []string) ([
 
 const saveTrackFeatures = `-- name: SaveTrackFeatures :exec
 INSERT INTO track_features (
-    track_key, present, danceability, acousticness, energy, valence, onset_rate, features_version, fetched_at
+    track_key, present, danceability, acousticness, energy, valence, instrumentalness, onset_rate, tonality, features_version, fetched_at
 )
 SELECT
     unnest($1::TEXT[]),
@@ -72,29 +76,35 @@ SELECT
     unnest($5::DOUBLE PRECISION[]),
     unnest($6::DOUBLE PRECISION[]),
     unnest($7::DOUBLE PRECISION[]),
-    unnest($8::INTEGER[]),
-    unnest($9::TIMESTAMPTZ[])
+    unnest($8::DOUBLE PRECISION[]),
+    unnest($9::DOUBLE PRECISION[]),
+    unnest($10::INTEGER[]),
+    unnest($11::TIMESTAMPTZ[])
 ON CONFLICT (track_key) DO UPDATE SET
     present = EXCLUDED.present,
     danceability = EXCLUDED.danceability,
     acousticness = EXCLUDED.acousticness,
     energy = EXCLUDED.energy,
     valence = EXCLUDED.valence,
+    instrumentalness = EXCLUDED.instrumentalness,
     onset_rate = EXCLUDED.onset_rate,
+    tonality = EXCLUDED.tonality,
     features_version = EXCLUDED.features_version,
     fetched_at = EXCLUDED.fetched_at
 `
 
 type SaveTrackFeaturesParams struct {
-	Keys            []string
-	Present         []bool
-	Danceability    []float64
-	Acousticness    []float64
-	Energy          []float64
-	Valence         []float64
-	OnsetRate       []float64
-	FeaturesVersion []int32
-	FetchedAt       []pgtype.Timestamptz
+	Keys             []string
+	Present          []bool
+	Danceability     []float64
+	Acousticness     []float64
+	Energy           []float64
+	Valence          []float64
+	Instrumentalness []float64
+	OnsetRate        []float64
+	Tonality         []float64
+	FeaturesVersion  []int32
+	FetchedAt        []pgtype.Timestamptz
 }
 
 // Batched upsert. ON CONFLICT overwrites rather than skipping, so a negative
@@ -107,7 +117,9 @@ func (q *Queries) SaveTrackFeatures(ctx context.Context, arg SaveTrackFeaturesPa
 		arg.Acousticness,
 		arg.Energy,
 		arg.Valence,
+		arg.Instrumentalness,
 		arg.OnsetRate,
+		arg.Tonality,
 		arg.FeaturesVersion,
 		arg.FetchedAt,
 	)

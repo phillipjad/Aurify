@@ -63,9 +63,13 @@ func TestBlendFeatures(t *testing.T) {
 
 	// CoverageWeight only reaches 0 when nothing matched, and then there is no
 	// measurement to keep: the estimate is the whole answer, as it is today.
+	// Its brightness is expressed on the axis the palette reads, which is the
+	// one thing the estimate cannot say in its own words.
 	t.Run("nothing measured yields the estimate", func(t *testing.T) {
-		if got := BlendFeatures(domain.AudioFeatures{}, estimated, 0); got != estimated {
-			t.Errorf("blend = %+v, want the estimate %+v", got, estimated)
+		want := estimated
+		want.Tonality = 2*estimated.Valence - 1
+		if got := BlendFeatures(domain.AudioFeatures{}, estimated, 0); got != want {
+			t.Errorf("blend = %+v, want the estimate %+v", got, want)
 		}
 	})
 
@@ -74,6 +78,34 @@ func TestBlendFeatures(t *testing.T) {
 	t.Run("no estimate yields the measurement", func(t *testing.T) {
 		if got := BlendFeatures(measured, domain.AudioFeatures{}, 0.25); got != measured {
 			t.Errorf("blend = %+v, want the measurement %+v", got, measured)
+		}
+	})
+
+	// The estimator is never asked for a key, but valence and tonality are the
+	// same bright-to-dark axis on different scales, so its valence is what
+	// stands in. Without it a playlist released after AcousticBrainz stopped
+	// collecting would have no bright or dark colour at all.
+	t.Run("the estimator's valence stands in for a key", func(t *testing.T) {
+		// Estimated valence 0.1 is tonality -0.8; measured is +1, all major.
+		got := BlendFeatures(
+			domain.AudioFeatures{Tonality: 1, Present: true},
+			domain.AudioFeatures{Valence: 0.1, Present: true},
+			0.25,
+		)
+		if want := 1*0.25 + -0.8*0.75; math.Abs(got.Tonality-want) > 1e-9 {
+			t.Errorf("Tonality = %v, want %v", got.Tonality, want)
+		}
+
+		// And with nothing measured at all it is the whole answer, which is the
+		// case the mapping exists for: a playlist released after AcousticBrainz
+		// stopped collecting would otherwise show neither colour.
+		whole := BlendFeatures(
+			domain.AudioFeatures{},
+			domain.AudioFeatures{Valence: 1, Present: true},
+			0,
+		)
+		if whole.Tonality != 1 {
+			t.Errorf("Tonality = %v, want 1 from an estimate of full valence", whole.Tonality)
 		}
 	})
 }

@@ -50,10 +50,11 @@ func (c *memoryCache) SaveMany(_ context.Context, entries []domain.CachedFeature
 	return nil
 }
 
-// lowLevelDoc is the rhythm block of a real low-level document, cut down to the
-// one field this package reads. The rate is the one AcousticBrainz measured for
-// Burial's "Archangel", the busiest recording in the ADR 0023 sample.
-const lowLevelDoc = `{"rhythm":{"bpm":135.3,"onset_rate":5.28}}`
+// lowLevelDoc is a low-level document cut down to the two fields this package
+// reads. The rate is the one AcousticBrainz measured for Burial's "Archangel",
+// the busiest recording in the ADR 0023 sample; the tonal block is shaped like
+// the real one rather than taken from that recording.
+const lowLevelDoc = `{"rhythm":{"bpm":135.3,"onset_rate":5.28},"tonal":{"key_key":"G#","key_scale":"minor"}}`
 
 // stub serves both upstreams and counts what was asked of each.
 type stub struct {
@@ -69,6 +70,9 @@ type stub struct {
 	abData     bool
 	lowStatus  int
 	lastPath   string
+	// lowBody overrides the whole low-level response, for the tests that care
+	// which submission of a recording answers.
+	lowBody string
 }
 
 func newStub(t *testing.T, score int, withData bool) *stub {
@@ -85,7 +89,7 @@ func newStub(t *testing.T, score int, withData bool) *stub {
 		case strings.HasPrefix(r.URL.Path, "/api/v1/low-level"):
 			s.abLowCalls++
 		}
-		lowStatus := s.lowStatus
+		lowStatus, lowBody := s.lowStatus, s.lowBody
 		s.mu.Unlock()
 
 		w.Header().Set("Content-Type", "application/json")
@@ -97,6 +101,10 @@ func newStub(t *testing.T, score int, withData bool) *stub {
 		if strings.HasPrefix(r.URL.Path, "/api/v1/low-level") {
 			if lowStatus != 0 {
 				w.WriteHeader(lowStatus)
+				return
+			}
+			if lowBody != "" {
+				fmt.Fprint(w, lowBody)
 				return
 			}
 			if !s.abData {
@@ -159,6 +167,62 @@ func TestTheOnsetRateIsFetchedAndCached(t *testing.T) {
 	}
 	if len(cache.saved) != 1 || cache.saved[0].Features.OnsetRate != 5.28 {
 		t.Errorf("the rate did not reach the cache: %+v", cache.saved)
+	}
+	if got[0].Tonality != -1 {
+		t.Errorf("Tonality = %v, want -1 for the minor key in the same document", got[0].Tonality)
+	}
+	if cache.saved[0].Features.Tonality != -1 {
+		t.Errorf("the key did not reach the cache: %+v", cache.saved)
+	}
+}
+
+// Both low-level fields come out of one submission, not out of whichever
+// submission each happens to match first.
+//
+// eachDocument stops at the first submission its callback accepts, so a second
+// callback would be a second independent search: here it would take the key from
+// submission 0, which has no rhythm at all, while the pace came from submission
+// 1. That is a karaoke version's key against the original's tempo, reported as
+// one track.
+func TestTheLowLevelFieldsComeFromOneSubmission(t *testing.T) {
+	cache, s := newCache(), newStub(t, 100, true)
+	s.lowBody = `{"mbid-1":{` +
+		`"0":{"rhythm":{"onset_rate":0},"tonal":{"key_scale":"major"}},` +
+		`"1":{"rhythm":{"onset_rate":3.4},"tonal":{"key_scale":"minor"}}}}`
+
+	got := clientFor(s, cache).Lookup(context.Background(), tracks(1))
+
+	if got[0].OnsetRate != 3.4 {
+		t.Fatalf("OnsetRate = %v, want 3.4 from the only submission measured for rhythm", got[0].OnsetRate)
+	}
+	if got[0].Tonality != -1 {
+		t.Errorf("Tonality = %v, want -1 from that same submission, not +1 from the other one", got[0].Tonality)
+	}
+}
+
+// Which submission answers cannot depend on Go's map ordering. Observed live
+// before this: the same Burial recording read 5.18 then 5.28 onsets per second
+// on consecutive runs.
+func TestTheChosenSubmissionIsStable(t *testing.T) {
+	body := `{"mbid-1":{` +
+		`"0":{"rhythm":{"onset_rate":1.1},"tonal":{"key_scale":"major"}},` +
+		`"1":{"rhythm":{"onset_rate":2.2},"tonal":{"key_scale":"minor"}},` +
+		`"2":{"rhythm":{"onset_rate":3.3},"tonal":{"key_scale":"major"}},` +
+		`"3":{"rhythm":{"onset_rate":4.4},"tonal":{"key_scale":"minor"}}}}`
+
+	var first domain.AudioFeatures
+	for i := range 8 {
+		cache, s := newCache(), newStub(t, 100, true)
+		s.lowBody = body
+		got := clientFor(s, cache).Lookup(context.Background(), tracks(1))[0]
+		if i == 0 {
+			first = got
+			continue
+		}
+		if got.OnsetRate != first.OnsetRate || got.Tonality != first.Tonality {
+			t.Fatalf("run %d read rate %v tonality %v, run 0 read %v and %v",
+				i, got.OnsetRate, got.Tonality, first.OnsetRate, first.Tonality)
+		}
 	}
 }
 
