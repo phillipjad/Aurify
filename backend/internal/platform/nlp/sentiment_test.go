@@ -56,13 +56,24 @@ func TestAnalyze(t *testing.T) {
 // whether the lyric term takes any of the bright/dark axis at all, so a track
 // lrclib has never heard of has to be silence rather than a zero.
 func TestAnalyzeWithoutLyrics(t *testing.T) {
+	a := NewAnalyzer()
+
 	for _, lyrics := range []string{"", "   ", "\n\n"} {
-		got, err := NewAnalyzer().Analyze(context.Background(), lyrics)
+		got, err := a.Analyze(context.Background(), lyrics)
 		if err != nil {
 			t.Fatalf("Analyze: %v", err)
 		}
 		if got.HasLyrics || got.Polarity != 0 || got.Subjectivity != 0 {
 			t.Errorf("Analyze(%q) = %+v, want the zero value", lyrics, got)
 		}
+	}
+}
+
+// One lexicon, however many analyzers. Parsing it costs 3.6ms and 3.9MB, so a
+// second NewAnalyzer that rebuilt it would be an invisible 3.9MB at every call
+// site that reasonably assumes a constructor is cheap.
+func TestAnalyzersShareOneLexicon(t *testing.T) {
+	if a, b := NewAnalyzer(), NewAnalyzer(); a.vader != b.vader {
+		t.Error("two analyzers hold two lexicons")
 	}
 }

@@ -8,6 +8,7 @@ package nlp
 import (
 	"context"
 	"strings"
+	"sync"
 
 	"github.com/jonreiter/govader"
 
@@ -26,12 +27,15 @@ type Analyzer struct {
 
 var _ ports.SentimentAnalyzer = (*Analyzer)(nil)
 
-// NewAnalyzer constructs an Analyzer.
-//
-// This parses a 7520-entry lexicon, so it is built once at wiring time and
-// reused for every track of every playlist.
+// lexicon is parsed once and shared by every Analyzer. Building it costs 3.6ms,
+// 3.9MB and 22k allocations, which is 21x what analyzing a whole song costs, and
+// nothing writes to it after NewSentimentIntensityAnalyzer returns, so sharing
+// is safe under any concurrency.
+var lexicon = sync.OnceValue(govader.NewSentimentIntensityAnalyzer)
+
+// NewAnalyzer constructs an Analyzer. Cheap, and safe to call more than once.
 func NewAnalyzer() *Analyzer {
-	return &Analyzer{vader: govader.NewSentimentIntensityAnalyzer()}
+	return &Analyzer{vader: lexicon()}
 }
 
 // Analyze returns a Sentiment for the given lyrics. Empty lyrics yield a
