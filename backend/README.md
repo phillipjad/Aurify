@@ -29,7 +29,7 @@ internal/
   platform/                  # outbound adapters (implement ports)
     dsp/{spotify,applemusic,youtubemusic}/
     lyrics/lrclib/           # lrclib.net client (implemented)
-    nlp/                     # lyric sentiment (naive lexicon placeholder)
+    nlp/                     # lyric sentiment (VADER lexicon, see ADR 0026)
     llm/{promptgen,imagegen}/# prompt + image model clients (ADR 0016)
   storage/postgres/          # PostgreSQL repositories (implement ports)
     migrations/              # goose SQL migrations (embedded, applied on startup)

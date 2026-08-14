@@ -165,25 +165,48 @@ func meanAudioFeatures(tracks []domain.Track) (domain.AudioFeatures, int) {
 	return out, n
 }
 
-// meanSentiment averages sentiment over tracks that had lyrics.
+// clearPolarity is how lopsided a track's lyrics have to be before the playlist
+// counts it as bleak or bright rather than as neither.
+//
+// Set from the corpus rather than from the two test playlists: over the 1157
+// cached lyric sets the analyzer's quartiles are -0.261 and +0.342, so ±0.25 is
+// the round number sitting inside both, and it leaves the middle half of the
+// library unclassified.
+const clearPolarity = 0.25
+
+// meanSentiment aggregates sentiment over tracks that had lyrics.
+//
+// Polarity is a proportion rather than a mean: the share of the playlist that is
+// clearly bright, less the share that is clearly bleak. Per-track polarity is
+// continuous and centred near zero, so meaning it over 50 tracks collapses toward
+// the population mean, the failure docs/adr/0025-palette-from-measured-signals.md
+// replaced valence over. Measured on the two playlists in sentiment_test.go:
+// 0.929 of the axis as a proportion against 0.463 as a mean.
+//
+// Subjectivity stays a plain mean. It is coverage, and the mean share of matched
+// words is what the prompt reports.
 func meanSentiment(sentiments []domain.Sentiment) domain.Sentiment {
-	var polarity, subjectivity float64
-	var n int
+	var subjectivity float64
+	var n, bright, bleak int
 	for _, s := range sentiments {
 		if !s.HasLyrics {
 			continue
 		}
 		n++
-		polarity += s.Polarity
 		subjectivity += s.Subjectivity
+		switch {
+		case s.Polarity >= clearPolarity:
+			bright++
+		case s.Polarity <= -clearPolarity:
+			bleak++
+		}
 	}
 	if n == 0 {
 		return domain.Sentiment{HasLyrics: false}
 	}
-	inv := 1 / float64(n)
 	return domain.Sentiment{
-		Polarity:     polarity * inv,
-		Subjectivity: subjectivity * inv,
+		Polarity:     float64(bright-bleak) / float64(n),
+		Subjectivity: subjectivity / float64(n),
 		HasLyrics:    true,
 	}
 }

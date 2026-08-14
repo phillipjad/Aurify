@@ -29,7 +29,8 @@ lightweight [MADR](https://adr.github.io/madr/)-style records.
 | [0022](0022-covers-by-playlist.md) | A cover is a playlist, and each generation is a revision of it | Accepted |
 | [0023](0023-pace-from-onset-rate.md) | Pace from onset rate, not from BPM | Accepted |
 | [0024](0024-feature-cache-versioning.md) | Invalidate the feature cache by version, not by delete | Accepted |
-| [0025](0025-palette-from-measured-signals.md) | A palette of signals the sources actually measure | Accepted |
+| [0025](0025-palette-from-measured-signals.md) | A palette of signals the sources actually measure | Amended by [0026](0026-lyric-sentiment-from-a-weighted-lexicon.md) |
+| [0026](0026-lyric-sentiment-from-a-weighted-lexicon.md) | Lyric sentiment from a weighted lexicon, aggregated as a proportion | Accepted |
 
 ## Adding a new ADR
 

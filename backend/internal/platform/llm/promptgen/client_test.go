@@ -66,7 +66,7 @@ func TestSendsTheModelAndThePalette(t *testing.T) {
 	// The palette is the whole input signal; sending a request without it would
 	// still look like a working integration.
 	user := captured.Messages[1].Content
-	for _, want := range []string{"melancholic", "#5C4D7D", "60%", "polarity -0.20"} {
+	for _, want := range []string{"melancholic", "#5C4D7D", "60%", "Lyrics: -0.20 on a scale of -1"} {
 		if !strings.Contains(user, want) {
 			t.Errorf("user message is missing %q:\n%s", want, user)
 		}
@@ -207,7 +207,7 @@ func TestDescribesAPlaylistWithoutLyrics(t *testing.T) {
 	if !strings.Contains(got, "No lyrics were available") {
 		t.Errorf("absent lyrics should be stated, not implied by omission:\n%s", got)
 	}
-	if strings.Contains(got, "polarity") {
+	if strings.Contains(got, "on a scale of -1") {
 		t.Errorf("a neutral zero should not be reported as a measurement:\n%s", got)
 	}
 }
@@ -228,7 +228,7 @@ func TestDescribesAPlaylistWithNoPalette(t *testing.T) {
 		t.Errorf("an empty visual language section reached the prompt:\n%s", got)
 	}
 	// What is known still goes, and the lyrics were resolved for most of these.
-	if !strings.Contains(got, "polarity") {
+	if !strings.Contains(got, "on a scale of -1") {
 		t.Errorf("the sentiment that was available should still be described:\n%s", got)
 	}
 }

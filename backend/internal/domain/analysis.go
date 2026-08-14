@@ -2,9 +2,16 @@ package domain
 
 // Sentiment is the NLP result for a track's lyrics.
 //
-// Polarity is in [-1,1] (negative..positive) and Subjectivity is in [0,1]
-// (objective..subjective). HasLyrics reports whether lyrics were found and
-// analyzed at all.
+// Polarity is in [-1,1] (bleak..joyful) and HasLyrics reports whether lyrics
+// were found and analyzed at all. Per track, Polarity is the balance of the
+// valence the lexicon matched; aggregated over a playlist it is the share of
+// tracks clearly one way less the share clearly the other, which is a different
+// quantity on the same scale (see analysis.meanSentiment).
+//
+// Subjectivity is in [0,1] and is the share of the song's words the lexicon
+// could score at all. It has never been an objective-to-subjective axis, and
+// describing it as one misreported a coverage figure to the model for as long as
+// the prompt quoted it (docs/adr/0026-lyric-sentiment-from-a-weighted-lexicon.md).
 //
 // The json tags fix the encoding of the JSONB analysis payload that PlaylistAnalysis
 // is serialized into (see docs/adr/0010-postgresql-storage.md); keep them stable.

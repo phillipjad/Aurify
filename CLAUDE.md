@@ -22,7 +22,7 @@ quick start are in **[README.md](README.md)**.
 - **Frontend** (`frontend/`): reads in `src/lib/api/queries.ts`, writes in
   `src/lib/api/commands.ts`, all fetches via `src/lib/api/client.ts`.
 - Things marked `SCAFFOLD:` / `TODO:` are deliberately unfinished (Spotify and
-  Apple Music network calls, lyric sentiment). Grep for them.
+  Apple Music network calls). Grep for them.
 
 ## Before you finish
 
