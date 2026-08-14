@@ -58,6 +58,10 @@ func (a *Analyzer) Analyze(ctx context.Context, lyrics string) (domain.Sentiment
 	s := a.vader.PolarityScores(lyrics)
 
 	sentiment := domain.Sentiment{HasLyrics: true}
+	// Guarded because the sum is 0 for a song nothing scored, and 0/0 is NaN,
+	// which would reach the palette and the JSONB column. That is 44 of the 1157
+	// cached lyric sets, and it is not the same as matching no words: "kind of"
+	// matches the lexicon but VADER's idiom pass scores it zero.
 	if s.Positive+s.Negative > 0 {
 		sentiment.Polarity = (s.Positive - s.Negative) / (s.Positive + s.Negative)
 	}
