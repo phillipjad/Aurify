@@ -224,10 +224,15 @@ func describeAnalysis(a domain.PlaylistAnalysis) string {
 	}
 
 	if a.MeanSentiment.HasLyrics {
+		// This sentence is where the model is told what scale it is reading, so it
+		// changed with the numbers in ADR 0026: polarity is the share of the
+		// playlist clearly one way, and subjectivity is lexicon coverage rather
+		// than the detached-to-personal axis it used to claim.
 		fmt.Fprintf(&b,
-			"\nMean lyric sentiment: polarity %.2f on a scale of -1 (bleak) to 1 (joyful), "+
-				"subjectivity %.2f on a scale of 0 (detached) to 1 (personal).\n",
-			a.MeanSentiment.Polarity, a.MeanSentiment.Subjectivity,
+			"\nLyrics: %.2f on a scale of -1 (every track's words clearly bleak) to "+
+				"1 (every track's words clearly joyful), with 0 meaning the words point "+
+				"both ways or neither. A weighted lexicon scored %.0f%% of the words.\n",
+			a.MeanSentiment.Polarity, a.MeanSentiment.Subjectivity*100,
 		)
 	} else {
 		b.WriteString("\nNo lyrics were available for these tracks.\n")
@@ -255,6 +260,9 @@ func placeholderPrompt(a domain.PlaylistAnalysis) string {
 		}
 	}
 
+	// Held at ±0.25 across ADR 0026, but re-derived: on the new scale this reads "a
+	// quarter more of the playlist is clearly one way than the other", which 11% of
+	// 2000 random 30-track playlists drawn from the cache clear.
 	mood := "balanced"
 	switch {
 	case a.MeanSentiment.HasLyrics && a.MeanSentiment.Polarity > 0.25:

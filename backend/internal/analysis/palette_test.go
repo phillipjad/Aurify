@@ -122,14 +122,17 @@ func TestLyricsCannotOutweighTheKey(t *testing.T) {
 		t.Errorf("melancholic = %v, want 0: the lyrics may darken the axis, not flip it", got["melancholic"])
 	}
 
-	// They still move it: brightness falls from 1 to 0.5, so euphoric gives up
-	// half its share to the one other live dimension.
+	// They still move it: brightness falls from 1 to 1-2*polarityWeight, so
+	// euphoric gives up that much of its share to the one other live dimension.
+	// Derived from the constant rather than pinned to a number, so retuning the
+	// weight does not land here, but dropping the lyric term does.
 	mixed := weightsByDimension(BuildPalette(
 		domain.AudioFeatures{Tonality: 1, Danceability: 0.5, Present: true},
 		domain.Sentiment{Polarity: -1, HasLyrics: true},
 	))
-	if math.Abs(mixed["euphoric"]-0.5) > 1e-9 {
-		t.Errorf("euphoric = %v against an equal danceable, want 0.5", mixed["euphoric"])
+	darkened := 1 - 2*polarityWeight
+	if want := darkened / (darkened + 0.5); math.Abs(mixed["euphoric"]-want) > 1e-9 {
+		t.Errorf("euphoric = %v against an equal danceable, want %v", mixed["euphoric"], want)
 	}
 }
 

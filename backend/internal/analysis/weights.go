@@ -59,14 +59,17 @@ var palette = []dimension{
 
 // polarityWeight is how much of the bright/dark axis the lyrics carry.
 //
-// A minority share, set by what the analyzer can currently see rather than by a
-// measurement: nlp.Analyzer holds 24 words and matches about 1.4% of a song, so
-// a playlist polarity of 0.8 is a ratio over roughly four matched words. The
-// signal is real but thin, and the key scale is a measurement of the audio.
+// Raised from 0.25 once the analyzer stopped being a 24-word membership test.
+// Over the 1157 cached lyric sets it now matches 40.2 words a track rather than
+// 4.3, and meanSentiment reports a proportion rather than a mean, so what
+// reaches this line is the share of the playlist whose words are clearly one way
+// (docs/adr/0026-lyric-sentiment-from-a-weighted-lexicon.md).
 //
-// ponytail: raise it when the analyzer measures more than a lexicon's worth of
-// the words. The socket is here so that improving it needs no palette change.
-const polarityWeight = 0.25
+// Still a minority share. The key scale is a measurement of the audio; this is a
+// bag of words that reads Billie Eilish's "when the party's over" as bright
+// because one chorus line repeats eight times. On the 26 tracks in
+// sentiment_test.go it commits to a side on 15 and is right about 12 of them.
+const polarityWeight = 0.4
 
 // brightness is the bright/dark axis, in [-1,1].
 //
