@@ -7,10 +7,12 @@ import {
   Download,
   ImageOff,
   Info,
+  ListMusic,
   RefreshCw,
   Trash2,
 } from 'lucide-react'
 import { Link, useNavigate, useSearch } from '@tanstack/react-router'
+import { toast } from 'sonner'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -20,7 +22,7 @@ import { EmptyState } from '@/components/empty-state'
 import { ImageWithFallback } from '@/components/image-with-fallback'
 import { Skeleton } from '@/components/ui/skeleton'
 import { isApiError } from '@/lib/api/client'
-import { useDeleteCover, useDeleteCoverRevision, useGenerateCover } from '@/lib/api/commands'
+import { useDeleteCoverRevision, useGenerateCover, useSetPlaylistCover } from '@/lib/api/commands'
 import { useCover } from '@/lib/api/queries'
 import { cn } from '@/lib/utils'
 import type { ColorWeight, Cover, CoverRevision } from '@/lib/api/types'
@@ -88,8 +90,7 @@ function CoverDetailView({
 }) {
   const navigate = useNavigate()
   const regenerate = useGenerateCover()
-  const del = useDeleteCover()
-  const [confirmingDelete, setConfirmingDelete] = useState(false)
+  const push = useSetPlaylistCover()
 
   const working = isInProgress(cover.status)
 
@@ -149,6 +150,7 @@ function CoverDetailView({
               <time dateTime={cover.createdAt}>{formatDate(cover.createdAt)}</time>
               <StatusBadge status={cover.status} live />
             </div>
+
             <h1 className="font-display text-2xl font-bold tracking-tight text-balance sm:text-3xl">
               {cover.playlistName}
             </h1>
@@ -170,7 +172,12 @@ function CoverDetailView({
 
           <PaletteBreakdown palette={palette} />
 
-          <div className="flex flex-wrap items-center gap-2 border-t border-border pt-5">
+          {/* gap-1 and px-2.5 rather than the default gap-2/px-3: the three
+              buttons need 364px at those defaults and this row gets as little as
+              350 on a phone, which dropped Set cover onto a second line.
+              Tightened here rather than in the sm button variant, which every
+              other surface shares. */}
+          <div className="flex flex-wrap items-center gap-1 border-t border-border pt-5">
             {imageUrl && (
               // The label stays "Download" on every revision. Widening it to
               // "Download #23" reflowed this row on each step, dropping Delete
@@ -185,7 +192,7 @@ function CoverDetailView({
                 }
                 target="_blank"
                 rel="noreferrer"
-                className={buttonVariants({ variant: 'outline', size: 'sm' })}
+                className={cn(buttonVariants({ variant: 'outline', size: 'sm' }), 'px-2.5')}
               >
                 <Download aria-hidden="true" className="size-4" />
                 Download
@@ -198,6 +205,7 @@ function CoverDetailView({
             <Button
               variant="outline"
               size="sm"
+              className="px-2.5"
               loading={regenerate.isPending}
               disabled={working}
               onClick={() =>
@@ -211,42 +219,39 @@ function CoverDetailView({
               Regenerate
             </Button>
 
-            {confirmingDelete ? (
-              <span className="inline-flex items-center gap-2 text-sm">
-                <span className="text-muted-foreground">
-                  {cover.runCount > 1
-                    ? `Delete this cover and all ${cover.runCount} versions?`
-                    : 'Delete this cover and its history?'}
-                </span>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="border-destructive/40 text-destructive hover:bg-destructive/10"
-                  loading={del.isPending}
-                  onClick={() => del.mutate(cover.id, { onSuccess: () => void navigate({ to: '/covers' }) })}
-                >
-                  Delete
-                </Button>
-                <Button variant="ghost" size="sm" disabled={del.isPending} onClick={() => setConfirmingDelete(false)}>
-                  Cancel
-                </Button>
-              </span>
-            ) : (
+            {/* Only YouTube Music can take a cover back today: Spotify's API can
+                but its provider is still a stub, and Apple Music exposes
+                playlist artwork as read-only. Hiding the button beats a 422 the
+                user can do nothing about.
+
+                "Set cover" rather than "Set as playlist cover" for width, with
+                the rest of the sentence in the accessible name, which keeps the
+                visible text as a substring so it satisfies label-in-name. */}
+            {cover.platform === 'youtube_music' && (
               <Button
-                variant="ghost"
+                variant="outline"
                 size="sm"
-                className="text-muted-foreground hover:text-destructive"
-                onClick={() => setConfirmingDelete(true)}
+                className="px-2.5"
+                aria-label="Set cover on YouTube Music"
+                loading={push.isPending}
+                disabled={working || !cover.imageUrl}
+                onClick={() =>
+                  push.mutate(cover.id, {
+                    onSuccess: () => toast.success('Set as the playlist cover on YouTube Music'),
+                    onError: (err) =>
+                      toast.error(isApiError(err) ? err.detail || err.title : 'Could not set the playlist cover'),
+                  })
+                }
               >
-                <Trash2 aria-hidden="true" className="size-4" />
-                Delete
+                <ListMusic aria-hidden="true" className="size-4" />
+                Set cover
               </Button>
             )}
           </div>
 
-          {(regenerate.isError || del.isError) && (
+          {regenerate.isError && (
             <p role="alert" className="text-sm text-destructive-text">
-              {errorText(regenerate.error ?? del.error, 'That didn’t work. Try again in a moment.')}
+              {errorText(regenerate.error, 'That didn’t work. Try again in a moment.')}
             </p>
           )}
         </div>
