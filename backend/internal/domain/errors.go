@@ -9,6 +9,16 @@ var (
 	ErrUnauthorized        = errors.New("unauthorized")
 	ErrUnsupportedPlatform = errors.New("unsupported dsp platform")
 
+	// ErrDSPReauthRequired means the stored grant can no longer do what was
+	// asked and the user has to reconnect the account.
+	//
+	// It covers two failures that look nothing alike in the logs and identical
+	// to the person: a token the provider refuses to refresh, and a call the
+	// granted scopes do not cover. A connection made before Aurify asked for a
+	// write scope is the second one, and no amount of retrying fixes either.
+	// Without this they answered 500 with Google's raw JSON in the body.
+	ErrDSPReauthRequired = errors.New("dsp connection must be re-authorized")
+
 	// ErrGenerationInFlight is returned when a playlist already has a
 	// generation running. One run at a time per cover is enforced in the write
 	// that claims it, so this is the answer a caller that lost the race gets —
