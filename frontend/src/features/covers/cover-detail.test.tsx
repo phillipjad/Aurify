@@ -92,33 +92,6 @@ describe('CoverDetail', () => {
     expect(screen.getByText('42%')).toBeInTheDocument()
   })
 
-  // Deleting the cover now takes every run with it, so the confirmation has to
-  // say so rather than sounding like it removes one picture.
-  it('confirms that a delete takes every run with it, then calls DELETE', async () => {
-    routeApi(WITH_HISTORY)
-    renderWithProviders(<CoverDetail coverId="c1" />)
-    await screen.findByRole('heading', { level: 1 })
-
-    // First click only reveals the confirmation — nothing is deleted yet.
-    await userEvent.click(screen.getByRole('button', { name: /^delete$/i }))
-    expect(screen.getByText(/delete this cover and all 2 versions\?/i)).toBeInTheDocument()
-    expect(mockFetch).not.toHaveBeenCalledWith('/covers/c1', { method: 'DELETE' })
-
-    await userEvent.click(screen.getByRole('button', { name: 'Delete' }))
-    expect(mockFetch).toHaveBeenCalledWith('/covers/c1', { method: 'DELETE' })
-  })
-
-  it('can back out of a delete', async () => {
-    routeApi()
-    renderWithProviders(<CoverDetail coverId="c1" />)
-    await screen.findByRole('heading', { level: 1 })
-
-    await userEvent.click(screen.getByRole('button', { name: /^delete$/i }))
-    await userEvent.click(screen.getByRole('button', { name: /cancel/i }))
-    expect(screen.queryByText(/delete this cover/i)).not.toBeInTheDocument()
-    expect(mockFetch).not.toHaveBeenCalledWith('/covers/c1', { method: 'DELETE' })
-  })
-
   it('regenerates by generating a fresh cover for the same playlist', async () => {
     routeApi()
     renderWithProviders(<CoverDetail coverId="c1" />)

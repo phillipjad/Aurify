@@ -12,6 +12,7 @@ import (
 	"github.com/phillipjad/aurify/backend/internal/app/command/deletecover"
 	"github.com/phillipjad/aurify/backend/internal/app/command/deleterevision"
 	"github.com/phillipjad/aurify/backend/internal/app/command/generatecover"
+	"github.com/phillipjad/aurify/backend/internal/app/command/setplaylistcover"
 	"github.com/phillipjad/aurify/backend/internal/app/query/getcover"
 	"github.com/phillipjad/aurify/backend/internal/app/query/getcoverimage"
 	"github.com/phillipjad/aurify/backend/internal/app/query/listcovers"
@@ -258,6 +259,35 @@ func (h *Covers) Delete(c mux.RouteContext) {
 	}
 
 	if err := h.app.Commands.DeleteCover.Handle(c, deletecover.Command{
+		CoverID: id,
+		UserID:  userID,
+	}); err != nil {
+		respondError(c, err)
+		return
+	}
+	c.NoContent()
+}
+
+// SetPlaylistCover pushes a cover's current artwork to the playlist it was made
+// from, on the DSP it came from (command).
+// POST /api/v1/covers/{id}/push
+//
+// 204 rather than a body: the DSP is the source of truth for what the playlist
+// now looks like, and echoing our own bytes back would only claim otherwise.
+func (h *Covers) SetPlaylistCover(c mux.RouteContext) {
+	userID := currentUser(c)
+	if userID == "" {
+		c.Unauthorized()
+		return
+	}
+
+	id, ok := c.Params().String("id")
+	if !ok {
+		c.BadRequest("missing id", "path parameter 'id' is required")
+		return
+	}
+
+	if err := h.app.Commands.SetPlaylistCover.Handle(c, setplaylistcover.Command{
 		CoverID: id,
 		UserID:  userID,
 	}); err != nil {

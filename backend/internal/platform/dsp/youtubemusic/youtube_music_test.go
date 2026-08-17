@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"slices"
 	"strings"
 	"testing"
 
@@ -168,8 +169,13 @@ func TestExchange(t *testing.T) {
 	if conn.ExpiresAt.IsZero() {
 		t.Error("ExpiresAt should be derived from expires_in")
 	}
-	if len(conn.Scopes) != 1 || !strings.Contains(conn.Scopes[0], "youtube.readonly") {
-		t.Errorf("scopes = %v, want [youtube.readonly]", conn.Scopes)
+	// Recorded on the connection so a stored grant can be checked later without
+	// asking Google, which is what tells a connection made before the write scope
+	// was requested apart from one made after.
+	for _, want := range []string{youtubeReadonlyScope, youtubeWriteScope} {
+		if !slices.Contains(conn.Scopes, want) {
+			t.Errorf("scopes = %v, want %q present", conn.Scopes, want)
+		}
 	}
 }
 

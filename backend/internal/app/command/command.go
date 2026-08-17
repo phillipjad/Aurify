@@ -12,6 +12,7 @@ import (
 	"github.com/phillipjad/aurify/backend/internal/app/command/refreshsession"
 	"github.com/phillipjad/aurify/backend/internal/app/command/requestpasswordreset"
 	"github.com/phillipjad/aurify/backend/internal/app/command/resetpassword"
+	"github.com/phillipjad/aurify/backend/internal/app/command/setplaylistcover"
 	"github.com/phillipjad/aurify/backend/internal/app/command/signin"
 	"github.com/phillipjad/aurify/backend/internal/app/command/signout"
 	"github.com/phillipjad/aurify/backend/internal/app/command/signup"
@@ -24,6 +25,9 @@ type Bus struct {
 	GenerateCover  *generatecover.Handler
 	DeleteCover    *deletecover.Handler
 	DeleteRevision *deleterevision.Handler
+	// SetPlaylistCover is the only command that writes to a DSP rather than
+	// reading from one.
+	SetPlaylistCover *setplaylistcover.Handler
 
 	// Authentication.
 	SignUp               *signup.Handler

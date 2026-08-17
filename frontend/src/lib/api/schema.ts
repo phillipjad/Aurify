@@ -278,6 +278,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/covers/{id}/push": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Set this cover as the playlist's artwork on its DSP */
+        post: operations["setPlaylistCover"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/covers/{id}/revisions/{revisionId}": {
         parameters: {
             query?: never;
@@ -1138,6 +1155,66 @@ export interface operations {
             };
             /** @description Not Found */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "type": "",
+                     *       "title": "",
+                     *       "status": 0,
+                     *       "detail": "",
+                     *       "instance": null
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    setPlaylistCover: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description Cover id
+                 * @example 0f8fad5b-d9cb-469f-a165-70867728950e
+                 */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "type": "",
+                     *       "title": "",
+                     *       "status": 0,
+                     *       "detail": "",
+                     *       "instance": null
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Response 422 */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };

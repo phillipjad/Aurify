@@ -25,6 +25,7 @@ import (
 	"github.com/phillipjad/aurify/backend/internal/app/command/refreshsession"
 	"github.com/phillipjad/aurify/backend/internal/app/command/requestpasswordreset"
 	"github.com/phillipjad/aurify/backend/internal/app/command/resetpassword"
+	"github.com/phillipjad/aurify/backend/internal/app/command/setplaylistcover"
 	"github.com/phillipjad/aurify/backend/internal/app/command/signin"
 	"github.com/phillipjad/aurify/backend/internal/app/command/signout"
 	"github.com/phillipjad/aurify/backend/internal/app/command/signup"
@@ -191,8 +192,9 @@ func run() error {
 				lyricsResolver, sentiment, engine, prompts, images, store.CoverImages(),
 				trackFeatures, featureEstimator,
 			),
-			DeleteCover:    deletecover.NewHandler(store.Covers()),
-			DeleteRevision: deleterevision.NewHandler(store.Covers()),
+			DeleteCover:      deletecover.NewHandler(store.Covers()),
+			SetPlaylistCover: setplaylistcover.NewHandler(store.Covers(), store.CoverImages(), connections),
+			DeleteRevision:   deleterevision.NewHandler(store.Covers()),
 
 			SignUp: signup.NewHandler(
 				store.Users(), store.Credentials(), store.EmailTokens(), mailer, cfg.AppBaseURL,

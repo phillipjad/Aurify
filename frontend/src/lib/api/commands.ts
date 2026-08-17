@@ -181,6 +181,18 @@ export function useDeleteCover() {
  * The tile can change as a result — dropping the newest successful run falls
  * back to the one before it — so this refreshes the list as well as the detail.
  */
+/**
+ * Pushes a cover's current artwork to the playlist it was made from, on its DSP.
+ *
+ * Nothing of ours changes, so nothing is invalidated: the cover, its runs and
+ * the gallery are all exactly as they were. What moved is on the DSP, and the
+ * only report of it is the toast the caller raises.
+ */
+export function useSetPlaylistCover() {
+  return useMutation({
+    mutationFn: (id: string) => apiFetch<void>(`/covers/${encodeURIComponent(id)}/push`, { method: 'POST' }),
+  })
+}
 export function useDeleteCoverRevision(coverId: string) {
   const qc = useQueryClient()
   return useMutation({
