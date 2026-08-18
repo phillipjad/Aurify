@@ -70,6 +70,15 @@ func respondError(c mux.RouteContext, err error) {
 		})
 	case errors.Is(err, domain.ErrUnauthorized):
 		c.Unauthorized()
+	case errors.Is(err, domain.ErrDSPReauthRequired):
+		// 422 rather than 500: the request was well-formed and the server is
+		// fine, but the stored grant cannot carry it out. The underlying error
+		// keeps the provider's own message for the log; what reaches the user is
+		// the one thing they can act on.
+		c.JSON(422, map[string]string{
+			"title":  "Reconnect required",
+			"detail": "This connection needs to be re-authorized. Reconnect the account, then try again.",
+		})
 	case errors.Is(err, domain.ErrUnsupportedPlatform):
 		c.BadRequest("unsupported platform", err.Error())
 	default:

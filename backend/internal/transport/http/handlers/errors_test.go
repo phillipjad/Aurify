@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/fgrzl/mux"
@@ -29,6 +30,11 @@ func TestRespondErrorStatusCodes(t *testing.T) {
 		// Wrapped, since the repositories and command handlers return these
 		// through several layers.
 		{fmt.Errorf("generatecover: %w", domain.ErrGenerationInFlight), http.StatusConflict},
+		// A grant that cannot do what was asked is the user's to fix, not a
+		// server fault. This reached the client as a 500 titled "internal error"
+		// with Google's raw JSON as the detail.
+		{domain.ErrDSPReauthRequired, http.StatusUnprocessableEntity},
+		{fmt.Errorf("youtubemusic: status 403: %w", domain.ErrDSPReauthRequired), http.StatusUnprocessableEntity},
 	}
 
 	for _, tc := range cases {
@@ -40,6 +46,32 @@ func TestRespondErrorStatusCodes(t *testing.T) {
 				t.Errorf("status = %d, want %d (body: %s)", rec.Code, tc.want, rec.Body.String())
 			}
 		})
+	}
+}
+
+// Whatever the provider said goes to the log, not to the client: a reconnect is
+// the only thing the user can act on, and Google's error JSON is not that.
+func TestReauthRequiredSaysWhatToDo(t *testing.T) {
+	rec := httptest.NewRecorder()
+	respondError(
+		mux.NewRouteContext(rec, httptest.NewRequest(http.MethodPost, "/", nil)),
+		fmt.Errorf(
+			"%w: youtubemusic: set playlist cover: status 403: {\"error\":{\"message\":\"Request had insufficient authentication scopes.\"}}",
+			domain.ErrDSPReauthRequired,
+		),
+	)
+
+	if rec.Code != http.StatusUnprocessableEntity {
+		t.Errorf("status = %d, want 422", rec.Code)
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, "Reconnect") {
+		t.Errorf("body does not tell the user to reconnect: %s", body)
+	}
+	for _, leak := range []string{"youtubemusic:", "insufficient authentication scopes", "status 403"} {
+		if strings.Contains(body, leak) {
+			t.Errorf("provider internals leaked to the client (%q): %s", leak, body)
+		}
 	}
 }
 

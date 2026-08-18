@@ -11,6 +11,7 @@ package youtubemusic
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -150,6 +151,18 @@ func (p *Provider) RefreshConnection(
 		Expiry:       conn.ExpiresAt,
 	}).Token()
 	if err != nil {
+		// A RetrieveError is Google answering the token endpoint and refusing:
+		// invalid_grant for a refresh token revoked, expired, or aged out of a
+		// testing-mode project. Nothing retries its way past that, so it is
+		// reported as needing re-authorization. A transport failure is not: the
+		// grant may be perfectly good and the network merely down, and telling
+		// someone to reconnect over a dropped packet costs them their tokens.
+		var retrieve *oauth2.RetrieveError
+		if errors.As(err, &retrieve) {
+			return conn, false, fmt.Errorf(
+				"%w: youtubemusic: refresh token: %w", domain.ErrDSPReauthRequired, err,
+			)
+		}
 		return conn, false, fmt.Errorf("youtubemusic: refresh token: %w", err)
 	}
 	if tok.AccessToken == conn.AccessToken {
