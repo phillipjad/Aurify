@@ -1,5 +1,7 @@
 # Aurify
 
+[![CI](https://github.com/phillipjad/Aurify/actions/workflows/ci.yml/badge.svg?branch=develop)](https://github.com/phillipjad/Aurify/actions/workflows/ci.yml)
+
 > Cover art that captures the vibe of your playlist.
 
 Users across music platforms have cherished playlists but rarely a cover that
@@ -8,11 +10,14 @@ Music, YouTube Music), pick a playlist, and Aurify analyzes every track — its
 audio features *and* the sentiment of its lyrics — then generates an abstract
 cover from a color palette weighted to how the music feels.
 
-> **Status: scaffold.** This repository is a structured skeleton. The shapes,
-> interfaces, and wiring are real and the backend builds; authentication,
-> storage, and deployment are implemented, while the external integrations (DSP
-> network calls, prompt and image generation) are intentionally stubbed. See the
-> per-component `README`s and `docs/adr/` for what is real vs. pending.
+> **Status: working on YouTube Music; one provider deep, not three wide.**
+> YouTube Music runs the whole path for real — OAuth, playlist and track ingest,
+> analysis, palette, generation, and writing the finished image back as the
+> playlist's artwork. Auth, sessions, storage, and deployment are implemented.
+> Spotify and Apple Music implement the same `DSPProvider` port but their network
+> calls are still stubs, and generation falls back to a placeholder image until
+> provider credentials are supplied. See [What's stubbed](#whats-stubbed-and-where-to-look)
+> and `docs/adr/` for the detail.
 
 ## How it works
 
@@ -101,8 +106,11 @@ Toolchain versions: Go 1.26.3 · Node 24.16.0 · pnpm 11.5.0 · PostgreSQL 17.
 
 ## What's stubbed (and where to look)
 
-- **DSP integrations** — interfaces + registry are real; network calls return
-  "not implemented" ([`backend/internal/platform/dsp`](backend/internal/platform/dsp), [ADR 0005](docs/adr/0005-dsp-provider-abstraction.md)).
+- **DSP integrations** — YouTube Music is implemented end to end: OAuth, playlist
+  and track ingest, and setting the generated image as the playlist's artwork.
+  Spotify and Apple Music implement the same port, but their network calls still
+  return "not implemented"
+  ([`backend/internal/platform/dsp`](backend/internal/platform/dsp), [ADR 0005](docs/adr/0005-dsp-provider-abstraction.md)).
 - **Prompt + image generation** — built; placeholders when unconfigured
   ([`backend/internal/platform/llm`](backend/internal/platform/llm),
   [ADR 0016](docs/adr/0016-generation-providers.md)). Covers still look alike
@@ -112,8 +120,12 @@ Toolchain versions: Go 1.26.3 · Node 24.16.0 · pnpm 11.5.0 · PostgreSQL 17.
   ([ADR 0012](docs/adr/0012-account-lockout-policy.md)). Authentication itself
   is built: email/password and Sign in with Google, with rotating refresh
   tokens ([ADR 0011](docs/adr/0011-authentication-and-sessions.md)).
-- **Lyrics + sentiment** — the lrclib client is real; sentiment uses a naive
-  lexicon placeholder.
+- **Lyrics + sentiment** — both real: lyrics come from lrclib, and sentiment reads
+  VADER's lexicon as a polarity ratio, aggregated as a proportion over the tracks
+  that actually had lyrics
+  ([ADR 0026](docs/adr/0026-lyric-sentiment-from-a-weighted-lexicon.md)). Coverage
+  is the remaining limit, not the method: a playlist lrclib does not know
+  contributes no lyric signal rather than a neutral one.
 - **Audio features** — measured, from AcousticBrainz where a track matches
   ([ADR 0018](docs/adr/0018-audio-features.md)). All seven palette dimensions
   now read a measured signal: `intimate` was dropped because nothing reachable
