@@ -235,6 +235,22 @@ type FeatureEstimator interface {
 	) (domain.AudioFeatures, error)
 }
 
+// PlaylistCoverSetter is a DSPProvider that can write a cover back to the
+// playlist it came from.
+//
+// Separate from DSPProvider because it is not something every platform can do.
+// Apple Music's API exposes playlist artwork as a read-only URL with no endpoint
+// to set one, so folding this into DSPProvider would give that provider a method
+// it could only ever stub. Callers type-assert, and the absence is the answer.
+type PlaylistCoverSetter interface {
+	SetPlaylistCover(
+		ctx context.Context,
+		conn domain.DSPConnection,
+		playlistID string,
+		image domain.GeneratedImage,
+	) error
+}
+
 // SentimentAnalyzer performs NLP sentiment analysis over lyric text.
 type SentimentAnalyzer interface {
 	Analyze(ctx context.Context, lyrics string) (domain.Sentiment, error)

@@ -349,6 +349,14 @@ func NewRouter(deps Deps) (*mux.Router, error) {
 			WithNoContentResponse().
 			WithResponse(404, mux.ProblemDetails{})
 
+		api.POST("/covers/{id}/push", covers.SetPlaylistCover).
+			WithOperationID("setPlaylistCover").
+			WithSummary("Set this cover as the playlist's artwork on its DSP").
+			WithPathParam("id", "Cover id", "0f8fad5b-d9cb-469f-a165-70867728950e").
+			WithNoContentResponse().
+			WithResponse(404, mux.ProblemDetails{}).
+			WithResponse(422, mux.ProblemDetails{})
+
 		api.DELETE("/covers/{id}/revisions/{revisionId}", covers.DeleteRevision).
 			WithOperationID("deleteCoverRevision").
 			WithSummary("Delete one generation run, keeping the cover").

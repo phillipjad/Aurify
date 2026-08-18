@@ -31,6 +31,27 @@ import (
 const (
 	defaultAPIBaseURL    = "https://www.googleapis.com/youtube/v3"
 	youtubeReadonlyScope = "https://www.googleapis.com/auth/youtube.readonly"
+	// defaultUploadBaseURL is where media uploads go. Google serves those from a
+	// separate /upload prefix rather than from the API base, so it is its own
+	// constant rather than string surgery on apiBaseURL.
+	defaultUploadBaseURL = "https://www.googleapis.com/upload/youtube/v3"
+	// youtubeWriteScope is what playlistImages.insert requires. It is the
+	// narrowest of the three the endpoint accepts: youtube.force-ssl also grants
+	// permanently deleting videos, comments and captions, and youtubepartner is
+	// for content partners managing multiple channels.
+	//
+	// There is no YouTube Music scope, because there is no YouTube Music API.
+	// Its playlists are YouTube playlists on the same account read through this
+	// same v3 service, so the grant is account-wide however narrowly the user
+	// thinks of it.
+	youtubeWriteScope = "https://www.googleapis.com/auth/youtube"
+	// heroImageType is the only value playlistImages accepts for snippet.type,
+	// per the API's discovery document. The reference pages do not name it.
+	heroImageType = "hero"
+	// maxCoverBytes is the documented upload ceiling. The discovery document
+	// advertises 50MB for this endpoint, the reference page 2MB; the smaller one
+	// is what is enforced, and generated covers run to about 1.1MB anyway.
+	maxCoverBytes = 2 * 1024 * 1024
 	// maxPageSize is the YouTube Data API's per-call maximum for list endpoints.
 	maxPageSize = 50
 	// likedMusicPlaylistID is YouTube's well-known id for the auto-generated
@@ -50,8 +71,9 @@ type Provider struct {
 	httpClient *http.Client
 	// apiBaseURL and endpoint default to the real Google services and are only
 	// overridden in tests (white-box, same package).
-	apiBaseURL string
-	endpoint   oauth2.Endpoint
+	apiBaseURL    string
+	uploadBaseURL string
+	endpoint      oauth2.Endpoint
 }
 
 var _ ports.DSPProvider = (*Provider)(nil)
@@ -59,10 +81,11 @@ var _ ports.DSPProvider = (*Provider)(nil)
 // NewProvider constructs a YouTube Music provider.
 func NewProvider(cfg dsp.OAuthConfig) *Provider {
 	return &Provider{
-		cfg:        cfg,
-		httpClient: &http.Client{Timeout: 15 * time.Second},
-		apiBaseURL: defaultAPIBaseURL,
-		endpoint:   google.Endpoint,
+		cfg:           cfg,
+		httpClient:    &http.Client{Timeout: 15 * time.Second},
+		apiBaseURL:    defaultAPIBaseURL,
+		uploadBaseURL: defaultUploadBaseURL,
+		endpoint:      google.Endpoint,
 	}
 }
 
@@ -74,7 +97,7 @@ func (p *Provider) oauthConfig() *oauth2.Config {
 		ClientID:     p.cfg.ClientID,
 		ClientSecret: p.cfg.ClientSecret,
 		RedirectURL:  p.cfg.RedirectURL,
-		Scopes:       []string{youtubeReadonlyScope},
+		Scopes:       []string{youtubeReadonlyScope, youtubeWriteScope},
 		Endpoint:     p.endpoint,
 	}
 }
