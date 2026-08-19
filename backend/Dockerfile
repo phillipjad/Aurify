@@ -5,6 +5,11 @@ FROM node:24-alpine AS frontend
 WORKDIR /app
 RUN corepack enable
 COPY frontend/pnpm-workspace.yaml frontend/package.json frontend/pnpm-lock.yaml ./
+# pnpm-workspace.yaml declares a patched dependency, so install reads the patch
+# file itself and fails with ENOENT without it. It travels with the manifests
+# rather than with the sources on the line below, because it is an input to this
+# install step (see docs/adr/0021-patched-sonner-unmount-delay.md).
+COPY frontend/patches ./patches/
 RUN corepack prepare pnpm@11.5.0 --activate && pnpm install --frozen-lockfile
 COPY frontend/ ./
 RUN pnpm build
