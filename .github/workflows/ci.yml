@@ -71,27 +71,27 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - uses: pnpm/action-setup@v6
+      # setup-vp rather than pnpm/action-setup plus actions/setup-node: vp is the
+      # toolchain, and it carries its own vitest, oxlint, oxfmt and bundler, so
+      # installing a package manager and a Node separately only set up the thing
+      # that fetches it. The version still comes from frontend/package.json, which
+      # keeps one pin in the repo for dependabot to bump, and run-install (on by
+      # default) does `vp install`.
+      - uses: voidzero-dev/setup-vp@v1
         with:
-          version: 11
-
-      - uses: actions/setup-node@v7
-        with:
-          node-version: '24'
-          cache: 'pnpm'
+          version-file: frontend/package.json
+          working-directory: frontend
+          cache: true
           cache-dependency-path: frontend/pnpm-lock.yaml
 
-      - name: Install dependencies
-        run: cd frontend && pnpm install
-
       - name: Check (format, lint, types)
-        run: cd frontend && pnpm run check
+        run: cd frontend && vp check
 
       # --run is explicit rather than relying on Vitest inferring CI and
       # disabling watch mode. If that inference ever fails the job hangs until
       # the runner times out, which is a slow and confusing way to learn it.
       - name: Test
-        run: cd frontend && pnpm run test --run
+        run: cd frontend && vp test --run
 
       # Completes the sequence AGENTS.md documents: check, test, build. Neither
       # check nor test bundles anything, so a production-only failure — a bad
@@ -100,7 +100,7 @@ jobs:
       # a minute against several, and points at the frontend rather than at a
       # Docker layer.
       - name: Build
-        run: cd frontend && pnpm run build
+        run: cd frontend && vp build
 
   # Builds every image docker-compose.yml declares, which today is the backend
   # and its embedded SPA. Nothing else in CI compiles the Dockerfile: the Go and

@@ -3,16 +3,27 @@
 # invalidate the Go layer and vice-versa.
 FROM node:24-alpine AS frontend
 WORKDIR /app
-RUN corepack enable
+# vp is the toolchain (it carries vitest, oxlint, oxfmt and the bundler), so the
+# image installs it directly rather than a package manager whose only job is to
+# fetch it.
+#
+# The version is read out of package.json rather than pinned here. The installer
+# defaults to latest, which would drift on every rebuild, and a second literal
+# pin in this file would drift the other way: dependabot bumps the dependency and
+# would leave the Dockerfile behind.
 COPY frontend/pnpm-workspace.yaml frontend/package.json frontend/pnpm-lock.yaml ./
+RUN apk add --no-cache curl bash \
+    && VP_VERSION="$(node -p "require('./package.json').devDependencies['vite-plus'].replace(/^[^0-9]*/, '')")" \
+       curl -fsSL https://vite.plus | bash
+ENV PATH="/root/.vite-plus/bin:${PATH}"
 # pnpm-workspace.yaml declares a patched dependency, so install reads the patch
 # file itself and fails with ENOENT without it. It travels with the manifests
 # rather than with the sources on the line below, because it is an input to this
 # install step (see docs/adr/0021-patched-sonner-unmount-delay.md).
 COPY frontend/patches ./patches/
-RUN corepack prepare pnpm@11.5.0 --activate && pnpm install --frozen-lockfile
+RUN vp install
 COPY frontend/ ./
-RUN pnpm build
+RUN vp build
 
 # Stage 2 — compile the Go binary with the frontend embedded.
 FROM golang:1.26-alpine AS backend
