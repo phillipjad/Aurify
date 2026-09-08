@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'vite-plus/test'
 import { fireEvent, render, screen } from '@testing-library/react'
 
 import { ImageWithFallback } from '@/components/image-with-fallback'

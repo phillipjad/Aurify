@@ -2,3 +2,24 @@ allowBuilds:
   esbuild: true
 patchedDependencies:
   sonner@2.0.7: patches/sonner@2.0.7.patch
+catalog:
+  vite: npm:@voidzero-dev/vite-plus-core@0.3.1
+  vite-plus: 0.3.1
+overrides:
+  vite: 'catalog:'
+peerDependencyRules:
+  allowAny:
+    - vite
+  allowedVersions:
+    vite: '*'
+minimumReleaseAgeExclude:
+  - '@voidzero-dev/vite-plus-core@0.3.1'
+  - '@voidzero-dev/vite-plus-darwin-arm64@0.3.1'
+  - '@voidzero-dev/vite-plus-darwin-x64@0.3.1'
+  - '@voidzero-dev/vite-plus-linux-arm64-gnu@0.3.1'
+  - '@voidzero-dev/vite-plus-linux-arm64-musl@0.3.1'
+  - '@voidzero-dev/vite-plus-linux-x64-gnu@0.3.1'
+  - '@voidzero-dev/vite-plus-linux-x64-musl@0.3.1'
+  - '@voidzero-dev/vite-plus-win32-arm64-msvc@0.3.1'
+  - '@voidzero-dev/vite-plus-win32-x64-msvc@0.3.1'
+  - vite-plus@0.3.1
