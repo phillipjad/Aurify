@@ -7,15 +7,17 @@ WORKDIR /app
 # image installs it directly rather than a package manager whose only job is to
 # fetch it.
 #
-# The version is read out of package.json rather than pinned here. The installer
-# defaults to latest, which would drift on every rebuild, and a second literal
-# pin in this file would drift the other way: dependabot bumps the dependency and
-# would leave the Dockerfile behind.
+# The version is read out of package.json rather than pinned here, so dependabot
+# bumping the dependency moves the image with it. A second literal pin in this
+# file would drift the other way and leave the Dockerfile behind.
+#
+# npm rather than the installer at https://vite.plus, because npm is already in
+# this base image and puts vp on the default PATH. The installer resolves its own
+# install directory; when that directory moved, the PATH set here pointed at
+# nothing and the image stopped building on a commit that had not changed.
 COPY frontend/pnpm-workspace.yaml frontend/package.json frontend/pnpm-lock.yaml ./
-RUN apk add --no-cache curl bash \
-    && VP_VERSION="$(node -p "require('./package.json').devDependencies['vite-plus'].replace(/^[^0-9]*/, '')")" \
-       curl -fsSL https://vite.plus | bash
-ENV PATH="/root/.vite-plus/bin:${PATH}"
+RUN npm install --global --no-fund --no-audit \
+      "vite-plus@$(node -p "require('./package.json').devDependencies['vite-plus'].replace(/^[^0-9]*/, '')")"
 # pnpm-workspace.yaml declares a patched dependency, so install reads the patch
 # file itself and fails with ENOENT without it. It travels with the manifests
 # rather than with the sources on the line below, because it is an input to this
