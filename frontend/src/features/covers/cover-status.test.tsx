@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, expect, it, vi } from 'vite-plus/test'
 import { act, render, screen } from '@testing-library/react'
 
 import { StatusBadge } from '@/features/covers/cover-status'
