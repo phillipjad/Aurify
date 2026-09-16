@@ -58,6 +58,11 @@ shapes over inventing new ones.
   and `vp check --fix` applies fixes — there is no separate ESLint/Prettier/tsc
   step. Import via the `@/` alias. Wire types come from the generated OpenAPI
   schema (see the frontend rule above) — never re-declare DTO shapes by hand.
+- **UI**: controls and their states come from the primitives in
+  `frontend/src/components/ui` (shadcn on Radix); feature code composes them and
+  handles layout only. Shared values (focus, control heights, radius) are tokens
+  in `src/styles.css`. `vp check` enforces this. Need a new kind of control? Add
+  a primitive first. See [ADR 0027](docs/adr/0027-shared-ui-primitives.md).
 - **API contract**: change a Go DTO/route, then regenerate both artifacts:
   `cd backend && go generate ./...` (writes `api/openapi.yaml`), then
   `cd frontend && vp run gen:api` (writes `src/lib/api/schema.ts`). Both are

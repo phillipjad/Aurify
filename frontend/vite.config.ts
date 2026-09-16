@@ -4,6 +4,7 @@ import tailwindcss from '@tailwindcss/vite'
 import { tanstackRouter } from '@tanstack/router-plugin/vite'
 import { VitePWA } from 'vite-plugin-pwa'
 import path from 'node:path'
+import { getDefaultSelectors } from 'eslint-plugin-better-tailwindcss/defaults'
 
 // Single Vite+ config: drives dev, build, format (`fmt`), and tests (`test`).
 // Vite+ reads Oxfmt + Vitest options from here — not from .oxfmtrc.json or a
@@ -87,6 +88,74 @@ export default defineConfig({
       typeAware: true,
       typeCheck: true,
     },
+    // Controls and their states live in src/components/ui, and nowhere else:
+    // features compose primitives and lay them out. That is what lets a change
+    // to a primitive or a theme token reach the whole app. See ADR 0027.
+    plugins: ['typescript', 'unicorn', 'oxc', 'react'],
+    jsPlugins: ['eslint-plugin-better-tailwindcss'],
+    settings: {
+      'better-tailwindcss': {
+        entryPoint: 'src/styles.css',
+        // Also lint class strings held in variables like `navLinkClass`.
+        selectors: [
+          ...getDefaultSelectors(),
+          { kind: 'variable', name: '^\\w+Class(?:es)?$', match: [{ type: 'strings' }] },
+        ],
+      },
+    },
+    rules: {
+      'better-tailwindcss/no-unknown-classes': 'error',
+      'no-restricted-imports': [
+        'error',
+        { patterns: [{ group: ['**/button-variants'], message: 'Use <Button> (asChild for links) instead.' }] },
+      ],
+      'react/forbid-elements': [
+        'error',
+        {
+          forbid: [
+            { element: 'button', message: 'use <Button> from @/components/ui/button' },
+            { element: 'a', message: 'use <Button asChild> or a router <Link>' },
+            { element: 'input', message: 'use <Input> from @/components/ui/input' },
+            { element: 'select', message: 'use <NativeSelect> from @/components/ui/native-select' },
+            { element: 'textarea', message: 'add a primitive to @/components/ui' },
+          ],
+        },
+      ],
+      'better-tailwindcss/no-restricted-classes': [
+        'error',
+        {
+          restrict: [
+            {
+              pattern:
+                '(^|:)(hover|focus|focus-visible|focus-within|active|disabled|group-hover|aria-[\\w-]+|data-\\[.*\\]):',
+              message: 'Interactive state belongs to a primitive in @/components/ui: "$0".',
+            },
+            { pattern: '(^|:)(ring|outline)(-|$)', message: 'Focus and outline styling belongs to a primitive.' },
+            { pattern: '(^|:)shadow(-|$)', message: 'Elevation belongs to a primitive (Card, Popover).' },
+            // Grid templates are layout and have no token form; any other
+            // arbitrary value is a magic number that belongs in the theme.
+            {
+              pattern: '^(?!.*grid-(?:rows|cols)-\\[).*\\[.+\\]',
+              message: 'Arbitrary value: use or add a theme token in styles.css.',
+            },
+          ],
+        },
+      ],
+    },
+    overrides: [
+      {
+        files: ['src/components/ui/**'],
+        rules: {
+          'react/forbid-elements': 'off',
+          'better-tailwindcss/no-restricted-classes': 'off',
+          'no-restricted-imports': 'off',
+        },
+      },
+      {
+        files: ['**/*.test.tsx', 'src/test/**'],
+        rules: { 'react/forbid-elements': 'off' },
+      },
+    ],
   },
   test: {
     environment: 'jsdom',

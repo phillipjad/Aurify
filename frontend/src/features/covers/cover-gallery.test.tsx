@@ -78,7 +78,7 @@ describe('CoverGallery', () => {
     const gridScroller = scrollers.find((el) => el.id !== 'main')
     expect(gridScroller).toBeDefined()
     expect(gridScroller).toContainElement(screen.getByRole('list', { name: 'Covers' }))
-    expect(gridScroller).not.toContainElement(screen.getByRole('group', { name: 'Filter covers by status' }))
+    expect(gridScroller).not.toContainElement(screen.getByRole('radiogroup', { name: 'Filter covers by status' }))
   })
 
   it('renders the status in plain language', async () => {
@@ -106,7 +106,7 @@ describe('CoverGallery', () => {
     renderWithProviders(<CoverGallery />)
     await screen.findByRole('heading', { name: 'Ready One' })
 
-    await userEvent.click(screen.getByRole('button', { name: 'Failed', pressed: false }))
+    await userEvent.click(screen.getByRole('radio', { name: 'Failed', checked: false }))
 
     expect(await screen.findByRole('heading', { name: 'Failed One' })).toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: 'Ready One' })).not.toBeInTheDocument()

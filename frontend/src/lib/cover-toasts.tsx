@@ -5,6 +5,7 @@ import { AlertTriangle, Sparkles } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { ImageWithFallback } from '@/components/image-with-fallback'
+import { Button } from '@/components/ui/button'
 import { markCoverUnread } from './cover-unread'
 import type { Cover } from './api/types'
 
@@ -156,13 +157,10 @@ function CoverThumbnail({ cover }: { cover: Cover }) {
  * this one announcement of it. */
 function ToastLink({ coverID, toastID, children }: { coverID: string; toastID: string; children: string }) {
   return (
-    <Link
-      to="/covers/$coverId"
-      params={{ coverId: coverID }}
-      onClick={() => toast.dismiss(toastID)}
-      className="ml-auto shrink-0 rounded-md px-2.5 py-1.5 text-sm font-medium text-primary transition-colors hover:bg-primary/10 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-card focus-visible:outline-none"
-    >
-      {children}
-    </Link>
+    <Button asChild variant="ghost" size="sm" className="ml-auto shrink-0 px-2.5 text-primary">
+      <Link to="/covers/$coverId" params={{ coverId: coverID }} onClick={() => toast.dismiss(toastID)}>
+        {children}
+      </Link>
+    </Button>
   )
 }

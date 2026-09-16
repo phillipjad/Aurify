@@ -14,10 +14,12 @@ import {
 import { Link, useNavigate, useSearch } from '@tanstack/react-router'
 import { toast } from 'sonner'
 
+import { Alert } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { buttonVariants } from '@/components/ui/button-variants'
 import { Card } from '@/components/ui/card'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { Swatch } from '@/components/ui/swatch'
 import { EmptyState } from '@/components/empty-state'
 import { ImageWithFallback } from '@/components/image-with-fallback'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -58,10 +60,12 @@ export function CoverDetail({ coverId }: { coverId: string }) {
             : 'The request failed before it reached your library.'
         }
         action={
-          <Link to="/covers" className={buttonVariants({ size: 'sm' })}>
-            <ArrowLeft aria-hidden="true" className="size-4" />
-            All covers
-          </Link>
+          <Button asChild size="sm">
+            <Link to="/covers">
+              <ArrowLeft aria-hidden="true" className="size-4" />
+              All covers
+            </Link>
+          </Button>
         }
       />
     )
@@ -128,13 +132,12 @@ function CoverDetailView({
 
   return (
     <div className="space-y-6">
-      <Link
-        to="/covers"
-        className="inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-      >
-        <ArrowLeft aria-hidden="true" className="size-4" />
-        All covers
-      </Link>
+      <Button asChild variant="ghost" size="sm" className="-ml-3 gap-1.5 text-muted-foreground">
+        <Link to="/covers">
+          <ArrowLeft aria-hidden="true" className="size-4" />
+          All covers
+        </Link>
+      </Button>
 
       <div className="grid gap-6 md:grid-cols-[minmax(0,22rem)_1fr] md:items-start">
         <div className="space-y-3">
@@ -157,9 +160,7 @@ function CoverDetailView({
           </header>
 
           {cover.status === 'failed' && (
-            <p role="alert" className="text-sm text-destructive-text">
-              {cover.error || 'Generation didn’t finish. Nothing was saved to the cover.'}
-            </p>
+            <Alert>{cover.error || 'Generation didn’t finish. Nothing was saved to the cover.'}</Alert>
           )}
 
           <RevisionList
@@ -183,20 +184,22 @@ function CoverDetailView({
               // "Download #23" reflowed this row on each step, dropping Delete
               // onto a line of its own; the stepper directly above already says
               // which run this is, and the file it saves carries the number.
-              <a
-                href={imageUrl}
-                download={
-                  selected && index > 0
-                    ? `aurify-${cover.playlistName}-${selected.number}.png`
-                    : `aurify-${cover.playlistName}.png`
-                }
-                target="_blank"
-                rel="noreferrer"
-                className={cn(buttonVariants({ variant: 'outline', size: 'sm' }), 'px-2.5')}
-              >
-                <Download aria-hidden="true" className="size-4" />
-                Download
-              </a>
+              <Button asChild variant="outline" size="sm" className="px-2.5">
+                {/* oxlint-disable-next-line react/forbid-elements -- a download of the image file, which no route serves */}
+                <a
+                  href={imageUrl}
+                  download={
+                    selected && index > 0
+                      ? `aurify-${cover.playlistName}-${selected.number}.png`
+                      : `aurify-${cover.playlistName}.png`
+                  }
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  <Download aria-hidden="true" className="size-4" />
+                  Download
+                </a>
+              </Button>
             )}
 
             {/* One run at a time per playlist, which the API enforces with a
@@ -250,9 +253,7 @@ function CoverDetailView({
           </div>
 
           {regenerate.isError && (
-            <p role="alert" className="text-sm text-destructive-text">
-              {errorText(regenerate.error, 'That didn’t work. Try again in a moment.')}
-            </p>
+            <Alert>{errorText(regenerate.error, 'That didn’t work. Try again in a moment.')}</Alert>
           )}
         </div>
       </div>
@@ -284,8 +285,8 @@ function RevisionStepper({
     <div className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-stretch gap-1 rounded-xl border border-border bg-card p-1">
       <Button
         variant="ghost"
-        size="sm"
-        className="h-auto px-2.5"
+        size="icon"
+        className="h-auto"
         disabled={index === 0}
         aria-label="Newer revision"
         onClick={() => onSelect(index - 1)}
@@ -310,8 +311,8 @@ function RevisionStepper({
 
       <Button
         variant="ghost"
-        size="sm"
-        className="h-auto px-2.5"
+        size="icon"
+        className="h-auto"
         disabled={index === runs.length - 1}
         aria-label="Older revision"
         onClick={() => onSelect(index + 1)}
@@ -368,9 +369,7 @@ function RevisionList({
   return (
     <section className="space-y-2">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
-          Revisions{cover.runCount > 0 && ` · ${cover.runCount} successful`}
-        </h2>
+        <h2 className="eyebrow">Revisions{cover.runCount > 0 && ` · ${cover.runCount} successful`}</h2>
         <Button
           variant="ghost"
           size="sm"
@@ -435,18 +434,18 @@ function RevisionList({
                   key={run.id}
                   className={cn(
                     'flex items-center gap-1 rounded-lg border border-transparent pr-1.5 transition-colors',
-                    run.id === selectedID ? 'border-primary/30 bg-primary/10' : selectable && 'hover:bg-muted',
+                    run.id === selectedID && 'border-primary/30 bg-primary/10',
                   )}
                 >
                   {selectable ? (
-                    <button
-                      type="button"
+                    <Button
+                      variant="ghost"
                       aria-current={run.id === selectedID ? 'true' : undefined}
                       onClick={() => onSelect(run)}
-                      className="flex min-w-0 flex-1 items-center gap-3 rounded-lg p-1.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      className="h-auto min-w-0 flex-1 justify-start gap-3 p-1.5 text-left font-normal whitespace-normal"
                     >
                       {body}
-                    </button>
+                    </Button>
                   ) : (
                     <span className="flex min-w-0 flex-1 items-center gap-3 p-1.5">{body}</span>
                   )}
@@ -458,9 +457,8 @@ function RevisionList({
                     {confirming === run.id ? (
                       <span className="inline-flex items-center gap-1">
                         <Button
-                          variant="outline"
+                          variant="destructive"
                           size="sm"
-                          className="border-destructive/40 text-destructive hover:bg-destructive/10"
                           loading={del.isPending}
                           onClick={() => del.mutate(run.id, { onSuccess: () => setConfirming(null) })}
                         >
@@ -477,7 +475,7 @@ function RevisionList({
                       <Button
                         variant="ghost"
                         size="icon"
-                        className="text-muted-foreground hover:text-destructive"
+                        className="text-muted-foreground"
                         onClick={() => setConfirming(run.id)}
                       >
                         <Trash2 aria-hidden="true" className="size-4" />
@@ -492,11 +490,7 @@ function RevisionList({
         </Card>
       )}
 
-      {del.isError && (
-        <p role="alert" className="text-sm text-destructive-text">
-          {errorText(del.error, 'That run couldn’t be deleted. Try again in a moment.')}
-        </p>
-      )}
+      {del.isError && <Alert>{errorText(del.error, 'That run couldn’t be deleted. Try again in a moment.')}</Alert>}
     </section>
   )
 }
@@ -504,98 +498,25 @@ function RevisionList({
 /**
  * A failed run's error, behind an info button.
  *
- * The native `popover` attribute rather than a portal, because it does the three
- * hard parts itself: the panel goes in the top layer, so the revision list's
- * `overflow-y` cannot clip it; clicking outside dismisses it; and Escape closes
- * it. Only placement is ours, since CSS anchor positioning is not available
- * broadly enough to rely on yet.
- *
  * The error lives here rather than in the row because its length was setting the
  * row's shape, and a run that failed should still read as a revision.
  */
 function RunErrorPopover({ run }: { run: CoverRevision }) {
-  const panelID = `run-error-${run.id}`
-  const panel = useRef<HTMLDivElement>(null)
-  const trigger = useRef<HTMLButtonElement>(null)
-
-  useEffect(() => {
-    const el = panel.current
-    if (!el) return
-
-    // Anchored with right/bottom rather than left/top, so the panel's own size
-    // is never needed. That is what lets this run in `beforetoggle`, while the
-    // panel is still display:none and unmeasurable. Placing on `toggle` instead
-    // paints it at 0,0 for a frame and then jumps it ~200px into position,
-    // because that event is queued rather than dispatched synchronously.
-    const place = () => {
-      const btn = trigger.current
-      if (!btn) return
-      const anchor = btn.getBoundingClientRect()
-      el.style.right = `${Math.max(8, window.innerWidth - anchor.right)}px`
-
-      // Flip above when the space below is too tight to be worth using. The
-      // panel's max-height keeps either direction inside the viewport.
-      if (window.innerHeight - anchor.bottom < 180) {
-        el.style.top = 'auto'
-        el.style.bottom = `${window.innerHeight - anchor.top + 6}px`
-      } else {
-        el.style.bottom = 'auto'
-        el.style.top = `${anchor.bottom + 6}px`
-      }
-    }
-
-    // A fixed panel does not travel with the list it is anchored to, so any
-    // scroll dismisses it rather than leaving it stranded beside nothing.
-    const hide = () => {
-      if (el.matches(':popover-open')) el.hidePopover()
-    }
-
-    const onBeforeToggle = (event: Event) => {
-      const open = (event as ToggleEvent).newState === 'open'
-      if (open) place()
-      const bind = open ? window.addEventListener : window.removeEventListener
-      bind('scroll', hide, true)
-      bind('resize', hide)
-    }
-
-    el.addEventListener('beforetoggle', onBeforeToggle)
-    return () => {
-      el.removeEventListener('beforetoggle', onBeforeToggle)
-      window.removeEventListener('scroll', hide, true)
-      window.removeEventListener('resize', hide)
-    }
-  }, [])
-
   return (
-    <>
-      {/* A plain button with the shared variants, as the download link does:
-          <Button> takes no ref, and placement needs the trigger's rect. */}
-      <button
-        ref={trigger}
-        type="button"
-        popoverTarget={panelID}
-        className={buttonVariants({ variant: 'ghost', size: 'icon', className: 'text-muted-foreground' })}
-      >
-        <Info aria-hidden="true" className="size-4" />
-        <span className="sr-only">Why revision {run.number} failed</span>
-      </button>
-
-      <div
-        ref={panel}
-        id={panelID}
-        popover="auto"
-        // inset-auto and m-0 undo the user-agent styles that would otherwise
-        // centre this in the viewport.
-        className="inset-auto m-0 max-h-60 w-72 max-w-[calc(100vw-1rem)] overflow-y-auto rounded-lg border border-border bg-card p-3 shadow-lg"
-      >
-        <p className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
-          Revision #{run.number} failed
-        </p>
-        <p className="mt-1 text-xs text-destructive-text [overflow-wrap:anywhere]">
+    <Popover>
+      <PopoverTrigger asChild>
+        <Button variant="ghost" size="icon" className="text-muted-foreground">
+          <Info aria-hidden="true" className="size-4" />
+          <span className="sr-only">Why revision {run.number} failed</span>
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent align="end" className="max-h-60 overflow-y-auto">
+        <p className="eyebrow">Revision #{run.number} failed</p>
+        <p className="mt-1 text-xs wrap-anywhere text-destructive-text">
           {run.error || 'This run didn’t finish, and recorded no reason.'}
         </p>
-      </div>
-    </>
+      </PopoverContent>
+    </Popover>
   )
 }
 
@@ -627,15 +548,11 @@ function PaletteBreakdown({ palette }: { palette?: ColorWeight[] }) {
 
   return (
     <section className="space-y-2">
-      <h2 className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">Palette</h2>
+      <h2 className="eyebrow">Palette</h2>
       <ul className="space-y-2">
         {sorted.map((color) => (
           <li key={color.dimension} className="flex items-center gap-3">
-            <span
-              aria-hidden="true"
-              className="size-4 shrink-0 rounded-full ring-1 ring-border"
-              style={{ backgroundColor: color.hexColor }}
-            />
+            <Swatch className="size-4" style={{ backgroundColor: color.hexColor }} />
             <span className="w-28 shrink-0 text-sm font-medium capitalize">{color.dimension}</span>
             <span className="h-2 flex-1 overflow-hidden rounded-full bg-muted">
               <span

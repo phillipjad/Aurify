@@ -3,7 +3,6 @@ import { Link, type ErrorComponentProps } from '@tanstack/react-router'
 
 import { EmptyState } from './empty-state'
 import { Button } from './ui/button'
-import { buttonVariants } from './ui/button-variants'
 
 // Rendered by the router when no route matches the URL.
 export function NotFound() {
@@ -14,9 +13,9 @@ export function NotFound() {
         title="Page not found"
         description="That page doesn’t exist. It may have moved, or the link was mistyped."
         action={
-          <Link to="/" className={buttonVariants({ size: 'sm' })}>
-            Back home
-          </Link>
+          <Button asChild size="sm">
+            <Link to="/">Back home</Link>
+          </Button>
         }
       />
     </section>
@@ -38,9 +37,9 @@ export function RouteError({ reset }: ErrorComponentProps) {
             <Button variant="outline" size="sm" onClick={reset}>
               Try again
             </Button>
-            <Link to="/" className={buttonVariants({ variant: 'ghost', size: 'sm' })}>
-              Back home
-            </Link>
+            <Button asChild variant="ghost" size="sm">
+              <Link to="/">Back home</Link>
+            </Button>
           </div>
         }
       />

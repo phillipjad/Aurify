@@ -62,9 +62,9 @@ export function SignInForm({ redirectTo, callbackError }: { redirectTo?: string;
       footer={
         <>
           No account?{' '}
-          <Link to="/sign-up" className="font-medium text-foreground underline underline-offset-4">
-            Create one
-          </Link>
+          <Button asChild variant="link" size="inline">
+            <Link to="/sign-up">Create one</Link>
+          </Button>
         </>
       }
     >
@@ -83,9 +83,9 @@ export function SignInForm({ redirectTo, callbackError }: { redirectTo?: string;
           </Button>
 
           <p className="text-center text-sm">
-            <Link to="/forgot-password" className="text-muted-foreground underline underline-offset-4">
-              Forgot your password?
-            </Link>
+            <Button asChild variant="link-muted" size="sm">
+              <Link to="/forgot-password">Forgot your password?</Link>
+            </Button>
           </p>
         </form>
       </div>

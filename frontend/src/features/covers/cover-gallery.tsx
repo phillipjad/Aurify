@@ -6,8 +6,9 @@ import { useVirtualizer } from '@tanstack/react-virtual'
 import { EmptyState } from '@/components/empty-state'
 import { LoadMore } from '@/components/load-more'
 import { Button } from '@/components/ui/button'
-import { buttonVariants } from '@/components/ui/button-variants'
-import { Card } from '@/components/ui/card'
+import { Card, CardTitle } from '@/components/ui/card'
+import { SegmentedControl, SegmentedControlItem } from '@/components/ui/segmented-control'
+import { Swatch } from '@/components/ui/swatch'
 import { ImageWithFallback } from '@/components/image-with-fallback'
 import { Skeleton } from '@/components/ui/skeleton'
 import { cn } from '@/lib/utils'
@@ -127,9 +128,9 @@ export function CoverGallery() {
         title="No covers yet"
         description="Pick a playlist and Aurify will read its audio and lyrics, then paint a cover from the result."
         action={
-          <Link to="/playlists" className={buttonVariants({ size: 'sm' })}>
-            Browse playlists
-          </Link>
+          <Button asChild size="sm">
+            <Link to="/playlists">Browse playlists</Link>
+          </Button>
         }
       />
     )
@@ -166,27 +167,21 @@ export function CoverGallery() {
 /** Mutually-exclusive, server-driven status filter. */
 function FilterBar({ value, onChange }: { value: CoverFilter; onChange: (filter: CoverFilter) => void }) {
   return (
-    <div role="group" aria-label="Filter covers by status" className="flex flex-wrap gap-2">
-      {FILTERS.map((option) => {
-        const active = option.id === value
-        return (
-          <button
-            key={option.id}
-            type="button"
-            aria-pressed={active}
-            onClick={() => onChange(option.id)}
-            className={cn(
-              'rounded-full border px-3 py-1 text-sm transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background focus-visible:outline-none',
-              active
-                ? 'border-transparent bg-primary text-primary-foreground'
-                : 'border-border text-muted-foreground hover:text-foreground',
-            )}
-          >
-            {option.label}
-          </button>
-        )
-      })}
-    </div>
+    <SegmentedControl
+      aria-label="Filter covers by status"
+      value={value}
+      onValueChange={(next) => {
+        const option = FILTERS.find((f) => f.id === next)
+        if (option) onChange(option.id)
+      }}
+      className="self-start"
+    >
+      {FILTERS.map((option) => (
+        <SegmentedControlItem key={option.id} value={option.id}>
+          {option.label}
+        </SegmentedControlItem>
+      ))}
+    </SegmentedControl>
   )
 }
 
@@ -294,18 +289,14 @@ function CoverTile({ cover }: { cover: Cover }) {
   const working = isInProgress(cover.status)
 
   return (
-    <Card className="group h-full overflow-hidden">
-      <Link
-        to="/covers/$coverId"
-        params={{ coverId: cover.id }}
-        className="flex h-full flex-col rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
-      >
+    <Card asChild className="h-full overflow-hidden">
+      <Link to="/covers/$coverId" params={{ coverId: cover.id }} className="flex flex-col">
         <div className="relative overflow-hidden">
           <ImageWithFallback
             src={cover.imageUrl}
             alt={`Cover generated for ${cover.playlistName}`}
             loading="lazy"
-            className="aspect-square w-full object-cover transition-transform duration-300 ease-out group-hover:scale-[1.03]"
+            className="aspect-square w-full object-cover"
             fallback={
               <div aria-hidden="true" className="flex aspect-square w-full items-center justify-center bg-muted">
                 {cover.status === 'failed' ? (
@@ -320,9 +311,7 @@ function CoverTile({ cover }: { cover: Cover }) {
 
         <div className="flex flex-1 flex-col gap-2 p-3">
           <div className="flex items-start justify-between gap-2">
-            <h3 className="min-w-0 flex-1 truncate font-display text-sm font-semibold tracking-tight group-hover:underline">
-              {cover.playlistName}
-            </h3>
+            <CardTitle className="min-w-0 flex-1 truncate text-sm">{cover.playlistName}</CardTitle>
             {/* Beside the badge rather than on a line of its own: the grid
                 virtualizes rows on the assumption that every tile is the same
                 height, and a count only some tiles carry would break it. */}
@@ -384,11 +373,7 @@ function PalettePreview({ palette }: { palette?: ColorWeight[] }) {
     <ul className="mt-auto flex flex-wrap gap-x-3 gap-y-1">
       {top.map((color) => (
         <li key={color.dimension} className="flex items-center gap-1.5 text-xs text-muted-foreground">
-          <span
-            aria-hidden="true"
-            className="size-3 shrink-0 rounded-full ring-1 ring-border"
-            style={{ backgroundColor: color.hexColor }}
-          />
+          <Swatch className="size-3" style={{ backgroundColor: color.hexColor }} />
           <span className="capitalize">{color.dimension}</span>
           <span className="tabular-nums">{Math.round(color.weight * 100)}%</span>
         </li>

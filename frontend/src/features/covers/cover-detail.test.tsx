@@ -181,6 +181,7 @@ describe('CoverDetail', () => {
     expect(screen.queryByText('imagegen refused the prompt')).not.toBeInTheDocument()
 
     await userEvent.click(screen.getByRole('button', { name: /show failed runs/i }))
+    await userEvent.click(await screen.findByRole('button', { name: /why revision 3 failed/i }))
 
     expect(await screen.findByText('imagegen refused the prompt')).toBeInTheDocument()
     expect(mockFetch).toHaveBeenCalledWith('/covers/c1?allow_failed_revisions=true')
@@ -323,12 +324,11 @@ describe('CoverDetail', () => {
       // The same date every other run shows, rather than the error.
       expect(failedRow.querySelector('time')).toHaveAttribute('datetime', FAILED_RUN.completedAt)
 
-      // The error is off the row, in the panel the button targets, and none of
-      // it is visible until that button is used.
-      const info = within(failedRow).getByRole('button', { name: /why revision 3 failed/i })
-      const panel = document.getElementById(info.getAttribute('popovertarget') ?? '')
-      expect(panel).toHaveTextContent('imagegen refused the prompt')
-      expect(panel).not.toBeVisible()
+      // The error is off the row, behind the button, and none of it shows
+      // until that button is used.
+      expect(screen.queryByText('imagegen refused the prompt')).not.toBeInTheDocument()
+      await userEvent.click(within(failedRow).getByRole('button', { name: /why revision 3 failed/i }))
+      expect(await screen.findByText('imagegen refused the prompt')).toBeVisible()
     })
   })
 })

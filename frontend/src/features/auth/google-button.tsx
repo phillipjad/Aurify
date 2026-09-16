@@ -1,5 +1,6 @@
 import { startGoogleSignIn } from '@/lib/api/auth'
 import { Button } from '@/components/ui/button'
+import { Separator } from '@/components/ui/separator'
 
 /** Google's brand mark, inlined so it needs no network request and no CDN. */
 function GoogleMark() {
@@ -49,9 +50,9 @@ export function GoogleButton({ redirectTo, label = 'Continue with Google' }: { r
 export function AuthDivider() {
   return (
     <div className="flex items-center gap-3" aria-hidden="true">
-      <span className="h-px flex-1 bg-border" />
-      <span className="text-xs uppercase tracking-wide text-muted-foreground">or</span>
-      <span className="h-px flex-1 bg-border" />
+      <Separator className="flex-1" />
+      <span className="eyebrow">or</span>
+      <Separator className="flex-1" />
     </div>
   )
 }

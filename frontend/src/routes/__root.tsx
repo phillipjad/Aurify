@@ -5,6 +5,9 @@ import { createRootRouteWithContext, Link, Outlet, useRouterState } from '@tanst
 import { AurifyLogo } from '@/components/aurify-logo'
 import { CoverGenerationWatcher } from '@/components/cover-generation-watcher'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Separator } from '@/components/ui/separator'
+import { SkipLink } from '@/components/ui/skip-link'
 import { Toaster } from '@/components/ui/sonner'
 import { UserMenu } from '@/features/auth/user-menu'
 import { getUnreadCoverCount, subscribeUnreadCovers } from '@/lib/cover-unread'
@@ -18,21 +21,6 @@ export const Route = createRootRouteWithContext<RouterContext>()({
   component: RootLayout,
 })
 
-// The active route is marked by weight and an underline as well as color, so
-// current location survives both color-blindness and a forced-colors mode.
-const navLinkClass = [
-  'rounded-md px-3 py-2 text-sm font-medium text-muted-foreground',
-  'transition-colors hover:text-foreground',
-  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background',
-  '[&.active]:font-semibold [&.active]:text-foreground [&.active]:underline [&.active]:decoration-primary [&.active]:decoration-2 [&.active]:underline-offset-8',
-].join(' ')
-
-const footerLinkClass = [
-  'rounded text-sm text-muted-foreground transition-colors hover:text-foreground',
-  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background',
-  '[&.active]:font-medium [&.active]:text-foreground',
-].join(' ')
-
 function RootLayout() {
   const mainRef = useRef<HTMLElement>(null)
   const pathname = useRouterState({ select: (state) => state.location.pathname })
@@ -44,31 +32,23 @@ function RootLayout() {
     // lets the middle row shrink and scroll instead of pushing the footer down
     // the document. See docs/adr/0017-bounded-app-shell.md.
     <div className="grid h-dvh grid-rows-[auto_minmax(0,1fr)_auto]">
-      <a
-        href="#main"
-        className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-[var(--z-toast)] focus:rounded-md focus:bg-card focus:px-4 focus:py-2 focus:text-sm focus:font-medium focus:shadow-md focus:ring-2 focus:ring-ring"
-      >
-        Skip to content
-      </a>
+      <SkipLink href="#main">Skip to content</SkipLink>
 
       {/* No longer sticky, and no longer blurred: it is a grid row that never
           scrolls, so there is nothing to stick to and nothing passing behind
           it. The translucency stays so the aurora still tints it. */}
       <header className="border-b border-border/60 bg-background/80">
         <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-y-2 px-4 py-3">
-          <Link
-            to="/"
-            className="flex items-center gap-2.5 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-          >
+          <Link to="/" className="flex h-control-sm items-center gap-2.5 rounded-md">
             <AurifyLogo className="h-8 w-8" />
             <span className="font-display text-lg font-bold tracking-tight text-foreground">Aurify</span>
           </Link>
           <nav aria-label="Main" className="flex flex-wrap items-center justify-end gap-1">
-            <Link to="/playlists" className={navLinkClass}>
-              Playlists
-            </Link>
+            <Button asChild variant="nav" size="sm">
+              <Link to="/playlists">Playlists</Link>
+            </Button>
             <CoversNavLink />
-            <span className="mx-1 h-5 w-px bg-border" aria-hidden="true" />
+            <Separator orientation="vertical" className="mx-1 h-5" />
             <UserMenu />
           </nav>
         </div>
@@ -82,7 +62,7 @@ function RootLayout() {
         ref={mainRef}
         tabIndex={-1}
         data-scroll-container
-        className="grid grid-rows-[auto] overflow-y-auto [&:has([data-fills-shell])]:grid-rows-[minmax(0,1fr)] focus:outline-none"
+        className="grid grid-rows-[auto] overflow-y-auto [&:has([data-fills-shell])]:grid-rows-[minmax(0,1fr)]"
       >
         {/* Keyed on the path so every navigation replays the entrance. Search
             params are deliberately excluded: the playlists view keeps its state
@@ -124,20 +104,22 @@ function CoversNavLink() {
   const unread = useSyncExternalStore(subscribeUnreadCovers, getUnreadCoverCount)
 
   return (
-    <Link to="/covers" className={`${navLinkClass} inline-flex items-center gap-1.5`}>
-      Covers
-      {unread > 0 && (
-        <>
-          {/* Decoration: the sentence below is what gets read out. */}
-          <Badge aria-hidden="true" className="px-1.5 py-0 tabular-nums">
-            {unread}
-          </Badge>
-          <span className="sr-only">
-            ({unread} new {unread === 1 ? 'cover' : 'covers'})
-          </span>
-        </>
-      )}
-    </Link>
+    <Button asChild variant="nav" size="sm" className="gap-1.5">
+      <Link to="/covers">
+        Covers
+        {unread > 0 && (
+          <>
+            {/* Decoration: the sentence below is what gets read out. */}
+            <Badge aria-hidden="true" className="px-1.5 py-0 tabular-nums">
+              {unread}
+            </Badge>
+            <span className="sr-only">
+              ({unread} new {unread === 1 ? 'cover' : 'covers'})
+            </span>
+          </>
+        )}
+      </Link>
+    </Button>
   )
 }
 
@@ -147,26 +129,28 @@ function CoversNavLink() {
  * security pitch that used to live here moved to the page it linked to, and
  * that page is now reachable straight from these links.
  */
+const FOOTER_LINKS = [
+  { to: '/about', label: 'About' },
+  { to: '/privacy', label: 'Privacy' },
+  { to: '/security', label: 'Security' },
+  { to: '/contact', label: 'Contact' },
+] as const
+
 function SiteFooter() {
   return (
     <footer className="border-t border-border/60">
       <nav
         aria-label="Footer"
-        className="mx-auto flex w-full max-w-5xl flex-wrap items-center gap-x-5 gap-y-1 px-4 py-2.5"
+        // px-2 rather than px-4: each link carries the other half of the
+        // padding, so the labels still line up with the content column.
+        className="mx-auto flex w-full max-w-5xl flex-wrap items-center px-2 py-1"
       >
-        <Link to="/about" className={footerLinkClass}>
-          About
-        </Link>
-        <Link to="/privacy" className={footerLinkClass}>
-          Privacy
-        </Link>
-        <Link to="/security" className={footerLinkClass}>
-          Security
-        </Link>
-        <Link to="/contact" className={footerLinkClass}>
-          Contact
-        </Link>
-        <span className="ml-auto text-sm text-muted-foreground">&copy; {new Date().getFullYear()} Aurify</span>
+        {FOOTER_LINKS.map(({ to, label }) => (
+          <Button key={to} asChild variant="nav" size="sm" className="px-2 font-normal">
+            <Link to={to}>{label}</Link>
+          </Button>
+        ))}
+        <span className="ml-auto px-2 text-sm text-muted-foreground">&copy; {new Date().getFullYear()} Aurify</span>
       </nav>
     </footer>
   )

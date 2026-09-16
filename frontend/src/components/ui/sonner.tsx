@@ -9,7 +9,7 @@ import { Toaster as Sonner, type ToasterProps } from 'sonner'
 export function Toaster(props: ToasterProps) {
   return (
     <Sonner
-      // Clear of the always-on-screen footer: 29px desktop, 65px at 375px.
+      // Clear of the always-on-screen footer, 45px at every width.
       offset={{ bottom: 56 }}
       mobileOffset={{ bottom: 76 }}
       // Concurrent generations stack rather than collapsing into an unreadable

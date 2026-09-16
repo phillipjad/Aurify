@@ -1,3 +1,5 @@
+import { Swatch } from '@/components/ui/swatch'
+
 import { DIMENSIONS } from './dimensions'
 
 // Four archetypal weight distributions across the seven dimensions, purely to
@@ -33,11 +35,7 @@ export function ExampleCovers() {
     <ul className="grid grid-cols-2 gap-4 sm:grid-cols-4">
       {EXAMPLES.map((example) => (
         <li key={example.name} className="space-y-2">
-          <div
-            aria-hidden="true"
-            className="aspect-square rounded-xl ring-1 ring-border"
-            style={{ backgroundImage: paletteGradient(example.weights) }}
-          />
+          <Swatch className="aspect-square rounded-xl" style={{ backgroundImage: paletteGradient(example.weights) }} />
           <p className="text-center text-sm font-medium text-pretty">{example.name}</p>
         </li>
       ))}
