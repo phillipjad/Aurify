@@ -40,7 +40,7 @@ describe('Button', () => {
     )
     const button = screen.getByRole('button', { name: 'Icon' })
     expect(button).toHaveClass('border') // outline variant
-    expect(button).toHaveClass('h-10', 'w-10') // icon size
+    expect(button).toHaveClass('size-control') // icon size
   })
 
   // The busy marker is what exempts the spinner from the global reduced-motion

@@ -137,7 +137,41 @@
   --font-sans: var(--font-body);
   --font-display: var(--font-heading);
 
+  /* Every radius derives from --radius, so reshaping the app is one value. */
+  --radius-md: calc(var(--radius) / 2);
   --radius-lg: var(--radius);
+  --radius-xl: var(--radius);
+
+  /* Control heights (h-control-sm, h-control, h-control-lg), used only by the
+     primitives in components/ui. Target size is decided here. */
+  --spacing-control-sm: 2.25rem;
+  --spacing-control: 2.5rem;
+  --spacing-control-lg: 2.75rem;
+}
+
+/* One focus indicator for everything focusable, drawn as an outline so it
+   follows each control's radius and leaves a real gap onto whatever surface is
+   behind it. Elements focused programmatically (tabIndex -1: <main> after a
+   route change) are not controls and get none. */
+@layer base {
+  :focus-visible {
+    outline: 2px solid var(--color-ring);
+    outline-offset: 2px;
+  }
+
+  [tabindex='-1']:focus {
+    outline: none;
+  }
+}
+
+/* A small uppercase label over a section's content. */
+@utility eyebrow {
+  font-size: var(--text-xs);
+  line-height: var(--text-xs--line-height);
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--color-muted-foreground);
 }
 
 /* ---- Semantic z-index scale ----------------------------------------------
@@ -287,7 +321,7 @@ body::before {
   }
 }
 
-.route-enter {
+@utility route-enter {
   animation: route-enter 200ms ease-out;
 }
 
@@ -312,7 +346,7 @@ body::before {
    made the mark harder to see than standing still; at 70% it is 3.29:1 light and
    6.24:1 dark, and still visibly warm. The other two stops were already clear
    (--muted-foreground 6.43/6.71, --primary 4.66/5.70). */
-.aurora-glyph {
+@utility aurora-glyph {
   background-image: linear-gradient(
     100deg,
     var(--muted-foreground) 0%,

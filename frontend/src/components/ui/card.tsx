@@ -1,4 +1,5 @@
 import type { ComponentProps } from 'react'
+import { Slot } from 'radix-ui'
 
 import { cn } from '@/lib/utils'
 
@@ -13,16 +14,25 @@ export type CardProps = ComponentProps<'div'> & {
    * happened to sit behind it.
    */
   glass?: boolean
+  /**
+   * Renders the single child (a router Link) as the card, for a card that is
+   * one navigation target. Hovering it lifts the card, zooms its image, and
+   * underlines its CardTitle.
+   */
+  asChild?: boolean
 }
 
 // shadcn/ui-style Card.
-export function Card({ className, glass = false, ...props }: CardProps) {
+export function Card({ className, glass = false, asChild = false, ...props }: CardProps) {
+  const Comp = asChild ? Slot.Root : 'div'
   return (
-    <div
+    <Comp
       data-slot="card"
       className={cn(
         'rounded-xl border border-border text-card-foreground shadow-sm',
         glass ? 'bg-card/70 backdrop-blur-md' : 'bg-card',
+        asChild &&
+          'transition-shadow hover:shadow-md [&_img]:transition-transform [&_img]:duration-300 [&_img]:ease-out hover:[&_img]:scale-103 hover:[&_[data-slot=card-title]]:underline',
         className,
       )}
       {...props}

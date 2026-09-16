@@ -5,28 +5,33 @@ import { cva } from 'class-variance-authority'
 // and preserves React Fast Refresh for the component file.
 //
 // Every variant carries the full interactive set — default, hover, active,
-// focus-visible, disabled — so no surface ships a half-stated control. Hover
-// and active use dedicated tokens rather than an opacity fade, which would
-// wash out the label along with the background.
+// disabled — so no surface ships a half-stated control. Focus is drawn once for
+// the whole app in styles.css. Hover and active use dedicated tokens rather
+// than an opacity fade, which would wash out the label along with the
+// background. Heights come from the control-* spacing tokens.
 export const buttonVariants = cva(
-  [
-    'inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-lg text-sm font-medium',
-    'transition-colors duration-150',
-    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background',
-    'disabled:pointer-events-none disabled:opacity-50',
-  ].join(' '),
+  'inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-lg text-sm font-medium transition-colors duration-150 disabled:pointer-events-none disabled:opacity-50',
   {
     variants: {
       variant: {
         default: 'bg-primary text-primary-foreground hover:bg-primary-hover active:bg-primary-active',
         outline: 'border border-border bg-transparent hover:bg-muted active:bg-secondary',
         ghost: 'hover:bg-muted active:bg-secondary',
+        // Site navigation. The current page is marked by weight and an
+        // underline as well as color, so it survives color blindness and a
+        // forced-colors mode.
+        nav: [
+          'text-muted-foreground hover:text-foreground',
+          'aria-[current=page]:font-semibold aria-[current=page]:text-foreground aria-[current=page]:underline',
+          'aria-[current=page]:decoration-primary aria-[current=page]:decoration-2 aria-[current=page]:underline-offset-8',
+        ].join(' '),
+        link: 'text-muted-foreground underline underline-offset-4 hover:text-foreground',
       },
       size: {
-        default: 'h-10 px-4 py-2',
-        sm: 'h-9 px-3',
-        lg: 'h-11 px-6',
-        icon: 'h-10 w-10',
+        default: 'h-control px-4',
+        sm: 'h-control-sm px-3',
+        lg: 'h-control-lg px-6',
+        icon: 'size-control',
       },
     },
     defaultVariants: {
