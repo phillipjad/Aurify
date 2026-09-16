@@ -83,7 +83,7 @@ export function SignInForm({ redirectTo, callbackError }: { redirectTo?: string;
           </Button>
 
           <p className="text-center text-sm">
-            <Button asChild variant="link" size="sm">
+            <Button asChild variant="link-muted" size="sm">
               <Link to="/forgot-password">Forgot your password?</Link>
             </Button>
           </p>

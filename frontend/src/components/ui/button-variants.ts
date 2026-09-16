@@ -27,6 +27,9 @@ export const buttonVariants = cva(
           'aria-[current=page]:decoration-primary aria-[current=page]:decoration-2 aria-[current=page]:underline-offset-8',
         ].join(' '),
         link: 'text-foreground underline underline-offset-4 hover:decoration-primary',
+        // A secondary way out (a reset, a reconnect): present, but quieter than
+        // the text around the actions that matter.
+        'link-muted': 'font-normal text-muted-foreground underline underline-offset-4 hover:text-foreground',
       },
       size: {
         default: 'h-control px-4',

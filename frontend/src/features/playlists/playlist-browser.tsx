@@ -191,7 +191,7 @@ export function PlaylistBrowser() {
               {activeLabel} connected
               {/* Reconnecting is how a user re-grants a revoked or expired
                   authorization, so it stays reachable, just demoted. */}
-              <Button variant="link" size="inline" onClick={() => void connectDsp(platform)}>
+              <Button variant="link-muted" size="inline" onClick={() => void connectDsp(platform)}>
                 Reconnect
               </Button>
             </p>
