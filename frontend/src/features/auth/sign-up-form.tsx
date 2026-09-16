@@ -41,11 +41,9 @@ export function SignUpForm() {
           <p className="text-pretty text-sm text-muted-foreground">
             The link expires in 24 hours. If it does not arrive, check your spam folder.
           </p>
-          <Link to="/sign-in" className="block">
-            <Button variant="outline" className="w-full">
-              Back to sign in
-            </Button>
-          </Link>
+          <Button asChild variant="outline" className="w-full">
+            <Link to="/sign-in">Back to sign in</Link>
+          </Button>
         </div>
       </AuthShell>
     )
@@ -58,9 +56,9 @@ export function SignUpForm() {
       footer={
         <>
           Already have an account?{' '}
-          <Link to="/sign-in" className="font-medium text-foreground underline underline-offset-4">
-            Sign in
-          </Link>
+          <Button asChild variant="link" size="inline">
+            <Link to="/sign-in">Sign in</Link>
+          </Button>
         </>
       }
     >

@@ -24,11 +24,9 @@ export function VerifyEmail({ result }: { result: VerifyEmailResult }) {
       <AuthShell title="Link is invalid">
         <div className="space-y-4">
           <FormError message="This verification link is missing its token." />
-          <Link to="/sign-in" className="block">
-            <Button variant="outline" className="w-full">
-              Back to sign in
-            </Button>
-          </Link>
+          <Button asChild variant="outline" className="w-full">
+            <Link to="/sign-in">Back to sign in</Link>
+          </Button>
         </div>
       </AuthShell>
     )
@@ -39,9 +37,9 @@ export function VerifyEmail({ result }: { result: VerifyEmailResult }) {
       <AuthShell title="Email verified">
         <div className="space-y-4">
           <FormSuccess message={result.message} />
-          <Link to="/sign-in" className="block">
-            <Button className="w-full">Sign in</Button>
-          </Link>
+          <Button asChild className="w-full">
+            <Link to="/sign-in">Sign in</Link>
+          </Button>
         </div>
       </AuthShell>
     )
@@ -55,11 +53,9 @@ export function VerifyEmail({ result }: { result: VerifyEmailResult }) {
           Verification links expire after 24 hours, and each one can only be used once. Signing up again with the same
           address will send a fresh link.
         </p>
-        <Link to="/sign-in" className="block">
-          <Button variant="outline" className="w-full">
-            Back to sign in
-          </Button>
-        </Link>
+        <Button asChild variant="outline" className="w-full">
+          <Link to="/sign-in">Back to sign in</Link>
+        </Button>
       </div>
     </AuthShell>
   )

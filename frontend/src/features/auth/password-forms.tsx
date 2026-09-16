@@ -33,11 +33,9 @@ export function ForgotPasswordForm() {
       <AuthShell title="Check your inbox">
         <div className="space-y-4">
           <FormSuccess message={forgot.data.message} />
-          <Link to="/sign-in" className="block">
-            <Button variant="outline" className="w-full">
-              Back to sign in
-            </Button>
-          </Link>
+          <Button asChild variant="outline" className="w-full">
+            <Link to="/sign-in">Back to sign in</Link>
+          </Button>
         </div>
       </AuthShell>
     )
@@ -48,9 +46,9 @@ export function ForgotPasswordForm() {
       title="Reset your password"
       description="Enter your address and we will send you a link."
       footer={
-        <Link to="/sign-in" className="font-medium text-foreground underline underline-offset-4">
-          Back to sign in
-        </Link>
+        <Button asChild variant="link" size="sm">
+          <Link to="/sign-in">Back to sign in</Link>
+        </Button>
       }
     >
       <form onSubmit={handleSubmit} className="space-y-4" noValidate>
@@ -85,11 +83,9 @@ export function ResetPasswordForm({ token }: { token: string }) {
       <AuthShell title="Link is invalid">
         <div className="space-y-4">
           <FormError message="This reset link is missing its token. Request a new one." />
-          <Link to="/forgot-password" className="block">
-            <Button variant="outline" className="w-full">
-              Request a new link
-            </Button>
-          </Link>
+          <Button asChild variant="outline" className="w-full">
+            <Link to="/forgot-password">Request a new link</Link>
+          </Button>
         </div>
       </AuthShell>
     )

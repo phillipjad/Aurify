@@ -4,8 +4,8 @@ import { cva } from 'class-variance-authority'
 // exports only a component. That satisfies react-refresh/only-export-components
 // and preserves React Fast Refresh for the component file.
 //
-// Every variant carries the full interactive set — default, hover, active,
-// disabled — so no surface ships a half-stated control. Focus is drawn once for
+// Every variant carries the full interactive set (default, hover, active,
+// disabled), so no surface ships a half-stated control. Focus is drawn once for
 // the whole app in styles.css. Hover and active use dedicated tokens rather
 // than an opacity fade, which would wash out the label along with the
 // background. Heights come from the control-* spacing tokens.
@@ -25,13 +25,16 @@ export const buttonVariants = cva(
           'aria-[current=page]:font-semibold aria-[current=page]:text-foreground aria-[current=page]:underline',
           'aria-[current=page]:decoration-primary aria-[current=page]:decoration-2 aria-[current=page]:underline-offset-8',
         ].join(' '),
-        link: 'text-muted-foreground underline underline-offset-4 hover:text-foreground',
+        link: 'text-foreground underline underline-offset-4 hover:decoration-primary',
       },
       size: {
         default: 'h-control px-4',
         sm: 'h-control-sm px-3',
         lg: 'h-control-lg px-6',
         icon: 'size-control',
+        'icon-sm': 'size-control-sm',
+        // No box at all, for a link inside a sentence.
+        inline: 'h-auto p-0',
       },
     },
     defaultVariants: {

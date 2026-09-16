@@ -1,7 +1,9 @@
 import type { ReactNode } from 'react'
-import { AlertCircle, CheckCircle2 } from 'lucide-react'
 
+import { Alert } from '@/components/ui/alert'
 import { Card, CardContent } from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 
 /**
  * Read a text field out of a form.
@@ -14,10 +16,6 @@ export function textField(form: FormData, name: string): string {
   const value = form.get(name)
   return typeof value === 'string' ? value : ''
 }
-
-/** Shared field styling for every auth input, so the forms cannot drift apart. */
-export const fieldClass =
-  'h-9 w-full rounded-lg border border-border bg-card px-3 text-sm text-foreground placeholder:text-muted-foreground disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background'
 
 interface AuthShellProps {
   title: string
@@ -54,29 +52,13 @@ export function AuthShell({ title, description, children, footer }: AuthShellPro
  */
 export function FormError({ message }: { message?: string }) {
   if (!message) return null
-  return (
-    <p
-      role="alert"
-      className="flex items-start gap-2 rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive-text"
-    >
-      <AlertCircle aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
-      <span className="text-pretty">{message}</span>
-    </p>
-  )
+  return <Alert>{message}</Alert>
 }
 
-/** A success acknowledgement, styled as the counterpart of FormError. */
+/** A success acknowledgement, the counterpart of FormError. */
 export function FormSuccess({ message }: { message?: string }) {
   if (!message) return null
-  return (
-    <p
-      role="status"
-      className="flex items-start gap-2 rounded-lg border border-primary/40 bg-primary/10 px-3 py-2 text-sm text-foreground"
-    >
-      <CheckCircle2 aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-primary" />
-      <span className="text-pretty">{message}</span>
-    </p>
-  )
+  return <Alert variant="success">{message}</Alert>
 }
 
 interface FieldProps {
@@ -94,10 +76,8 @@ export function Field({ id, label, type = 'text', autoComplete, required, hint, 
   const hintId = hint ? `${id}-hint` : undefined
   return (
     <div className="space-y-1.5">
-      <label htmlFor={id} className="text-sm font-medium">
-        {label}
-      </label>
-      <input
+      <Label htmlFor={id}>{label}</Label>
+      <Input
         id={id}
         name={id}
         type={type}
@@ -105,7 +85,6 @@ export function Field({ id, label, type = 'text', autoComplete, required, hint, 
         required={required}
         defaultValue={defaultValue}
         aria-describedby={hintId}
-        className={fieldClass}
       />
       {hint ? (
         <p id={hintId} className="text-xs text-muted-foreground">
