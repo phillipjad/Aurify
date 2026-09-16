@@ -104,13 +104,13 @@ export default defineConfig({
       },
     },
     rules: {
-      'better-tailwindcss/no-unknown-classes': 'warn',
+      'better-tailwindcss/no-unknown-classes': 'error',
       'no-restricted-imports': [
-        'warn',
+        'error',
         { patterns: [{ group: ['**/button-variants'], message: 'Use <Button> (asChild for links) instead.' }] },
       ],
       'react/forbid-elements': [
-        'warn',
+        'error',
         {
           forbid: [
             { element: 'button', message: 'use <Button> from @/components/ui/button' },
@@ -122,7 +122,7 @@ export default defineConfig({
         },
       ],
       'better-tailwindcss/no-restricted-classes': [
-        'warn',
+        'error',
         {
           restrict: [
             {
