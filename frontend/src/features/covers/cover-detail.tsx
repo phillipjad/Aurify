@@ -285,8 +285,8 @@ function RevisionStepper({
     <div className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-stretch gap-1 rounded-xl border border-border bg-card p-1">
       <Button
         variant="ghost"
-        size="sm"
-        className="h-auto px-2.5"
+        size="icon"
+        className="h-auto"
         disabled={index === 0}
         aria-label="Newer revision"
         onClick={() => onSelect(index - 1)}
@@ -311,8 +311,8 @@ function RevisionStepper({
 
       <Button
         variant="ghost"
-        size="sm"
-        className="h-auto px-2.5"
+        size="icon"
+        className="h-auto"
         disabled={index === runs.length - 1}
         aria-label="Older revision"
         onClick={() => onSelect(index + 1)}

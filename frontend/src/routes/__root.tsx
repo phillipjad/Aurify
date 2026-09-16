@@ -39,7 +39,7 @@ function RootLayout() {
           it. The translucency stays so the aurora still tints it. */}
       <header className="border-b border-border/60 bg-background/80">
         <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-y-2 px-4 py-3">
-          <Link to="/" className="flex items-center gap-2.5 rounded-md">
+          <Link to="/" className="flex h-control-sm items-center gap-2.5 rounded-md">
             <AurifyLogo className="h-8 w-8" />
             <span className="font-display text-lg font-bold tracking-tight text-foreground">Aurify</span>
           </Link>
@@ -141,16 +141,16 @@ function SiteFooter() {
     <footer className="border-t border-border/60">
       <nav
         aria-label="Footer"
-        // px-1 rather than px-4: each link carries its own padding, so the
-        // labels still line up with the content column.
-        className="mx-auto flex w-full max-w-5xl flex-wrap items-center gap-x-1 px-1 py-1"
+        // px-2 rather than px-4: each link carries the other half of the
+        // padding, so the labels still line up with the content column.
+        className="mx-auto flex w-full max-w-5xl flex-wrap items-center px-2 py-1"
       >
         {FOOTER_LINKS.map(({ to, label }) => (
-          <Button key={to} asChild variant="nav" size="sm">
+          <Button key={to} asChild variant="nav" size="sm" className="px-2 font-normal">
             <Link to={to}>{label}</Link>
           </Button>
         ))}
-        <span className="ml-auto px-3 text-sm text-muted-foreground">&copy; {new Date().getFullYear()} Aurify</span>
+        <span className="ml-auto px-2 text-sm text-muted-foreground">&copy; {new Date().getFullYear()} Aurify</span>
       </nav>
     </footer>
   )

@@ -14,7 +14,7 @@ export function SegmentedControl({ className, ...props }: ComponentProps<typeof 
   return (
     <RadioGroup.Root
       data-slot="segmented-control"
-      className={cn('inline-flex h-control-sm rounded-lg border border-border bg-muted/60 p-0.5', className)}
+      className={cn('inline-flex rounded-lg border border-border bg-muted/60 p-0.5', className)}
       {...props}
     />
   )
@@ -25,7 +25,7 @@ export function SegmentedControlItem({ className, ...props }: ComponentProps<typ
     <RadioGroup.Item
       data-slot="segmented-control-item"
       className={cn(
-        'rounded-md px-3 text-sm font-medium text-muted-foreground transition-colors duration-150 hover:text-foreground',
+        'h-control-sm min-w-control-sm rounded-md px-3 text-sm font-medium text-muted-foreground transition-colors duration-150 hover:text-foreground',
         'data-[state=checked]:bg-card data-[state=checked]:font-semibold data-[state=checked]:text-foreground data-[state=checked]:shadow-sm',
         className,
       )}

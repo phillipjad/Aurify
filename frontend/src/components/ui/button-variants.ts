@@ -32,8 +32,9 @@ export const buttonVariants = cva(
         default: 'h-control px-4',
         sm: 'h-control-sm px-3',
         lg: 'h-control-lg px-6',
-        icon: 'size-control',
-        'icon-sm': 'size-control-sm',
+        // Height and width separately, so a caller's h-auto leaves the width.
+        icon: 'h-control w-control',
+        'icon-sm': 'h-control-sm w-control-sm',
         // No box at all, for a link inside a sentence.
         inline: 'h-auto p-0',
       },
