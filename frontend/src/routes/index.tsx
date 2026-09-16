@@ -1,6 +1,6 @@
 import { createFileRoute, Link } from '@tanstack/react-router'
 
-import { buttonVariants } from '@/components/ui/button-variants'
+import { Button } from '@/components/ui/button'
 import { ExampleCovers } from '@/features/covers/example-covers'
 
 export const Route = createFileRoute('/')({
@@ -11,7 +11,7 @@ function Home() {
   return (
     <div className="space-y-14">
       <section className="max-w-2xl space-y-6">
-        <h1 className="font-display text-4xl leading-[1.1] font-bold tracking-tight text-balance sm:text-5xl">
+        <h1 className="font-display text-4xl leading-display font-bold tracking-tight text-balance sm:text-5xl">
           Cover art that captures the vibe.
         </h1>
 
@@ -20,9 +20,9 @@ function Home() {
         </p>
 
         <div>
-          <Link to="/playlists" className={buttonVariants({ size: 'lg' })}>
-            Browse playlists
-          </Link>
+          <Button asChild size="lg">
+            <Link to="/playlists">Browse playlists</Link>
+          </Button>
         </div>
       </section>
 

@@ -105,6 +105,10 @@ export default defineConfig({
     },
     rules: {
       'better-tailwindcss/no-unknown-classes': 'warn',
+      'no-restricted-imports': [
+        'warn',
+        { patterns: [{ group: ['**/button-variants'], message: 'Use <Button> (asChild for links) instead.' }] },
+      ],
       'react/forbid-elements': [
         'warn',
         {
@@ -128,7 +132,12 @@ export default defineConfig({
             },
             { pattern: '(^|:)(ring|outline)(-|$)', message: 'Focus and outline styling belongs to a primitive.' },
             { pattern: '(^|:)shadow(-|$)', message: 'Elevation belongs to a primitive (Card, Popover).' },
-            { pattern: '\\[.+\\]', message: 'Arbitrary value: use or add a theme token in styles.css.' },
+            // Grid templates are layout and have no token form; any other
+            // arbitrary value is a magic number that belongs in the theme.
+            {
+              pattern: '^(?!.*grid-(?:rows|cols)-\\[).*\\[.+\\]',
+              message: 'Arbitrary value: use or add a theme token in styles.css.',
+            },
           ],
         },
       ],
@@ -136,7 +145,11 @@ export default defineConfig({
     overrides: [
       {
         files: ['src/components/ui/**'],
-        rules: { 'react/forbid-elements': 'off', 'better-tailwindcss/no-restricted-classes': 'off' },
+        rules: {
+          'react/forbid-elements': 'off',
+          'better-tailwindcss/no-restricted-classes': 'off',
+          'no-restricted-imports': 'off',
+        },
       },
       {
         files: ['**/*.test.tsx', 'src/test/**'],

@@ -1,5 +1,6 @@
 import { Search } from 'lucide-react'
 
+import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
 
 interface SearchInputProps {
@@ -19,13 +20,13 @@ export function SearchInput({ value, onChange, label, placeholder, className }: 
         aria-hidden="true"
         className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground"
       />
-      <input
+      <Input
         type="search"
         value={value}
         onChange={(event) => onChange(event.target.value)}
         aria-label={label}
         placeholder={placeholder ?? label}
-        className="h-9 w-full rounded-lg border border-border bg-card pr-3 pl-9 text-sm text-foreground placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background focus-visible:outline-none"
+        className="pl-9"
       />
     </div>
   )

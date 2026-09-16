@@ -136,6 +136,7 @@
 
   --font-sans: var(--font-body);
   --font-display: var(--font-heading);
+  --leading-display: 1.1;
 
   /* Every radius derives from --radius, so reshaping the app is one value. */
   --radius-md: calc(var(--radius) / 2);
