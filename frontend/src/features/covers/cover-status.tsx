@@ -100,9 +100,12 @@ export function useStageLabel(status: CoverStatus): { visible: string; dots: str
  * from assistive tech and announces a stable label instead.
  */
 export function StageLabel({ visible, dots }: { visible: string; dots: string }) {
+  // Measured em reserves (see above), not theme values.
   return (
+    // oxlint-disable-next-line better-tailwindcss/no-restricted-classes
     <span className="inline-block min-w-[6.25em] text-left">
       {visible}
+      {/* oxlint-disable-next-line better-tailwindcss/no-restricted-classes */}
       <span className="inline-block w-[0.9em] text-left">{dots}</span>
     </span>
   )

@@ -17,6 +17,7 @@ export const buttonVariants = cva(
         default: 'bg-primary text-primary-foreground hover:bg-primary-hover active:bg-primary-active',
         outline: 'border border-border bg-transparent hover:bg-muted active:bg-secondary',
         ghost: 'hover:bg-muted active:bg-secondary',
+        destructive: 'border border-destructive/40 text-destructive hover:bg-destructive/10 active:bg-destructive/15',
         // Site navigation. The current page is marked by weight and an
         // underline as well as color, so it survives color blindness and a
         // forced-colors mode.
