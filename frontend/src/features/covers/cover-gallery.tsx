@@ -223,6 +223,7 @@ function WindowedCoverGrid({
   // The grid has its own scroll container (the gallery owns the element, since
   // the Load more button shares it). No scrollMargin: rows are measured from the
   // top of that container, which is where the grid starts.
+  // oxlint-disable-next-line react/incompatible-library -- directDomUpdates makes this compiler-safe (TanStack/virtual#1119); the rule matches the hook by name
   const virtualizer = useVirtualizer({
     count: rowCount,
     getScrollElement: () => scrollerRef.current,
@@ -232,16 +233,19 @@ function WindowedCoverGrid({
     // Falling back to the estimate keeps this sane where there is no layout to
     // measure, which is every test environment.
     measureElement: (el) => el.getBoundingClientRect().height || rowHeight,
+    // The virtualizer positions rows and sizes the grid by writing to the DOM,
+    // so scrolling re-renders only when the visible range changes.
+    directDomUpdates: true,
+    // Adopted here rather than read during render: with direct DOM updates a
+    // measurement no longer re-renders the grid, and this runs on every one.
+    onChange: (instance) => {
+      // Any row but the last: that one carries no bottom padding, so taking the
+      // estimate from it would under-reserve every row above.
+      const measured = instance.getVirtualItems().find((item) => item.index < rowCount - 1)?.size
+      // Sub-pixel drift is not worth a re-render; a real layout change is.
+      if (measured) setRowHeight((prev) => (Math.abs(measured - prev) > 1 ? measured : prev))
+    },
   })
-
-  // Any row but the last: that one carries no bottom padding, so taking the
-  // estimate from it would under-reserve every row above.
-  const measured = virtualizer.getVirtualItems().find((item) => item.index < rowCount - 1)?.size
-
-  // Sub-pixel drift is not worth a re-render; a real layout change is.
-  useEffect(() => {
-    if (measured && Math.abs(measured - rowHeight) > 1) setRowHeight(measured)
-  }, [measured, rowHeight])
 
   // A breakpoint change repacks every row, so previous measurements describe a
   // layout that no longer exists. A new rowHeight has to reset them too: the
@@ -256,7 +260,7 @@ function WindowedCoverGrid({
     <div>
       {/* Named, because a tile contains its own palette list and an unnamed one
           is indistinguishable from it to a screen reader. */}
-      <div role="list" aria-label="Covers" className="relative" style={{ height: virtualizer.getTotalSize() }}>
+      <div role="list" aria-label="Covers" className="relative" ref={virtualizer.containerRef}>
         {virtualizer.getVirtualItems().map((row) => {
           const first = row.index * columns
           return (
@@ -269,7 +273,6 @@ function WindowedCoverGrid({
               // there left a strip of empty scroll below the final cover for the
               // scrollbar thumb to sit in.
               className={cn(GRID, 'absolute inset-x-0 top-0', row.index < rowCount - 1 && 'pb-4')}
-              style={{ transform: `translateY(${row.start}px)` }}
             >
               {items.slice(first, first + columns).map((cover, offset) => (
                 <div key={cover.id} role="listitem" aria-setsize={items.length} aria-posinset={first + offset + 1}>
