@@ -24,6 +24,7 @@ export function getAppScrollElement(): HTMLElement | null {
 export function useScrollMargin(ref: RefObject<HTMLElement | null>): number {
   const [margin, setMargin] = useState(0)
 
+  // oxlint-disable-next-line react-hooks/exhaustive-deps -- re-measures after every render on purpose, see above
   useLayoutEffect(() => {
     const el = ref.current
     const scroller = getAppScrollElement()

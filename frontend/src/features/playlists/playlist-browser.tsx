@@ -125,6 +125,7 @@ export function PlaylistBrowser() {
   const listRef = useRef<HTMLDivElement>(null)
   const scrollMargin = useScrollMargin(listRef)
 
+  // oxlint-disable-next-line react/incompatible-library -- directDomUpdates makes this compiler-safe (TanStack/virtual#1119); the rule matches the hook by name
   const virtualizer = useVirtualizer({
     count: items.length,
     getScrollElement: getAppScrollElement,
@@ -138,6 +139,9 @@ export function PlaylistBrowser() {
     // estimate when layout reports zero keeps this working where there is no
     // layout at all, which is every test environment.
     measureElement: (el) => el.getBoundingClientRect().height || ROW_ESTIMATE,
+    // The virtualizer positions rows and sizes the list by writing to the DOM,
+    // so scrolling re-renders only when the visible range changes.
+    directDomUpdates: true,
   })
 
   function selectPlatform(next: Platform) {
@@ -261,7 +265,7 @@ export function PlaylistBrowser() {
                   loaded playlist, while only the visible slice exists in the DOM.
                   aria-setsize and aria-posinset carry the real position, which a
                   partial list cannot convey on its own. */}
-              <ul aria-label="Playlists" className="relative" style={{ height: virtualizer.getTotalSize() }}>
+              <ul aria-label="Playlists" className="relative" ref={virtualizer.containerRef}>
                 {virtualizer.getVirtualItems().map((row) => {
                   const playlist = items[row.index]
                   if (!playlist) return null
@@ -273,7 +277,6 @@ export function PlaylistBrowser() {
                       aria-setsize={items.length}
                       aria-posinset={row.index + 1}
                       className="absolute inset-x-0 top-0 pb-2"
-                      style={{ transform: `translateY(${row.start - scrollMargin}px)` }}
                     >
                       <PlaylistRow
                         playlist={playlist}

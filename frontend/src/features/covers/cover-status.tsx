@@ -1,4 +1,4 @@
-import { useEffect, useReducer, useRef } from 'react'
+import { useEffect, useState } from 'react'
 
 import { Badge, type BadgeProps } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
@@ -61,28 +61,29 @@ const ANNOUNCE_MS = 30_000
  */
 export function useStageLabel(status: CoverStatus): { visible: string; dots: string; announced: string } {
   const verbs = STAGE_VERBS[status]
-  const [, tick] = useReducer((n: number) => n + 1, 0)
+  const [stage, setStage] = useState({ status, since: 0 })
 
-  // Set during render, not in an effect. An effect lands a frame late, and the
-  // frame it misses is the one still showing the previous stage's word — the
-  // flicker this anchor exists to remove.
-  const cycle = useRef({ status, at: Date.now() })
-  if (cycle.current.status !== status) cycle.current = { status, at: Date.now() }
+  // Reset during render, not in an effect. An effect lands a frame late, and the
+  // frame it misses is the one still showing the previous stage's word: the
+  // flicker this reset exists to remove.
+  if (stage.status !== status) setStage({ status, since: 0 })
 
   useEffect(() => {
-    if (!verbs) return
-    const id = setInterval(tick, DOT_MS)
+    if (!STAGE_VERBS[status]) return
+    const start = Date.now()
+    // Elapsed from the clock rather than a tick count, so a throttled background
+    // tab still announces the true duration.
+    const id = setInterval(() => setStage({ status, since: Date.now() - start }), DOT_MS)
     return () => clearInterval(id)
-  }, [verbs])
+  }, [status])
 
   const label = STATUS_LABEL[status]
   if (!verbs) return { visible: label, dots: '', announced: label }
 
-  const since = Date.now() - cycle.current.at
-  const step = Math.floor(since / DOT_MS)
+  const step = Math.floor(stage.since / DOT_MS)
   // Bucketed, so the announced string is stable between announcements and the
   // live region stays quiet while the visible half ticks every second.
-  const elapsed = Math.floor(since / ANNOUNCE_MS) * (ANNOUNCE_MS / 1000)
+  const elapsed = Math.floor(stage.since / ANNOUNCE_MS) * (ANNOUNCE_MS / 1000)
 
   return {
     visible: verbs[Math.floor(step / STEPS_PER_VERB) % verbs.length],

@@ -40,6 +40,19 @@ it('opens every stage on its first verb', () => {
   }
 })
 
+// A mounted badge crossing stages starts the new stage on its first verb and its
+// own one-second cadence, not on a count carried over from the last stage.
+it('restarts the cycle when the stage changes', () => {
+  const { container, rerender } = render(<StatusBadge status="analyzing" />)
+  act(() => void vi.advanceTimersByTime(5000))
+  expect(shown(container)).toBe('Judging.')
+
+  rerender(<StatusBadge status="generating" />)
+  expect(shown(container)).toBe('Painting')
+  act(() => void vi.advanceTimersByTime(1000))
+  expect(shown(container)).toBe('Painting.')
+})
+
 // The cycle is a sign of life, not progress. aria-live carries the real stage so
 // a screen reader hears the stage rather than a synonym every four seconds.
 it('announces the stage, not the synonym', () => {
