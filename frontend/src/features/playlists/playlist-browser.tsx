@@ -9,8 +9,11 @@ import { EmptyState } from '@/components/empty-state'
 import { ImageWithFallback } from '@/components/image-with-fallback'
 import { LoadMore } from '@/components/load-more'
 import { SearchInput } from '@/components/search-input'
+import { Alert } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
+import { NativeSelect } from '@/components/ui/native-select'
+import { SegmentedControl, SegmentedControlItem } from '@/components/ui/segmented-control'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useSession } from '@/lib/api/auth'
 import { isApiError } from '@/lib/api/client'
@@ -19,7 +22,6 @@ import { usePlaylists, type PlaylistSort } from '@/lib/api/queries'
 import { StageLabel, useStageLabel } from '@/features/covers/cover-status'
 import { useDebouncedValue } from '@/lib/use-debounced-value'
 import type { Platform, Playlist } from '@/lib/api/types'
-import { PlatformPicker } from './platform-picker'
 import {
   connectErrorMessage,
   DEFAULT_PLATFORM,
@@ -168,7 +170,20 @@ export function PlaylistBrowser() {
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <PlatformPicker value={platform} onChange={selectPlatform} />
+        <SegmentedControl
+          aria-label="Music platform"
+          value={platform}
+          onValueChange={(value) => {
+            const next = toPlatform(value)
+            if (next) selectPlatform(next)
+          }}
+        >
+          {PLATFORMS.map((option) => (
+            <SegmentedControlItem key={option} value={option}>
+              {platformLabel(option)}
+            </SegmentedControlItem>
+          ))}
+        </SegmentedControl>
         <div className="flex flex-col items-end gap-1">
           {isConnected ? (
             <p className="flex items-center gap-1.5 text-sm text-muted-foreground">
@@ -176,24 +191,16 @@ export function PlaylistBrowser() {
               {activeLabel} connected
               {/* Reconnecting is how a user re-grants a revoked or expired
                   authorization, so it stays reachable, just demoted. */}
-              <button
-                type="button"
-                onClick={() => void connectDsp(platform)}
-                className="rounded-sm underline underline-offset-2 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background focus-visible:outline-none"
-              >
+              <Button variant="link" size="inline" onClick={() => void connectDsp(platform)}>
                 Reconnect
-              </button>
+              </Button>
             </p>
           ) : (
             <Button variant="outline" size="sm" onClick={() => void connectDsp(platform)}>
               Connect {activeLabel}
             </Button>
           )}
-          {failedConnect && (
-            <p role="alert" className="max-w-xs text-right text-xs text-destructive-text">
-              {failedConnect}
-            </p>
-          )}
+          {failedConnect && <Alert className="max-w-xs">{failedConnect}</Alert>}
         </div>
       </div>
 
@@ -241,14 +248,10 @@ export function PlaylistBrowser() {
             <SearchInput className="min-w-56 flex-1" value={input} onChange={setInput} label="Search playlists" />
             <label className="flex items-center gap-2 text-sm text-muted-foreground">
               Sort
-              <select
-                value={sort}
-                onChange={(event) => selectSort(event.target.value as PlaylistSort)}
-                className="h-9 rounded-lg border border-border bg-card px-2 text-sm text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background focus-visible:outline-none"
-              >
+              <NativeSelect value={sort} onChange={(event) => selectSort(event.target.value as PlaylistSort)}>
                 <option value="name">Name</option>
                 <option value="tracks">Tracks</option>
-              </select>
+              </NativeSelect>
             </label>
           </div>
 
@@ -348,7 +351,7 @@ function PlaylistRow({ playlist, generation, onGenerate }: PlaylistRowProps) {
           {/* Width reserved for the longest label, so the row does not jerk.
               The label now cycles every four seconds, so this has to clear the
               widest verb plus the spinner: "Composing…" measures 131px. */}
-          <Button size="sm" className="min-w-[8.5rem]" loading={generating} onClick={onGenerate}>
+          <Button size="sm" className="min-w-34" loading={generating} onClick={onGenerate}>
             {generating ? (
               <>
                 {/* The cycling word is decoration; without this split it would
@@ -365,17 +368,15 @@ function PlaylistRow({ playlist, generation, onGenerate }: PlaylistRowProps) {
             )}
           </Button>
           {succeeded && (
-            <Link to="/covers" className="text-xs font-medium text-primary underline underline-offset-2">
-              Cover ready, view it
-            </Link>
+            <Button asChild variant="link" size="inline" className="text-xs">
+              <Link to="/covers">Cover ready, view it</Link>
+            </Button>
           )}
         </div>
       </Card>
 
       {error != null && (
-        <p role="alert" className="px-3 pt-1.5 text-xs text-destructive-text">
-          {errorMessage(error, 'Generation failed. Try again in a moment.')}
-        </p>
+        <Alert className="mt-1.5">{errorMessage(error, 'Generation failed. Try again in a moment.')}</Alert>
       )}
     </>
   )

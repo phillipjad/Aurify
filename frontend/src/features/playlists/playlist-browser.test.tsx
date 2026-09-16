@@ -203,11 +203,14 @@ describe('PlaylistBrowser', () => {
 
     await userEvent.tab() // skip link / first stop is the picker's selected radio
     screen.getByRole('radio', { name: 'Spotify' }).focus()
-    await userEvent.keyboard('{ArrowRight}')
+    // Held, as a real key is: Radix selects the radio that receives focus only
+    // while the arrow is still down, and it moves focus on the next tick.
+    await userEvent.keyboard('{ArrowRight>}')
 
     await waitFor(() =>
       expect(screen.getByRole('radio', { name: 'Apple Music' })).toHaveAttribute('aria-checked', 'true'),
     )
+    await userEvent.keyboard('{/ArrowRight}')
     await waitFor(() => expect(mockFetch).toHaveBeenCalledWith(expect.stringContaining('platform=apple_music')))
   })
 
