@@ -36,8 +36,9 @@ export function Toaster(props: ToasterProps) {
           // Wide enough for cover artwork; the default slot is a 16px glyph.
           icon: 'size-11! shrink-0! self-center!',
           closeButton: [
-            // 24px rather than Sonner's 20, under the minimum target size.
-            'size-6! bg-card! border-border! text-muted-foreground!',
+            // Drawn at 24px so it does not crowd the toast, with a hit area
+            // that reaches the 44px target size.
+            'size-6! bg-card! border-border! text-muted-foreground! after:absolute after:-inset-2.5',
             'hover:bg-muted! hover:text-foreground! hover:border-border! transition-colors',
             // Its own focus ring is a black shadow, invisible on dark.
             'focus-visible:shadow-none! focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-card',
