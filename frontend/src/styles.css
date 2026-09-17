@@ -144,10 +144,11 @@
   --radius-xl: var(--radius);
 
   /* Control heights (h-control-sm, h-control, h-control-lg), used only by the
-     primitives in components/ui. Target size is decided here. */
-  --spacing-control-sm: 2.25rem;
-  --spacing-control: 2.5rem;
-  --spacing-control-lg: 2.75rem;
+     primitives in components/ui. The smallest is the 44px WCAG 2.5.5 target
+     size, and each step adds 4px. See docs/adr/0028-target-size.md. */
+  --spacing-control-sm: 2.75rem;
+  --spacing-control: 3rem;
+  --spacing-control-lg: 3.25rem;
 }
 
 /* One focus indicator for everything focusable, drawn as an outline so it
