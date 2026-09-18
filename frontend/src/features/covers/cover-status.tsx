@@ -58,18 +58,23 @@ const ANNOUNCE_MS = 30_000
  * Both are anchored to the moment the stage began, not to the wall clock; the
  * reasoning and what that trades away are in
  * docs/adr/0020-coverage-weighted-features.md.
+ *
+ * `null` is a caller with nothing in flight. It runs no interval and says
+ * nothing, which is the only honest answer for a view that is not showing a
+ * label — and the reason a list of idle rows costs no timers.
  */
-export function useStageLabel(status: CoverStatus): { visible: string; dots: string; announced: string } {
-  const verbs = STAGE_VERBS[status]
-  const [stage, setStage] = useState({ status, since: 0 })
+export function useStageLabel(status: CoverStatus | null): { visible: string; dots: string; announced: string } {
+  const verbs = status ? STAGE_VERBS[status] : undefined
+  const [stage, setStage] = useState<{ status: CoverStatus | null; since: number }>({ status, since: 0 })
 
   // Reset during render, not in an effect. An effect lands a frame late, and the
   // frame it misses is the one still showing the previous stage's word: the
-  // flicker this reset exists to remove.
+  // flicker this reset exists to remove. It is also what anchors the cycle to
+  // the click rather than to the mount: null → pending is a stage change.
   if (stage.status !== status) setStage({ status, since: 0 })
 
   useEffect(() => {
-    if (!STAGE_VERBS[status]) return
+    if (!status || !STAGE_VERBS[status]) return
     const start = Date.now()
     // Elapsed from the clock rather than a tick count, so a throttled background
     // tab still announces the true duration.
@@ -77,7 +82,7 @@ export function useStageLabel(status: CoverStatus): { visible: string; dots: str
     return () => clearInterval(id)
   }, [status])
 
-  const label = STATUS_LABEL[status]
+  const label = status ? STATUS_LABEL[status] : ''
   if (!verbs) return { visible: label, dots: '', announced: label }
 
   const step = Math.floor(stage.since / DOT_MS)
