@@ -328,9 +328,12 @@ function PlaylistRow({ playlist, generation, onGenerate }: PlaylistRowProps) {
   const generating = generation.status === 'pending'
   const error = generation.status === 'error' ? generation.error : undefined
   const succeeded = generation.status === 'success'
-  // Called unconditionally, as hooks must be. Before the stream has named a
-  // stage there is nothing to cycle, and 'pending' is the label that says so.
-  const { visible: stage, dots, announced } = useStageLabel(generation.stage ?? 'pending')
+  // No stage while idle: the row shows "Aurify it" and never reads the label, and
+  // a hook handed a status runs a one-second interval to animate it. That was
+  // every windowed row re-rendering once a second at rest. Passing it only once
+  // a generation is running also anchors the cycle to the click, so the label
+  // opens on its first verb instead of partway through an ellipsis.
+  const { visible: stage, dots, announced } = useStageLabel(generating ? (generation.stage ?? 'pending') : null)
 
   return (
     <>

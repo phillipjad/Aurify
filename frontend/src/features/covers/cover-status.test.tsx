@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vite-plus/test'
 import { act, render, screen } from '@testing-library/react'
 
-import { StatusBadge } from '@/features/covers/cover-status'
+import { StatusBadge, useStageLabel } from '@/features/covers/cover-status'
+import type { CoverStatus } from '@/lib/api/types'
 
 beforeEach(() => vi.useFakeTimers({ shouldAdvanceTime: true }))
 afterEach(() => vi.useRealTimers())
@@ -9,6 +10,17 @@ afterEach(() => vi.useRealTimers())
 /** The visible word, read off the node the live region is told to ignore. */
 function shown(container: HTMLElement) {
   return container.querySelector('[aria-hidden="true"]')?.textContent
+}
+
+/** The hook on its own, for the callers that are not a badge. */
+function Probe({ status }: { status: CoverStatus | null }) {
+  const { visible, dots } = useStageLabel(status)
+  return (
+    <span>
+      {visible}
+      {dots}
+    </span>
+  )
 }
 
 // The analyzing stage is a rate-limited feature lookup, a minute or two at the
@@ -141,4 +153,27 @@ it('is not a live region unless asked', () => {
 
   rerender(<StatusBadge status="analyzing" live />)
   expect(container.querySelector('[aria-live="polite"]')).not.toBeNull()
+})
+
+// The playlist list renders one of these per row and shows the label only while
+// that row is generating. Given a status anyway, every idle row paid for a
+// one-second interval to animate a word nobody was looking at.
+it('runs no timer when there is no stage', () => {
+  const { container } = render(<Probe status={null} />)
+
+  expect(container.textContent).toBe('')
+  expect(vi.getTimerCount()).toBe(0)
+})
+
+// The cycle is anchored to the stage beginning, and for an idle row that is the
+// click. Cycling while idle opened the label wherever the mount-time count had
+// got to: "Aurifying", then "Queued." a quarter of a second later.
+it('opens on the first verb when a stage begins', () => {
+  const { container, rerender } = render(<Probe status={null} />)
+  act(() => void vi.advanceTimersByTime(2500))
+
+  rerender(<Probe status="pending" />)
+  expect(container.textContent).toBe('Queued')
+  act(() => void vi.advanceTimersByTime(1000))
+  expect(container.textContent).toBe('Queued.')
 })

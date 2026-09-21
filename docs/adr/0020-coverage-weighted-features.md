@@ -137,6 +137,10 @@ race through several words before settling. Two views still agree in practice,
 because both reset on the same status event; only a view that mounts mid-stage
 starts its own count, which is the price of never opening mid-word.
 
+A view with nothing in flight passes no stage at all, so it runs no timer: a list
+of idle rows costs nothing, and the cycle starts at the click rather than at the
+mount.
+
 Nothing moves but the dots. They grow into a box already wide enough for three,
 and the label reserves the widest verb (measured: "Composing" at 5.11em), so the
 word's left edge is fixed for the whole stage rather than re-centring on every
