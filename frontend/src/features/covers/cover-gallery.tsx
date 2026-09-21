@@ -212,13 +212,14 @@ function WindowedCoverGrid({
   const rowCount = Math.ceil(items.length / columns)
 
   // Every row in a given layout is the same height: a square thumbnail plus a
-  // meta block of fixed structure. So the first real measurement is the right
-  // estimate for every row still below the fold, and adopting it is what stops
-  // the scroll target from moving. With a constant estimate, each row that
-  // scrolled into view corrected itself and grew the total, which walked the
-  // bottom of the list away as you approached it: jumping to the end left the
-  // last row cut off by exactly the accumulated error.
+  // meta block of fixed height (CoverTile reserves it). So one measurement
+  // describes every row, and the virtualizer is told that height rather than
+  // each row's own — see measureElement below.
   const [rowHeight, setRowHeight] = useState(ROW_ESTIMATE)
+
+  // The one place a row's height is decided, shared by the estimate and the
+  // measurement so the two can never disagree.
+  const estimateRow = (index: number) => (index === rowCount - 1 ? rowHeight - ROW_GAP : rowHeight)
 
   // The grid has its own scroll container (the gallery owns the element, since
   // the Load more button shares it). No scrollMargin: rows are measured from the
@@ -227,31 +228,40 @@ function WindowedCoverGrid({
   const virtualizer = useVirtualizer({
     count: rowCount,
     getScrollElement: () => scrollerRef.current,
-    estimateSize: (index) => (index === rowCount - 1 ? rowHeight - ROW_GAP : rowHeight),
+    estimateSize: estimateRow,
     // Rows are tall, so a couple either side is plenty of slack.
     overscan: 2,
-    // Falling back to the estimate keeps this sane where there is no layout to
-    // measure, which is every test environment.
-    measureElement: (el) => el.getBoundingClientRect().height || rowHeight,
+    // Measured for the height, but never reported: what comes back is the
+    // estimate, so the virtualizer sees no per-row delta and never corrects a
+    // row's size. A correction at the end of the list writes a scroll
+    // adjustment the browser clamps away (the list is already at max scroll)
+    // while the container still grows by the same amount, which is the dead
+    // space under the last cover. It is also what put a flushSync inside
+    // React's commit, since this runs from the row's ref callback.
+    //
+    // The height itself is adopted for every row. Not from the last row, which
+    // carries no bottom padding: taking the estimate from it would
+    // under-reserve every row above. Sub-pixel drift is not worth a re-render;
+    // a real layout change is.
+    measureElement: (el) => {
+      const measured = el.getBoundingClientRect().height
+      const index = Number(el.getAttribute('data-index'))
+      if (measured && index < rowCount - 1) {
+        setRowHeight((prev) => (Math.abs(measured - prev) > 1 ? measured : prev))
+      }
+      // Falling back to the estimate keeps this sane where there is no layout to
+      // measure, which is every test environment.
+      return estimateRow(index)
+    },
     // The virtualizer positions rows and sizes the grid by writing to the DOM,
     // so scrolling re-renders only when the visible range changes.
     directDomUpdates: true,
-    // Adopted here rather than read during render: with direct DOM updates a
-    // measurement no longer re-renders the grid, and this runs on every one.
-    onChange: (instance) => {
-      // Any row but the last: that one carries no bottom padding, so taking the
-      // estimate from it would under-reserve every row above.
-      const measured = instance.getVirtualItems().find((item) => item.index < rowCount - 1)?.size
-      // Sub-pixel drift is not worth a re-render; a real layout change is.
-      if (measured) setRowHeight((prev) => (Math.abs(measured - prev) > 1 ? measured : prev))
-    },
   })
 
-  // A breakpoint change repacks every row, so previous measurements describe a
-  // layout that no longer exists. A new rowHeight has to reset them too: the
-  // virtualizer caches what it has measured and does not revisit that cache
-  // when estimateSize changes, so without this the rows below the fold keep the
-  // stale estimate and the total keeps growing as you scroll into them.
+  // A breakpoint change repacks every row, so a row's height is not what it was.
+  // Nothing else invalidates the measurements: the virtualizer memoizes them
+  // and does not revisit that memo when estimateSize changes, so without this a
+  // new rowHeight would describe none of the rows already laid out.
   useEffect(() => {
     virtualizer.measure()
   }, [columns, rowHeight, virtualizer])
@@ -329,13 +339,20 @@ function CoverTile({ cover }: { cover: Cover }) {
             </div>
           </div>
 
-          {cover.status === 'failed' ? (
-            <p className="line-clamp-2 text-xs text-muted-foreground">
-              {cover.error || 'Generation didn’t finish. Open to try again.'}
-            </p>
-          ) : (
-            <PalettePreview palette={cover.palette} />
-          )}
+          {/* A fixed slot, not whichever of these happens to be taller. The grid
+              positions every row from one measured height, so a tile that is
+              sometimes shorter is not a cosmetic difference: it is dead scroll
+              under the last row. h-9 is the taller variant — two lines of
+              text-xs plus the palette's gap-y-1. */}
+          <div className="mt-auto h-9 overflow-hidden">
+            {cover.status === 'failed' ? (
+              <p className="line-clamp-2 text-xs text-muted-foreground">
+                {cover.error || 'Generation didn’t finish. Open to try again.'}
+              </p>
+            ) : (
+              <PalettePreview palette={cover.palette} />
+            )}
+          </div>
         </div>
       </Link>
     </Card>
@@ -373,7 +390,7 @@ function PalettePreview({ palette }: { palette?: ColorWeight[] }) {
   const top = [...palette].sort((a, b) => b.weight - a.weight).slice(0, 3)
 
   return (
-    <ul className="mt-auto flex flex-wrap gap-x-3 gap-y-1">
+    <ul className="flex flex-wrap gap-x-3 gap-y-1">
       {top.map((color) => (
         <li key={color.dimension} className="flex items-center gap-1.5 text-xs text-muted-foreground">
           <Swatch className="size-3" style={{ backgroundColor: color.hexColor }} />
