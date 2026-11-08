@@ -6,7 +6,7 @@ require (
 	github.com/fgrzl/claims v0.1.0
 	github.com/fgrzl/mux v0.2.3
 	github.com/google/uuid v1.6.0
-	github.com/jackc/pgx/v5 v5.11.0
+	github.com/jackc/pgx/v5 v5.12.0
 	github.com/jonreiter/govader v0.0.0-20250429093935-f6505c8d03cc
 	github.com/pressly/goose/v3 v3.28.0
 	golang.org/x/crypto v0.57.0
@@ -23,7 +23,7 @@ require (
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect
 	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
-	github.com/jackc/puddle/v2 v2.2.2 // indirect
+	github.com/jackc/puddle/v2 v2.2.3 // indirect
 	github.com/kr/text v0.2.0 // indirect
 	github.com/mfridman/interpolate v0.0.2 // indirect
 	github.com/oschwald/geoip2-golang v1.13.0 // indirect
